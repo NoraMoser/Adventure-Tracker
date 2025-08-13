@@ -36,7 +36,8 @@ export const useLocation = () => {
       name: spotName,
       lat: location.coords.latitude,
       lng: location.coords.longitude,
-      date: new Date().toLocaleDateString()
+      date: new Date().toLocaleDateString(),
+      photos: [] // Start with empty photos array
     };
 
     setSavedSpots(prev => [...prev, newSpot]);
@@ -44,10 +45,21 @@ export const useLocation = () => {
     return newSpot;
   };
 
+  const addPhotoToSpot = (spotId: string, photoUri: string) => {
+    setSavedSpots(prev => 
+      prev.map(spot => 
+        spot.id === spotId 
+          ? { ...spot, photos: [...spot.photos, photoUri] }
+          : spot
+      )
+    );
+  };
+
   return {
     location,
     savedSpots,
     getLocation,
-    saveCurrentLocation
+    saveCurrentLocation,
+    addPhotoToSpot
   };
 };

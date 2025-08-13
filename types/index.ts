@@ -6,6 +6,7 @@ export interface SavedSpot {
   lat: number;
   lng: number;
   date: string;
+  photos: string[]; // Array of photo URIs
 }
 
 export type LocationObject = Location.LocationObject;
