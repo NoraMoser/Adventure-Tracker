@@ -1,12 +1,14 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ActivityProvider } from '../contexts/ActivityContext';
 import { LocationProvider } from '../contexts/LocationContext';
 
 export default function RootLayout() {
   return (
     <LocationProvider>
-      <SafeAreaProvider>
+      <ActivityProvider>
+        <SafeAreaProvider>
         <StatusBar style="auto" />
         <Stack
           screenOptions={{
@@ -73,6 +75,7 @@ export default function RootLayout() {
           />
         </Stack>
       </SafeAreaProvider>
-    </LocationProvider>
+    </ActivityProvider>
+  </LocationProvider>
   );
 }
