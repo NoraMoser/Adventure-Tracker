@@ -96,25 +96,23 @@ export default function SaveLocationScreen() {
     }
 
     try {
-      // Save location with basic info
-      await saveCurrentLocation(locationName, locationDescription);
+      // Save location with photos
+      await saveCurrentLocation(locationName, locationDescription, photos);
       
-      // TODO: If you want to save photos with the location, you'd need to modify 
-      // the saveCurrentLocation function to accept photos as well
+      // Clear form and navigate back
+      setLocationName('');
+      setLocationDescription('');
+      setPhotos([]);
       
+      // Show success and go back
       Alert.alert(
         'Success',
         'Location saved successfully!',
         [
           {
             text: 'OK',
-            onPress: () => {
-              setLocationName('');
-              setLocationDescription('');
-              setPhotos([]);
-              router.back();
-            },
-          },
+            onPress: () => router.back()
+          }
         ]
       );
     } catch (err) {
@@ -146,7 +144,7 @@ export default function SaveLocationScreen() {
               <Text style={styles.locationTitle}>Location Captured!</Text>
               <TouchableOpacity 
             style={styles.manualLocationButton}
-            onPress={() => router.push('/add-location')}
+            onPress={() => router.replace('/add-location')}
           >
             <Ionicons name="map-outline" size={18} color={theme.colors.burntOrange} />
             <Text style={styles.manualLocationText}>Choose on Map Instead</Text>

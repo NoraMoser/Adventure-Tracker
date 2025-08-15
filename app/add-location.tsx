@@ -167,13 +167,28 @@ export default function AddLocationScreen() {
       // Save the location with the selected coordinates and photos
       await saveManualLocation(locationName, selectedLocation, locationDescription, photos);
       
+      // Clear form data
+      setLocationName('');
+      setLocationDescription('');
+      setPhotos([]);
+      setSelectedLocation(null);
+      setShowForm(false);
+      
+      // Navigate back after showing success
       Alert.alert(
         'Success',
         'Location saved successfully!',
         [
           {
             text: 'OK',
-            onPress: () => router.back(),
+            onPress: () => {
+              // Navigate to saved spots or back depending on where we came from
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/saved-spots');
+              }
+            },
           },
         ]
       );

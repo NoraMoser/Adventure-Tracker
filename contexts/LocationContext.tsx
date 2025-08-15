@@ -20,8 +20,9 @@ interface LocationContextType {
   location: LocationCoords | null;
   savedSpots: SavedSpot[];
   getLocation: () => Promise<void>;
-  saveCurrentLocation: (name: string, description?: string) => Promise<void>;
+  saveCurrentLocation: (name: string, description?: string, photos?: string[]) => Promise<void>;
   saveManualLocation: (name: string, coords: LocationCoords, description?: string, photos?: string[]) => Promise<void>;
+  updateSpot: (spotId: string, updatedSpot: SavedSpot) => Promise<void>;
   addPhotoToSpot: (spotId: string, photoUri: string) => Promise<void>;
   deleteSpot: (spotId: string) => Promise<void>;
   loading: boolean;
@@ -91,7 +92,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
-  const saveCurrentLocation = async (name: string, description?: string) => {
+  const saveCurrentLocation = async (name: string, description?: string, photos?: string[]) => {
     if (!location) {
       setError('No location available to save');
       return;
@@ -104,7 +105,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         location,
         timestamp: new Date(),
         description,
-        photos: [],
+        photos: photos || [],
       };
 
       const updatedSpots = [...savedSpots, newSpot];
@@ -133,6 +134,19 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     } catch (err) {
       console.error('Error saving manual location:', err);
       setError('Failed to save location');
+    }
+  };
+
+  const updateSpot = async (spotId: string, updatedSpot: SavedSpot) => {
+    try {
+      const updatedSpots = savedSpots.map(spot => 
+        spot.id === spotId ? updatedSpot : spot
+      );
+      setSavedSpots(updatedSpots);
+      await saveSpotsToStorage(updatedSpots);
+    } catch (err) {
+      console.error('Error updating spot:', err);
+      setError('Failed to update location');
     }
   };
 
@@ -173,6 +187,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     getLocation,
     saveCurrentLocation,
     saveManualLocation,
+    updateSpot,
     addPhotoToSpot,
     deleteSpot,
     loading,

@@ -6,7 +6,9 @@ import {
     Dimensions,
     FlatList,
     Image,
+    Linking,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -39,6 +41,7 @@ export default function SavedSpotsScreen() {
   const [selectedSpot, setSelectedSpot] = useState<any>(null);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const webViewRef = React.useRef<WebView>(null);
 
   const handleDeleteSpot = (spotId: string, spotName: string) => {
     Alert.alert(
@@ -60,6 +63,20 @@ export default function SavedSpotsScreen() {
     if (spot.photos && spot.photos.length > 0) {
       setSelectedPhotoIndex(0);
       setShowPhotoGallery(true);
+    } else {
+      // No photos, show on map instead
+      setViewMode('map');
+      // Wait for map to render then zoom to location
+      setTimeout(() => {
+        const js = `
+          window.focusLocation(${spot.location.latitude}, ${spot.location.longitude}, 17);
+          if (window.markers && window.markers['${spot.id}']) {
+            window.markers['${spot.id}'].openPopup();
+          }
+          true; // Return value for iOS
+        `;
+        webViewRef.current?.injectJavaScript(js);
+      }, 500);
     }
   };
 
@@ -67,6 +84,45 @@ export default function SavedSpotsScreen() {
     setSelectedSpot(spot);
     setSelectedPhotoIndex(0);
     setShowPhotoGallery(true);
+  };
+
+  const handleGetDirections = (spot: any) => {
+    const { latitude, longitude } = spot.location;
+    const label = encodeURIComponent(spot.name);
+    
+    // Create URLs for different map apps
+    const appleMapsUrl = `maps:0,0?q=${label}@${latitude},${longitude}`;
+    const googleMapsUrl = `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`;
+    const webUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+    
+    // Determine which URL to use based on platform
+    let url = webUrl; // fallback to web
+    
+    if (Platform.OS === 'ios') {
+      url = appleMapsUrl;
+    } else if (Platform.OS === 'android') {
+      url = googleMapsUrl;
+    }
+    
+    // Open the URL
+    Linking.canOpenURL(url).then(supported => {
+      if (supported) {
+        Linking.openURL(url);
+      } else {
+        // Fallback to web URL if native app isn't available
+        Linking.openURL(webUrl);
+      }
+    }).catch(err => {
+      Alert.alert('Error', 'Unable to open maps');
+      console.error('Error opening maps:', err);
+    });
+  };
+
+  const handleEditSpot = (spot: any) => {
+    router.push({
+      pathname: '/edit-location',
+      params: { spotId: spot.id }
+    });
   };
 
   const renderListItem = ({ item }: any) => (
@@ -126,12 +182,26 @@ export default function SavedSpotsScreen() {
           </View>
         )}
       </View>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteSpot(item.id, item.name)}
-      >
-        <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
-      </TouchableOpacity>
+      <View style={styles.actionButtons}>
+        <TouchableOpacity
+          style={styles.directionsButton}
+          onPress={() => handleGetDirections(item)}
+        >
+          <Ionicons name="navigate" size={20} color={theme.colors.navy} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => handleEditSpot(item)}
+        >
+          <Ionicons name="create-outline" size={20} color={theme.colors.forest} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteSpot(item.id, item.name)}
+        >
+          <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
+        </TouchableOpacity>
+      </View>
     </TouchableOpacity>
   );
 
@@ -146,7 +216,7 @@ export default function SavedSpotsScreen() {
     const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
 
     const markers = savedSpots.map(spot => `
-      L.marker([${spot.location.latitude}, ${spot.location.longitude}])
+      var marker${spot.id} = L.marker([${spot.location.latitude}, ${spot.location.longitude}])
         .addTo(map)
         .bindPopup('<b>${spot.name}</b><br>${spot.description || 'No description'}');
     `).join('\n');
@@ -175,7 +245,17 @@ export default function SavedSpotsScreen() {
 
           ${markers}
 
-          // Fit bounds to show all markers with more padding
+          // Store markers globally for access
+          window.markers = {
+            ${savedSpots.map(spot => `'${spot.id}': marker${spot.id}`).join(',\n')}
+          };
+
+          // Function to focus on a specific location
+          window.focusLocation = function(lat, lng, zoom) {
+            map.setView([lat, lng], zoom || 16);
+          };
+
+          // Fit bounds to show all markers initially
           var group = new L.featureGroup([
             ${savedSpots.map(spot => 
               `L.marker([${spot.location.latitude}, ${spot.location.longitude}])`
@@ -246,6 +326,7 @@ export default function SavedSpotsScreen() {
         />
       ) : (
         <WebView
+          ref={webViewRef}
           style={styles.map}
           source={{ html: generateMapHTML() }}
           scrollEnabled={true}
@@ -489,6 +570,18 @@ const styles = StyleSheet.create({
   listItemDate: {
     fontSize: 12,
     color: theme.colors.gray,
+  },
+  actionButtons: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+  },
+  directionsButton: {
+    padding: 10,
+    marginBottom: 5,
+  },
+  editButton: {
+    padding: 10,
+    marginBottom: 5,
   },
   deleteButton: {
     padding: 10,
