@@ -449,9 +449,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  statCard: {
-    paddingVertical: 15,
-  },
   statLabel: {
     fontSize: 14,
     color: '#666',

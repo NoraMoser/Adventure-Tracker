@@ -21,6 +21,7 @@ interface LocationContextType {
   savedSpots: SavedSpot[];
   getLocation: () => Promise<void>;
   saveCurrentLocation: (name: string, description?: string) => Promise<void>;
+  saveManualLocation: (name: string, coords: LocationCoords, description?: string, photos?: string[]) => Promise<void>;
   addPhotoToSpot: (spotId: string, photoUri: string) => Promise<void>;
   deleteSpot: (spotId: string) => Promise<void>;
   loading: boolean;
@@ -115,6 +116,26 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
+  const saveManualLocation = async (name: string, coords: LocationCoords, description?: string, photos?: string[]) => {
+    try {
+      const newSpot: SavedSpot = {
+        id: Date.now().toString(),
+        name,
+        location: coords,
+        timestamp: new Date(),
+        description,
+        photos: photos || [],
+      };
+
+      const updatedSpots = [...savedSpots, newSpot];
+      setSavedSpots(updatedSpots);
+      await saveSpotsToStorage(updatedSpots);
+    } catch (err) {
+      console.error('Error saving manual location:', err);
+      setError('Failed to save location');
+    }
+  };
+
   const addPhotoToSpot = async (spotId: string, photoUri: string) => {
     try {
       const updatedSpots = savedSpots.map(spot => {
@@ -151,6 +172,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     savedSpots,
     getLocation,
     saveCurrentLocation,
+    saveManualLocation,
     addPhotoToSpot,
     deleteSpot,
     loading,

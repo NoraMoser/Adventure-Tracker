@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { theme } from '../constants/theme';
 import { useLocation } from '../contexts/LocationContext';
 
 export default function SaveLocationScreen() {
@@ -143,7 +144,14 @@ export default function SaveLocationScreen() {
             <View style={styles.locationHeader}>
               <Ionicons name="location" size={24} color="#34C759" />
               <Text style={styles.locationTitle}>Location Captured!</Text>
-            </View>
+              <TouchableOpacity 
+            style={styles.manualLocationButton}
+            onPress={() => router.push('/add-location')}
+          >
+            <Ionicons name="map-outline" size={18} color={theme.colors.burntOrange} />
+            <Text style={styles.manualLocationText}>Choose on Map Instead</Text>
+          </TouchableOpacity>
+        </View>
             <View style={styles.coordinatesBox}>
               <View style={styles.coordRow}>
                 <Text style={styles.coordLabel}>Latitude:</Text>
@@ -249,7 +257,7 @@ export default function SaveLocationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
   },
   contentContainer: {
     paddingBottom: 30,
@@ -258,15 +266,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#666',
+    color: theme.colors.gray,
   },
   locationCard: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     margin: 15,
     borderRadius: 12,
     padding: 20,
@@ -287,11 +295,11 @@ const styles = StyleSheet.create({
   locationTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
     marginLeft: 8,
   },
   coordinatesBox: {
-    backgroundColor: '#f8f8f8',
+    backgroundColor: theme.colors.offWhite,
     padding: 15,
     borderRadius: 8,
     width: '100%',
@@ -303,12 +311,12 @@ const styles = StyleSheet.create({
   },
   coordLabel: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
   },
   coordValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
     fontFamily: 'monospace',
   },
   updateLocationButton: {
@@ -318,7 +326,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   updateLocationText: {
-    color: '#007AFF',
+    color: theme.colors.forest,
     marginLeft: 5,
     fontSize: 14,
   },
@@ -328,12 +336,12 @@ const styles = StyleSheet.create({
   },
   noLocationText: {
     fontSize: 16,
-    color: '#999',
+    color: theme.colors.gray,
     marginTop: 10,
     marginBottom: 20,
   },
   getLocationButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -341,13 +349,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   getLocationButtonText: {
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
   },
   photoSection: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     marginHorizontal: 15,
     marginBottom: 15,
     borderRadius: 12,
@@ -361,7 +369,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
     marginBottom: 15,
   },
   photoActions: {
@@ -372,13 +380,15 @@ const styles = StyleSheet.create({
   photoButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.colors.offWhite,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.forest,
   },
   photoButtonText: {
-    color: '#007AFF',
+    color: theme.colors.forest,
     marginLeft: 8,
     fontSize: 14,
     fontWeight: '500',
@@ -408,12 +418,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
     marginBottom: 8,
     marginLeft: 5,
   },
   input: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 12,
@@ -432,7 +442,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   saveButton: {
-    backgroundColor: '#34C759',
+    backgroundColor: theme.colors.forest,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -446,10 +456,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   saveButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: theme.colors.lightGray,
   },
   saveButtonText: {
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: '600',
     marginLeft: 8,
@@ -460,7 +470,20 @@ const styles = StyleSheet.create({
   },
   savedSpotsText: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
     textAlign: 'center',
+  },
+  manualLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    padding: 10,
+  },
+  manualLocationText: {
+    color: theme.colors.burntOrange,
+    marginLeft: 5,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

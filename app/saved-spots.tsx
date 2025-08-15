@@ -3,7 +3,11 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
     Alert,
+    Dimensions,
     FlatList,
+    Image,
+    Modal,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -12,10 +16,29 @@ import {
 import { WebView } from 'react-native-webview';
 import { useLocation } from '../contexts/LocationContext';
 
+// Theme colors defined inline
+const theme = {
+  colors: {
+    navy: '#1e3a5f',
+    forest: '#2d5a3d',
+    offWhite: '#faf8f5',
+    burntOrange: '#cc5500',
+    white: '#ffffff',
+    gray: '#666666',
+    lightGray: '#999999',
+    borderGray: '#e0e0e0',
+  }
+};
+
+const { width } = Dimensions.get('window');
+
 export default function SavedSpotsScreen() {
   const { savedSpots, deleteSpot } = useLocation();
   const router = useRouter();
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [selectedSpot, setSelectedSpot] = useState<any>(null);
+  const [showPhotoGallery, setShowPhotoGallery] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
 
   const handleDeleteSpot = (spotId: string, spotName: string) => {
     Alert.alert(
@@ -32,11 +55,29 @@ export default function SavedSpotsScreen() {
     );
   };
 
+  const handleSpotPress = (spot: any) => {
+    setSelectedSpot(spot);
+    if (spot.photos && spot.photos.length > 0) {
+      setSelectedPhotoIndex(0);
+      setShowPhotoGallery(true);
+    }
+  };
+
+  const handleViewPhotos = (spot: any) => {
+    setSelectedSpot(spot);
+    setSelectedPhotoIndex(0);
+    setShowPhotoGallery(true);
+  };
+
   const renderListItem = ({ item }: any) => (
-    <TouchableOpacity style={styles.listItem} activeOpacity={0.7}>
+    <TouchableOpacity 
+      style={styles.listItem}
+      onPress={() => handleSpotPress(item)}
+      activeOpacity={0.7}
+    >
       <View style={styles.listItemContent}>
         <View style={styles.listItemHeader}>
-          <Ionicons name="location" size={24} color="#007AFF" />
+          <Ionicons name="location" size={24} color={theme.colors.forest} />
           <Text style={styles.listItemTitle}>{item.name}</Text>
         </View>
         {item.description && (
@@ -44,6 +85,30 @@ export default function SavedSpotsScreen() {
             {item.description}
           </Text>
         )}
+        
+        {/* Photo Thumbnails */}
+        {item.photos && item.photos.length > 0 && (
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            style={styles.photoThumbnails}
+          >
+            {item.photos.slice(0, 5).map((photo: string, index: number) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => handleViewPhotos(item)}
+              >
+                <Image source={{ uri: photo }} style={styles.thumbnail} />
+                {index === 4 && item.photos.length > 5 && (
+                  <View style={styles.morePhotosOverlay}>
+                    <Text style={styles.morePhotosText}>+{item.photos.length - 5}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+        
         <View style={styles.listItemFooter}>
           <Text style={styles.listItemCoords}>
             📍 {item.location.latitude.toFixed(4)}, {item.location.longitude.toFixed(4)}
@@ -52,12 +117,20 @@ export default function SavedSpotsScreen() {
             {new Date(item.timestamp).toLocaleDateString()}
           </Text>
         </View>
+        
+        {/* Photo count badge */}
+        {item.photos && item.photos.length > 0 && (
+          <View style={styles.photoBadge}>
+            <Ionicons name="camera" size={12} color={theme.colors.white} />
+            <Text style={styles.photoBadgeText}>{item.photos.length}</Text>
+          </View>
+        )}
       </View>
       <TouchableOpacity
         style={styles.deleteButton}
         onPress={() => handleDeleteSpot(item.id, item.name)}
       >
-        <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+        <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -141,7 +214,7 @@ export default function SavedSpotsScreen() {
           <Ionicons 
             name="list" 
             size={20} 
-            color={viewMode === 'list' ? 'white' : '#007AFF'} 
+            color={viewMode === 'list' ? 'white' : theme.colors.forest} 
           />
           <Text style={[styles.toggleText, viewMode === 'list' && styles.toggleTextActive]}>
             List
@@ -154,7 +227,7 @@ export default function SavedSpotsScreen() {
           <Ionicons 
             name="map" 
             size={20} 
-            color={viewMode === 'map' ? 'white' : '#007AFF'} 
+            color={viewMode === 'map' ? 'white' : theme.colors.forest} 
           />
           <Text style={[styles.toggleText, viewMode === 'map' && styles.toggleTextActive]}>
             Map
@@ -189,6 +262,79 @@ export default function SavedSpotsScreen() {
       >
         <Ionicons name="add" size={30} color="white" />
       </TouchableOpacity>
+
+      {/* Photo Gallery Modal */}
+      <Modal
+        visible={showPhotoGallery}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPhotoGallery(false)}
+      >
+        <View style={styles.galleryContainer}>
+          <View style={styles.galleryHeader}>
+            <Text style={styles.galleryTitle}>{selectedSpot?.name}</Text>
+            <TouchableOpacity 
+              onPress={() => setShowPhotoGallery(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={28} color={theme.colors.white} />
+            </TouchableOpacity>
+          </View>
+          
+          {selectedSpot?.photos && selectedSpot.photos.length > 0 && (
+            <>
+              <ScrollView 
+                horizontal 
+                pagingEnabled 
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) => {
+                  const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+                  setSelectedPhotoIndex(newIndex);
+                }}
+              >
+                {selectedSpot.photos.map((photo: string, index: number) => (
+                  <View key={index} style={styles.photoSlide}>
+                    <Image 
+                      source={{ uri: photo }} 
+                      style={styles.fullPhoto}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+              
+              {/* Photo counter */}
+              <View style={styles.photoCounter}>
+                <Text style={styles.photoCounterText}>
+                  {selectedPhotoIndex + 1} / {selectedSpot.photos.length}
+                </Text>
+              </View>
+
+              {/* Thumbnail strip */}
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.thumbnailStrip}
+              >
+                {selectedSpot.photos.map((photo: string, index: number) => (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => setSelectedPhotoIndex(index)}
+                  >
+                    <Image 
+                      source={{ uri: photo }} 
+                      style={[
+                        styles.galleryThumbnail,
+                        selectedPhotoIndex === index && styles.selectedThumbnail
+                      ]}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -196,23 +342,23 @@ export default function SavedSpotsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
     padding: 20,
   },
   emptyText: {
     fontSize: 18,
-    color: '#999',
+    color: theme.colors.gray,
     marginTop: 20,
     marginBottom: 30,
   },
   addButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
@@ -227,7 +373,7 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.borderGray,
   },
   toggleButton: {
     flex: 1,
@@ -237,16 +383,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginHorizontal: 5,
     borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.colors.offWhite,
   },
   toggleButtonActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
   },
   toggleText: {
     marginLeft: 5,
     fontSize: 14,
     fontWeight: '500',
-    color: '#007AFF',
+    color: theme.colors.forest,
   },
   toggleTextActive: {
     color: 'white',
@@ -269,6 +415,7 @@ const styles = StyleSheet.create({
   },
   listItemContent: {
     flex: 1,
+    position: 'relative',
   },
   listItemHeader: {
     flexDirection: 'row',
@@ -278,14 +425,57 @@ const styles = StyleSheet.create({
   listItemTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
     marginLeft: 8,
   },
   listItemDescription: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
     marginTop: 5,
     marginBottom: 10,
+  },
+  photoThumbnails: {
+    marginVertical: 10,
+    flexDirection: 'row',
+  },
+  thumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  morePhotosOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  morePhotosText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  photoBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: theme.colors.forest,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  photoBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: '600',
   },
   listItemFooter: {
     flexDirection: 'row',
@@ -294,11 +484,11 @@ const styles = StyleSheet.create({
   },
   listItemCoords: {
     fontSize: 12,
-    color: '#999',
+    color: theme.colors.gray,
   },
   listItemDate: {
     fontSize: 12,
-    color: '#999',
+    color: theme.colors.gray,
   },
   deleteButton: {
     padding: 10,
@@ -313,7 +503,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -321,5 +511,66 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  // Gallery styles
+  galleryContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+  },
+  galleryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 50,
+  },
+  galleryTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+  },
+  closeButton: {
+    padding: 5,
+  },
+  photoSlide: {
+    width: width,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullPhoto: {
+    width: width,
+    height: '70%',
+  },
+  photoCounter: {
+    position: 'absolute',
+    bottom: 120,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  photoCounterText: {
+    color: 'white',
+    fontSize: 14,
+  },
+  thumbnailStrip: {
+    position: 'absolute',
+    bottom: 20,
+    paddingHorizontal: 10,
+  },
+  galleryThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginHorizontal: 5,
+    opacity: 0.7,
+  },
+  selectedThumbnail: {
+    opacity: 1,
+    borderWidth: 2,
+    borderColor: theme.colors.burntOrange,
   },
 });
