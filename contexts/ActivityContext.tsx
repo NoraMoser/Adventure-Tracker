@@ -37,6 +37,7 @@ interface ActivityContextType {
   currentDistance: number;
   currentDuration: number;
   currentSpeed: number;
+  location: LocationPoint | null;
   
   // Saved activities
   activities: Activity[];
@@ -80,12 +81,15 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentDuration, setCurrentDuration] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const pausedTimeRef = useRef<number>(0); // Track total paused time
+  const pauseStartRef = useRef<number | null>(null); // When pause started
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load saved activities on mount
@@ -116,20 +120,25 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const startTracking = async (activityType: ActivityType) => {
     try {
+      console.log('Starting tracking for:', activityType);
       setLoading(true);
       setError(null);
 
       // Request permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log('Foreground permission:', status);
       if (status !== 'granted') {
         setError('Location permission is required for tracking');
+        setLoading(false);
         return;
       }
 
-      // Request background permission for continuous tracking
-      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-      if (bgStatus !== 'granted') {
-        console.warn('Background location permission not granted');
+      // Request background permission for continuous tracking (optional)
+      try {
+        const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+        console.log('Background permission:', bgStatus);
+      } catch (e) {
+        console.log('Background permission not available:', e);
       }
 
       // Set activity type and start tracking
@@ -140,14 +149,18 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
       setCurrentDistance(0);
       setCurrentDuration(0);
       startTimeRef.current = Date.now();
+      pausedTimeRef.current = 0;
+      pauseStartRef.current = null;
 
-      // Start duration timer
+      // Start duration timer - update every second
       durationInterval.current = setInterval(() => {
-        if (!isPaused && startTimeRef.current) {
-          setCurrentDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        if (startTimeRef.current) {
+          const elapsed = Math.floor((Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000);
+          setCurrentDuration(elapsed);
         }
       }, 1000);
 
+      console.log('Starting location watch...');
       // Start location tracking
       locationSubscription.current = await Location.watchPositionAsync(
         {
@@ -156,7 +169,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
           distanceInterval: 5, // Update every 5 meters
         },
         (location) => {
-          if (!isPaused) {
+          console.log('Location update received');
+          if (!pauseStartRef.current) { // Only track location if not paused
             const newPoint: LocationPoint = {
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
@@ -164,6 +178,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
               altitude: location.coords.altitude || undefined,
             };
 
+            setCurrentLocation(newPoint);
             setCurrentRoute((prev) => {
               const updatedRoute = [...prev, newPoint];
               
@@ -189,20 +204,42 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
           }
         }
       );
+      
+      console.log('Tracking started successfully');
+      setLoading(false);
     } catch (err) {
       console.error('Error starting tracking:', err);
       setError('Failed to start tracking');
-    } finally {
       setLoading(false);
     }
   };
 
   const pauseTracking = () => {
     setIsPaused(true);
+    pauseStartRef.current = Date.now();
+    
+    // Stop the duration timer
+    if (durationInterval.current) {
+      clearInterval(durationInterval.current);
+      durationInterval.current = null;
+    }
   };
 
   const resumeTracking = () => {
+    if (pauseStartRef.current) {
+      // Add the paused duration to total paused time
+      pausedTimeRef.current += Date.now() - pauseStartRef.current;
+      pauseStartRef.current = null;
+    }
     setIsPaused(false);
+    
+    // Restart the duration timer
+    durationInterval.current = setInterval(() => {
+      if (startTimeRef.current) {
+        const elapsed = Math.floor((Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000);
+        setCurrentDuration(elapsed);
+      }
+    }, 1000);
   };
 
   const stopTracking = async (name: string, notes?: string) => {
@@ -217,11 +254,24 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
         durationInterval.current = null;
       }
 
+      // Calculate final duration accounting for paused time
+      let finalDuration = currentDuration;
+      
+      // If we're currently paused, we already have the correct duration
+      // If not paused, calculate one final time
+      if (!pauseStartRef.current && startTimeRef.current) {
+        finalDuration = Math.floor((Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000);
+      }
+      
+      console.log('Saving activity with duration:', finalDuration);
+      console.log('Current duration was:', currentDuration);
+      console.log('Start time:', startTimeRef.current);
+      console.log('Paused time:', pausedTimeRef.current);
+
       // Calculate final stats
       const endTime = new Date();
       const startTime = new Date(startTimeRef.current || Date.now());
-      const duration = currentDuration;
-      const avgSpeed = currentDistance > 0 ? (currentDistance / 1000) / (duration / 3600) : 0;
+      const avgSpeed = currentDistance > 0 ? (currentDistance / 1000) / (finalDuration / 3600) : 0;
       
       // Find max speed from route
       let maxSpeed = 0;
@@ -245,7 +295,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
         name,
         startTime,
         endTime,
-        duration,
+        duration: finalDuration, // Use the calculated final duration
         distance: currentDistance,
         route: currentRoute,
         averageSpeed: avgSpeed,
@@ -266,6 +316,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
       setCurrentDuration(0);
       setCurrentSpeed(0);
       startTimeRef.current = null;
+      pausedTimeRef.current = 0;
+      pauseStartRef.current = null;
     } catch (err) {
       console.error('Error stopping tracking:', err);
       setError('Failed to stop tracking');
@@ -308,6 +360,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
     currentDistance,
     currentDuration,
     currentSpeed,
+    location: currentLocation,
     activities,
     startTracking,
     pauseTracking,

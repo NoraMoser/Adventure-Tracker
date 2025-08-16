@@ -33,6 +33,7 @@ export default function TrackActivityScreen() {
     currentDuration,
     currentSpeed,
     currentRoute,
+    location: currentLocation,
     startTracking,
     pauseTracking,
     resumeTracking,
@@ -46,15 +47,51 @@ export default function TrackActivityScreen() {
   const [activityName, setActivityName] = useState('');
   const [activityNotes, setActivityNotes] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [showMap, setShowMap] = useState(false);
 
   // Generate Leaflet HTML for the route
   const generateRouteMapHTML = () => {
-    if (currentRoute.length === 0) return '<html><body><p>No route data yet</p></body></html>';
+    if (currentRoute.length === 0) {
+      // Show current location if no route yet
+      const center = currentLocation || { latitude: 47.6062, longitude: -122.3321 };
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+          <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+          <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+          <style>
+            body { margin: 0; padding: 0; }
+            #map { height: 100vh; width: 100vw; }
+          </style>
+        </head>
+        <body>
+          <div id="map"></div>
+          <script>
+            var map = L.map('map').setView([${center.latitude}, ${center.longitude}], 14);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '© OpenStreetMap',
+              maxZoom: 19
+            }).addTo(map);
+
+            // Add current position marker
+            L.circleMarker([${center.latitude}, ${center.longitude}], {
+              radius: 8,
+              fillColor: '#2d5a3d',
+              color: '#fff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 0.8
+            }).addTo(map);
+          </script>
+        </body>
+        </html>
+      `;
+    }
 
     const firstPoint = currentRoute[0];
     const lastPoint = currentRoute[currentRoute.length - 1];
-    
     const routeCoords = currentRoute.map(point => `[${point.latitude}, ${point.longitude}]`).join(',');
 
     return `
@@ -75,31 +112,46 @@ export default function TrackActivityScreen() {
           var map = L.map('map');
           
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
+            attribution: '© OpenStreetMap',
             maxZoom: 19
           }).addTo(map);
 
-          // Draw the route
+          // Draw the route with theme color
           var routeCoords = [${routeCoords}];
           if (routeCoords.length > 0) {
             var polyline = L.polyline(routeCoords, {
-              color: '#007AFF',
-              weight: 4,
+              color: '#2d5a3d', // forest green
+              weight: 5,
               opacity: 0.8
             }).addTo(map);
 
-            // Add start marker
-            L.marker(routeCoords[0], {
-              title: 'Start'
+            // Add start marker with theme color
+            L.circleMarker(routeCoords[0], {
+              radius: 8,
+              fillColor: '#2d5a3d',
+              color: '#fff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 1
             }).addTo(map).bindPopup('Start');
 
-            // Add current position marker
-            L.marker(routeCoords[routeCoords.length - 1], {
-              title: 'Current Position'
-            }).addTo(map).bindPopup('Current Position');
+            // Add current position marker with accent color
+            L.circleMarker(routeCoords[routeCoords.length - 1], {
+              radius: 10,
+              fillColor: '#cc5500',
+              color: '#fff',
+              weight: 3,
+              opacity: 1,
+              fillOpacity: 1
+            }).addTo(map).bindPopup('Current');
 
-            // Fit map to route
-            map.fitBounds(polyline.getBounds().pad(0.1));
+            // Fit map to route with good padding
+            map.fitBounds(polyline.getBounds().pad(0.2));
+            
+            // Don't zoom in too far
+            if (map.getZoom() > 16) {
+              map.setZoom(16);
+            }
           }
         </script>
       </body>
@@ -297,75 +349,57 @@ export default function TrackActivityScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.trackingContainer}>
-        {showMap ? (
-          <View style={styles.mapContainer}>
-            <WebView
-              style={styles.map}
-              source={{ html: generateRouteMapHTML() }}
-              scrollEnabled={true}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-            />
-            <TouchableOpacity 
-              style={styles.mapToggleButton}
-              onPress={() => setShowMap(false)}
-            >
-              <Ionicons name="stats-chart" size={20} color="white" />
-              <Text style={styles.mapToggleText}>Show Stats</Text>
-            </TouchableOpacity>
+        {/* Stats Cards at Top */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Distance</Text>
+            <Text style={styles.statValue}>{formatDistance(currentDistance)}</Text>
           </View>
-        ) : (
-          <>
-            <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Distance</Text>
-                <Text style={styles.statValue}>{formatDistance(currentDistance)}</Text>
-              </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Duration</Text>
+            <Text style={styles.statValue}>{formatDuration(currentDuration)}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Speed</Text>
+            <Text style={styles.statValue}>{formatSpeed(currentSpeed)}</Text>
+          </View>
+        </View>
 
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Duration</Text>
-                <Text style={styles.statValue}>{formatDuration(currentDuration)}</Text>
-              </View>
-
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Speed</Text>
-                <Text style={styles.statValue}>{formatSpeed(currentSpeed)}</Text>
-              </View>
+        {/* Map View */}
+        <View style={styles.mapContainer}>
+          <WebView
+            style={styles.map}
+            source={{ html: generateRouteMapHTML() }}
+            scrollEnabled={true}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+          />
+          {isPaused && (
+            <View style={styles.pausedOverlay}>
+              <Text style={styles.pausedText}>PAUSED</Text>
             </View>
+          )}
+        </View>
 
-            {currentRoute.length > 0 && (
-              <TouchableOpacity 
-                style={styles.viewMapButton}
-                onPress={() => setShowMap(true)}
-              >
-                <Ionicons name="map" size={20} color="white" />
-                <Text style={styles.viewMapButtonText}>View Route on Map</Text>
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-
+        {/* Control Buttons */}
         <View style={styles.controlsContainer}>
           {!isPaused ? (
             <TouchableOpacity style={styles.pauseButton} onPress={handlePause}>
               <Ionicons name="pause" size={32} color="white" />
+              <Text style={styles.controlButtonText}>Pause</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.resumeButton} onPress={handleResume}>
               <Ionicons name="play" size={32} color="white" />
+              <Text style={styles.controlButtonText}>Resume</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
             <Ionicons name="stop" size={32} color="white" />
+            <Text style={styles.controlButtonText}>Finish</Text>
           </TouchableOpacity>
         </View>
-
-        {isPaused && (
-          <View style={styles.pausedBanner}>
-            <Text style={styles.pausedText}>PAUSED</Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -436,68 +470,107 @@ const styles = StyleSheet.create({
   },
   trackingContainer: {
     flex: 1,
-    padding: 20,
   },
-  statsContainer: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 30,
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: theme.colors.white,
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
   },
   statCard: {
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    alignItems: 'center',
+    flex: 1,
   },
   statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   statValue: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.navy,
+  },
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  map: {
+    flex: 1,
+  },
+  pausedOverlay: {
+    position: 'absolute',
+    top: 20,
+    alignSelf: 'center',
+    backgroundColor: theme.colors.burntOrange,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  pausedText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
   controlsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    backgroundColor: theme.colors.white,
+    paddingVertical: 20,
+    paddingHorizontal: 30,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
   },
   pauseButton: {
-    backgroundColor: '#FF9500',
+    backgroundColor: theme.colors.burntOrange,
     width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
   resumeButton: {
-    backgroundColor: '#34C759',
+    backgroundColor: theme.colors.forest,
     width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
   stopButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: theme.colors.navy,
     width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  pausedBanner: {
-    backgroundColor: '#FF9500',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  pausedText: {
+  controlButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '600',
   },
   saveDialog: {
     padding: 20,
@@ -583,15 +656,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: '#666',
-  },
-  mapContainer: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  map: {
-    flex: 1,
   },
   viewMapButton: {
     backgroundColor: '#007AFF',
