@@ -38,6 +38,8 @@ interface ActivityContextType {
   currentDuration: number;
   currentSpeed: number;
   location: LocationPoint | null;
+
+  // Add this line after the Activity interface definition  
   
   // Saved activities
   activities: Activity[];
@@ -54,6 +56,7 @@ interface ActivityContextType {
   loading: boolean;
   error: string | null;
 }
+export type { Activity };
 
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 

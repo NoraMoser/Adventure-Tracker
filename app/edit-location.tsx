@@ -15,6 +15,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { categoryList, CategoryType } from '../constants/categories';
 import { useLocation } from '../contexts/LocationContext';
 
 // Theme colors
@@ -40,6 +41,7 @@ export default function EditLocationScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
+  const [category, setCategory] = useState<CategoryType>('other');
   const [loading, setLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -51,6 +53,7 @@ export default function EditLocationScreen() {
       setName(currentSpot.name);
       setDescription(currentSpot.description || '');
       setPhotos(currentSpot.photos || []);
+      setCategory(currentSpot.category || 'other');
     } else {
       Alert.alert('Error', 'Location not found', [
         { text: 'OK', onPress: () => router.back() }
@@ -65,11 +68,12 @@ export default function EditLocationScreen() {
       const changed = 
         name !== spot.name ||
         description !== (spot.description || '') ||
+        category !== (spot.category || 'other') ||
         photos.length !== (spot.photos || []).length ||
         photos.some((photo, index) => photo !== (spot.photos || [])[index]);
       setHasChanges(changed);
     }
-  }, [name, description, photos, spot]);
+  }, [name, description, category, photos, spot]);
 
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -139,6 +143,7 @@ export default function EditLocationScreen() {
         name: name.trim(),
         description: description.trim(),
         photos,
+        category,
       };
       
       await updateSpot(spotId as string, updatedSpot);
@@ -251,6 +256,38 @@ export default function EditLocationScreen() {
 
       {/* Form */}
       <View style={styles.form}>
+        <Text style={styles.label}>Category</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoryScroll}
+        >
+          {categoryList.map((cat) => (
+            <TouchableOpacity
+              key={cat.id}
+              style={[
+                styles.categoryChip,
+                category === cat.id && { backgroundColor: cat.color }
+              ]}
+              onPress={() => setCategory(cat.id)}
+            >
+              <Ionicons 
+                name={cat.icon} 
+                size={16} 
+                color={category === cat.id ? 'white' : cat.color} 
+              />
+              <Text 
+                style={[
+                  styles.categoryChipText,
+                  category === cat.id && { color: 'white' }
+                ]}
+              >
+                {cat.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         <Text style={styles.label}>Location Name *</Text>
         <TextInput
           style={styles.input}
@@ -485,5 +522,26 @@ const styles = StyleSheet.create({
     color: theme.colors.burntOrange,
     fontSize: 16,
     marginLeft: 8,
+  },
+  categoryScroll: {
+    marginBottom: 15,
+    maxHeight: 40,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  categoryChipText: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.gray,
   },
 });

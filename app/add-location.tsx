@@ -16,6 +16,7 @@ import {
     View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { CategoryType } from '../constants/categories';
 import { theme } from '../constants/theme';
 import { useLocation } from '../contexts/LocationContext';
 
@@ -31,6 +32,7 @@ export default function AddLocationScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('other');
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || { latitude: 47.6062, longitude: -122.3321 }; // Seattle default
@@ -164,8 +166,8 @@ export default function AddLocationScreen() {
     }
 
     try {
-      // Save the location with the selected coordinates and photos
-      await saveManualLocation(locationName, selectedLocation, locationDescription, photos);
+      // Save the location with the selected coordinates, photos, and category
+      await saveManualLocation(locationName, selectedLocation, locationDescription, photos, selectedCategory);
       
       // Clear form data
       setLocationName('');
@@ -173,6 +175,7 @@ export default function AddLocationScreen() {
       setPhotos([]);
       setSelectedLocation(null);
       setShowForm(false);
+      setSelectedCategory('other');
       
       // Navigate back after showing success
       Alert.alert(
@@ -616,5 +619,26 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: 'white',
     borderRadius: 12,
+  },
+  categoryScroll: {
+    marginBottom: 15,
+    maxHeight: 40,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  categoryChipText: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.gray,
   },
 });

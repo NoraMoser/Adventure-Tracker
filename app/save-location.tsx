@@ -1,3 +1,4 @@
+// save-location-enhanced.tsx
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -5,7 +6,9 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,22 +16,37 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { categoryList, CategoryType } from '../constants/categories';
 import { theme } from '../constants/theme';
 import { useLocation } from '../contexts/LocationContext';
+import { LocationService, PlaceSuggestion } from '../services/locationService';
 
 export default function SaveLocationScreen() {
   const { location, savedSpots, getLocation, saveCurrentLocation, loading, error } = useLocation();
   const router = useRouter();
+  
+  // Form state
   const [locationName, setLocationName] = useState('');
   const [locationDescription, setLocationDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('other');
+  
+  // Smart location state
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
 
   useEffect(() => {
     // Get current location when screen loads
     if (!location) {
       getLocation();
+    } else {
+      // When we have a location, get smart suggestions
+      fetchLocationSuggestions();
     }
-  }, []);
+  }, [location]);
 
   useEffect(() => {
     // Show error if any
@@ -37,15 +55,95 @@ export default function SaveLocationScreen() {
     }
   }, [error]);
 
+  const fetchLocationSuggestions = async () => {
+    if (!location) return;
+    
+    setLoadingSuggestions(true);
+    try {
+      const suggestions = await LocationService.getLocationSuggestions(
+        location.latitude,
+        location.longitude
+      );
+      setSuggestions(suggestions);
+      
+      // Auto-select the first suggestion if available
+      if (suggestions.length > 0 && !manualMode) {
+        const firstSuggestion = suggestions[0];
+        setSelectedSuggestion(firstSuggestion);
+        setLocationName(firstSuggestion.name);
+        
+        // Auto-categorize based on suggestion
+        autoSelectCategory(firstSuggestion);
+      }
+    } catch (err) {
+      console.error('Error fetching suggestions:', err);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const autoSelectCategory = (suggestion: PlaceSuggestion) => {
+    // Use the suggested category type if available
+    if (suggestion.suggestedCategoryType) {
+      setSelectedCategory(suggestion.suggestedCategoryType);
+      return;
+    }
+    
+    // Otherwise try to detect from the name
+    const name = suggestion.name.toLowerCase();
+    
+    // Direct mapping to valid CategoryType values
+    if (name.includes('beach')) {
+      setSelectedCategory('beach');
+    } else if (name.includes('trail') || name.includes('hike')) {
+      setSelectedCategory('trail');
+    } else if (name.includes('restaurant') || name.includes('cafe') || name.includes('coffee')) {
+      setSelectedCategory('restaurant');
+    } else if (name.includes('viewpoint') || name.includes('vista') || name.includes('lookout')) {
+      setSelectedCategory('viewpoint');
+    } else if (name.includes('camp')) {
+      setSelectedCategory('camping');
+    } else if (name.includes('lake') || name.includes('river') || name.includes('marina')) {
+      setSelectedCategory('water');
+    } else if (name.includes('climb') || name.includes('boulder')) {
+      setSelectedCategory('climbing');
+    } else if (name.includes('museum') || name.includes('historic')) {
+      setSelectedCategory('historic');
+    } else if (name.includes('shop') || name.includes('store') || name.includes('mall')) {
+      setSelectedCategory('shopping');
+    }
+    // If no match, keeps the current category (defaults to 'other')
+  };
+
+  const handleSelectSuggestion = (suggestion: PlaceSuggestion) => {
+    setSelectedSuggestion(suggestion);
+    setLocationName(suggestion.name);
+    setShowSuggestions(false);
+    
+    // Add address to description if available
+    if (suggestion.address && !locationDescription) {
+      setLocationDescription(`📍 ${suggestion.address}`);
+    }
+    
+    // Auto-categorize
+    autoSelectCategory(suggestion);
+  };
+
+  const handleManualEntry = () => {
+    setManualMode(true);
+    setSelectedSuggestion(null);
+    setLocationName('');
+    setLocationDescription('');
+    setShowSuggestions(false);
+  };
+
   const handleTakePhoto = async () => {
-    // Request camera permissions
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'Camera permission is required to take photos');
       return;
     }
 
-    // Launch camera
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -59,14 +157,12 @@ export default function SaveLocationScreen() {
   };
 
   const handlePickImage = async () => {
-    // Request media library permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'Media library permission is required to select photos');
       return;
     }
 
-    // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -96,15 +192,15 @@ export default function SaveLocationScreen() {
     }
 
     try {
-      // Save location with photos
-      await saveCurrentLocation(locationName, locationDescription, photos);
+      // Save location with photos and category
+      await saveCurrentLocation(locationName, locationDescription, photos, selectedCategory);
       
       // Clear form and navigate back
       setLocationName('');
       setLocationDescription('');
       setPhotos([]);
+      setSelectedCategory('other');
       
-      // Show success and go back
       Alert.alert(
         'Success',
         'Location saved successfully!',
@@ -122,12 +218,13 @@ export default function SaveLocationScreen() {
 
   const handleGetLocation = () => {
     getLocation();
+    setManualMode(false); // Reset manual mode when getting new location
   };
 
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={theme.colors.forest} />
         <Text style={styles.loadingText}>Getting your location...</Text>
       </View>
     );
@@ -142,14 +239,54 @@ export default function SaveLocationScreen() {
             <View style={styles.locationHeader}>
               <Ionicons name="location" size={24} color="#34C759" />
               <Text style={styles.locationTitle}>Location Captured!</Text>
-              <TouchableOpacity 
-            style={styles.manualLocationButton}
-            onPress={() => router.replace('/add-location')}
-          >
-            <Ionicons name="map-outline" size={18} color={theme.colors.burntOrange} />
-            <Text style={styles.manualLocationText}>Choose on Map Instead</Text>
-          </TouchableOpacity>
-        </View>
+            </View>
+            
+            {/* Smart Suggestions */}
+            {loadingSuggestions ? (
+              <View style={styles.suggestionsLoading}>
+                <ActivityIndicator size="small" color={theme.colors.forest} />
+                <Text style={styles.suggestionsLoadingText}>Finding nearby places...</Text>
+              </View>
+            ) : suggestions.length > 0 && !manualMode ? (
+              <View style={styles.suggestionsContainer}>
+                <Text style={styles.suggestionsTitle}>Are you at one of these places?</Text>
+                
+                {selectedSuggestion && (
+                  <View style={styles.selectedSuggestion}>
+                    <Ionicons 
+                      name={selectedSuggestion.type === 'business' ? 'business' : 'pin'} 
+                      size={20} 
+                      color={theme.colors.forest} 
+                    />
+                    <View style={styles.selectedSuggestionText}>
+                      <Text style={styles.selectedSuggestionName}>{selectedSuggestion.name}</Text>
+                      {selectedSuggestion.address && (
+                        <Text style={styles.selectedSuggestionAddress}>{selectedSuggestion.address}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => setShowSuggestions(true)}>
+                      <Ionicons name="chevron-down" size={20} color={theme.colors.gray} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
+                <TouchableOpacity 
+                  style={styles.changeSuggestionButton}
+                  onPress={() => setShowSuggestions(true)}
+                >
+                  <Text style={styles.changeSuggestionText}>Choose different place</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.manualEntryButton}
+                  onPress={handleManualEntry}
+                >
+                  <Ionicons name="create-outline" size={16} color={theme.colors.burntOrange} />
+                  <Text style={styles.manualEntryText}>Enter manually instead</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            
             <View style={styles.coordinatesBox}>
               <View style={styles.coordRow}>
                 <Text style={styles.coordLabel}>Latitude:</Text>
@@ -160,8 +297,9 @@ export default function SaveLocationScreen() {
                 <Text style={styles.coordValue}>{location.longitude.toFixed(6)}</Text>
               </View>
             </View>
+            
             <TouchableOpacity style={styles.updateLocationButton} onPress={handleGetLocation}>
-              <Ionicons name="refresh" size={18} color="#007AFF" />
+              <Ionicons name="refresh" size={18} color={theme.colors.forest} />
               <Text style={styles.updateLocationText}>Update Location</Text>
             </TouchableOpacity>
           </View>
@@ -182,11 +320,11 @@ export default function SaveLocationScreen() {
         <Text style={styles.sectionTitle}>Photos</Text>
         <View style={styles.photoActions}>
           <TouchableOpacity style={styles.photoButton} onPress={handleTakePhoto}>
-            <Ionicons name="camera" size={24} color="#007AFF" />
+            <Ionicons name="camera" size={24} color={theme.colors.forest} />
             <Text style={styles.photoButtonText}>Take Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.photoButton} onPress={handlePickImage}>
-            <Ionicons name="images" size={24} color="#007AFF" />
+            <Ionicons name="images" size={24} color={theme.colors.forest} />
             <Text style={styles.photoButtonText}>Choose Photo</Text>
           </TouchableOpacity>
         </View>
@@ -210,13 +348,48 @@ export default function SaveLocationScreen() {
 
       {/* Form Section */}
       <View style={styles.formContainer}>
-        <Text style={styles.label}>Location Name *</Text>
+        <Text style={styles.label}>Category</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.categoryScroll}
+        >
+          {categoryList.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryChip,
+                selectedCategory === category.id && { backgroundColor: category.color }
+              ]}
+              onPress={() => setSelectedCategory(category.id)}
+            >
+              <Ionicons 
+                name={category.icon} 
+                size={20} 
+                color={selectedCategory === category.id ? 'white' : category.color} 
+              />
+              <Text 
+                style={[
+                  styles.categoryChipText,
+                  selectedCategory === category.id && { color: 'white' }
+                ]}
+              >
+                {category.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <Text style={styles.label}>
+          Location Name * {manualMode && <Text style={styles.manualModeIndicator}>(Manual Entry)</Text>}
+        </Text>
         <TextInput
           style={styles.input}
           value={locationName}
           onChangeText={setLocationName}
-          placeholder="e.g., Secret Beach Spot"
+          placeholder={manualMode ? "e.g., Secret Beach Spot" : "Using detected location name"}
           placeholderTextColor="#999"
+          editable={manualMode || !selectedSuggestion}
         />
 
         <Text style={styles.label}>Description (Optional)</Text>
@@ -241,13 +414,74 @@ export default function SaveLocationScreen() {
         </TouchableOpacity>
       </View>
 
-      {savedSpots.length > 0 && (
-        <View style={styles.savedSpotsInfo}>
-          <Text style={styles.savedSpotsText}>
-            You have {savedSpots.length} saved {savedSpots.length === 1 ? 'spot' : 'spots'}
-          </Text>
+      {/* Suggestions Modal */}
+      <Modal
+        visible={showSuggestions}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSuggestions(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Location</Text>
+              <TouchableOpacity onPress={() => setShowSuggestions(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={suggestions}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.suggestionItem}
+                  onPress={() => handleSelectSuggestion(item)}
+                >
+                  <Ionicons 
+                    name={
+                      item.type === 'business' ? 'business' :
+                      item.type === 'landmark' ? 'flag' :
+                      item.type === 'poi' ? 'pin' : 'location'
+                    } 
+                    size={20} 
+                    color={theme.colors.forest} 
+                  />
+                  <View style={styles.suggestionTextContainer}>
+                    <Text style={styles.suggestionName}>{item.name}</Text>
+                    {item.address && (
+                      <Text style={styles.suggestionAddress}>{item.address}</Text>
+                    )}
+                    {item.distance && (
+                      <Text style={styles.suggestionDistance}>
+                        {item.distance < 1000 
+                          ? `${item.distance.toFixed(0)}m away`
+                          : `${(item.distance / 1000).toFixed(1)}km away`
+                        }
+                      </Text>
+                    )}
+                  </View>
+                  {selectedSuggestion?.id === item.id && (
+                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.forest} />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListFooterComponent={
+                <TouchableOpacity
+                  style={[styles.suggestionItem, styles.manualOption]}
+                  onPress={() => {
+                    setShowSuggestions(false);
+                    handleManualEntry();
+                  }}
+                >
+                  <Ionicons name="create" size={20} color={theme.colors.burntOrange} />
+                  <Text style={styles.manualOptionText}>Enter name manually</Text>
+                </TouchableOpacity>
+              }
+            />
+          </View>
         </View>
-      )}
+      </Modal>
     </ScrollView>
   );
 }
@@ -295,6 +529,69 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.navy,
     marginLeft: 8,
+  },
+  suggestionsContainer: {
+    width: '100%',
+    marginBottom: 15,
+  },
+  suggestionsTitle: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  suggestionsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  suggestionsLoadingText: {
+    marginLeft: 8,
+    color: theme.colors.gray,
+    fontSize: 14,
+  },
+  selectedSuggestion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.offWhite,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  selectedSuggestionText: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  selectedSuggestionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  selectedSuggestionAddress: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  changeSuggestionButton: {
+    alignItems: 'center',
+    padding: 8,
+  },
+  changeSuggestionText: {
+    color: theme.colors.forest,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  manualEntryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+  },
+  manualEntryText: {
+    color: theme.colors.burntOrange,
+    fontSize: 14,
+    marginLeft: 4,
   },
   coordinatesBox: {
     backgroundColor: theme.colors.offWhite,
@@ -420,6 +717,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 5,
   },
+  manualModeIndicator: {
+    fontSize: 12,
+    color: theme.colors.burntOrange,
+    fontWeight: 'normal',
+  },
   input: {
     backgroundColor: theme.colors.white,
     borderWidth: 1,
@@ -462,26 +764,85 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
-  savedSpotsInfo: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+  categoryScroll: {
+    marginBottom: 20,
+    maxHeight: 50,
   },
-  savedSpotsText: {
-    fontSize: 14,
-    color: theme.colors.gray,
-    textAlign: 'center',
-  },
-  manualLocationButton: {
+  categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    padding: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: theme.colors.white,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
   },
-  manualLocationText: {
-    color: theme.colors.burntOrange,
-    marginLeft: 5,
+  categoryChipText: {
+    marginLeft: 6,
     fontSize: 14,
+    color: theme.colors.gray,
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: theme.colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  modalTitle: {
+    fontSize: 18,
     fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  suggestionTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  suggestionName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.navy,
+  },
+  suggestionAddress: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  suggestionDistance: {
+    fontSize: 11,
+    color: theme.colors.lightGray,
+    marginTop: 2,
+  },
+  manualOption: {
+    backgroundColor: theme.colors.offWhite,
+  },
+  manualOptionText: {
+    fontSize: 16,
+    color: theme.colors.burntOrange,
+    marginLeft: 12,
+    fontWeight: '500',
   },
 });

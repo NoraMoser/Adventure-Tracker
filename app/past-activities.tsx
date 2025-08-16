@@ -1,3 +1,4 @@
+// past-activities.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -5,6 +6,7 @@ import {
   Alert,
   FlatList,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +15,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { ActivityType, useActivity } from '../contexts/ActivityContext';
+import { ShareService } from '../services/shareService';
 
 const activityIcons: Record<ActivityType, string> = {
   bike: 'bicycle',
@@ -129,6 +132,66 @@ export default function PastActivitiesScreen() {
   const handleViewMap = (activity: any) => {
     setSelectedActivity(activity);
     setShowMap(true);
+  };
+
+  // Add share handler
+  const handleShareActivity = async (activity: any) => {
+    try {
+      // If activity has route data, share with map
+      if (activity.route && activity.route.length > 0) {
+        await ShareService.shareActivityWithMap(activity);
+      } else {
+        await ShareService.shareActivity(activity);
+      }
+    } catch (error) {
+      console.error('Error sharing activity:', error);
+      Alert.alert('Error', 'Failed to share activity');
+    }
+  };
+
+  // Add copy to clipboard handler
+  const handleCopyActivity = async (activity: any) => {
+    try {
+      await ShareService.copyActivityToClipboard(activity);
+      Alert.alert('Copied!', 'Activity details copied to clipboard');
+    } catch (error) {
+      console.error('Error copying activity:', error);
+      Alert.alert('Error', 'Failed to copy activity');
+    }
+  };
+
+  // Share all activities summary
+  const handleShareSummary = async () => {
+    try {
+      // Create a summary of all activities
+      const totalDistance = filteredActivities.reduce((sum, act) => sum + act.distance, 0);
+      const totalDuration = filteredActivities.reduce((sum, act) => sum + act.duration, 0);
+      
+      let message = `🏃 My ExplorAble Adventure Summary\n\n`;
+      message += `📊 Total Stats:\n`;
+      message += `• ${filteredActivities.length} activities completed\n`;
+      message += `• ${(totalDistance / 1000).toFixed(2)} km total distance\n`;
+      message += `• ${formatDuration(totalDuration)} total time\n\n`;
+      
+      message += `🎯 Recent Activities:\n`;
+      filteredActivities.slice(0, 5).forEach((activity, index) => {
+        const emoji = ShareService.getActivityEmoji(activity.type);
+        message += `${index + 1}. ${emoji} ${activity.name} - ${(activity.distance / 1000).toFixed(2)} km\n`;
+      });
+      
+      if (filteredActivities.length > 5) {
+        message += `\n... and ${filteredActivities.length - 5} more activities!\n`;
+      }
+      
+      message += `\nShared from ExplorAble 🌲`;
+      
+      await Share.share({
+        message,
+        title: 'My Adventure Summary',
+      });
+    } catch (error) {
+      console.error('Error sharing summary:', error);
+    }
   };
 
   // Generate Leaflet HTML for a specific activity route
@@ -264,12 +327,28 @@ export default function PastActivitiesScreen() {
 
         <View style={styles.activityActions}>
           <TouchableOpacity
+            style={[styles.actionButton, styles.shareButton]}
+            onPress={() => handleShareActivity(item)}
+          >
+            <Ionicons name="share-social-outline" size={20} color="#007AFF" />
+            <Text style={styles.actionButtonText}>Share</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={() => handleViewMap(item)}
           >
             <Ionicons name="map-outline" size={20} color="#007AFF" />
             <Text style={styles.actionButtonText}>View Route</Text>
           </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.actionButton, styles.copyButton]}
+            onPress={() => handleCopyActivity(item)}
+          >
+            <Ionicons name="copy-outline" size={20} color="#666" />
+          </TouchableOpacity>
+          
           <TouchableOpacity
             style={[styles.actionButton, styles.deleteButton]}
             onPress={() => handleDeleteActivity(item.id, item.name)}
@@ -434,6 +513,19 @@ export default function PastActivitiesScreen() {
         </View>
       </View>
 
+      {/* Share Summary Button */}
+      {activities.length > 0 && (
+        <View style={styles.shareAllContainer}>
+          <TouchableOpacity
+            style={styles.shareAllButton}
+            onPress={handleShareSummary}
+          >
+            <Ionicons name="share-outline" size={20} color="#007AFF" />
+            <Text style={styles.shareAllButtonText}>Share Activity Summary</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Activities List */}
       {filteredActivities.length > 0 ? (
         <FlatList
@@ -512,6 +604,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 4,
+  },
+  shareAllContainer: {
+    paddingHorizontal: 15,
+    paddingBottom: 10,
+  },
+  shareAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  shareAllButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   listContainer: {
     padding: 15,
@@ -597,6 +707,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
   actionButton: {
     flexDirection: 'row',
@@ -606,15 +719,26 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 6,
   },
+  shareButton: {
+    backgroundColor: '#E3F2FD',
+    flex: 1,
+    marginRight: 8,
+    justifyContent: 'center',
+  },
+  copyButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 10,
+    marginLeft: 8,
+  },
+  deleteButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 10,
+  },
   actionButtonText: {
     color: '#007AFF',
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 6,
-  },
-  deleteButton: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 10,
   },
   mapHeader: {
     backgroundColor: 'white',

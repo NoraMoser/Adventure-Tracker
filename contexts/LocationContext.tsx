@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { CategoryType } from '../constants/categories';
 
 interface LocationCoords {
   latitude: number;
@@ -14,14 +15,17 @@ interface SavedSpot {
   photos?: string[];
   timestamp: Date;
   description?: string;
+  category: CategoryType;
+  rating?: number; // Add this line
+  reviews?: string[]; // Optional: add reviews too
 }
 
 interface LocationContextType {
   location: LocationCoords | null;
   savedSpots: SavedSpot[];
   getLocation: () => Promise<void>;
-  saveCurrentLocation: (name: string, description?: string, photos?: string[]) => Promise<void>;
-  saveManualLocation: (name: string, coords: LocationCoords, description?: string, photos?: string[]) => Promise<void>;
+  saveCurrentLocation: (name: string, description?: string, photos?: string[], category?: CategoryType) => Promise<void>;
+  saveManualLocation: (name: string, coords: LocationCoords, description?: string, photos?: string[], category?: CategoryType) => Promise<void>;
   updateSpot: (spotId: string, updatedSpot: SavedSpot) => Promise<void>;
   addPhotoToSpot: (spotId: string, photoUri: string) => Promise<void>;
   deleteSpot: (spotId: string) => Promise<void>;
@@ -29,6 +33,8 @@ interface LocationContextType {
   error: string | null;
 }
 
+// Add this line after the SavedSpot interface definition
+export type { SavedSpot };
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
 export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -92,7 +98,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
-  const saveCurrentLocation = async (name: string, description?: string, photos?: string[]) => {
+  const saveCurrentLocation = async (name: string, description?: string, photos?: string[], category: CategoryType = 'other') => {
     if (!location) {
       setError('No location available to save');
       return;
@@ -106,6 +112,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         timestamp: new Date(),
         description,
         photos: photos || [],
+        category,
       };
 
       const updatedSpots = [...savedSpots, newSpot];
@@ -117,7 +124,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
-  const saveManualLocation = async (name: string, coords: LocationCoords, description?: string, photos?: string[]) => {
+  const saveManualLocation = async (name: string, coords: LocationCoords, description?: string, photos?: string[], category: CategoryType = 'other') => {
     try {
       const newSpot: SavedSpot = {
         id: Date.now().toString(),
@@ -126,6 +133,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         timestamp: new Date(),
         description,
         photos: photos || [],
+        category,
       };
 
       const updatedSpots = [...savedSpots, newSpot];
