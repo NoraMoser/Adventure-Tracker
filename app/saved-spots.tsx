@@ -1,6 +1,6 @@
 // saved-spots.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     Alert,
@@ -19,38 +19,146 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { categories, categoryList, CategoryType } from '../constants/categories';
+import { theme } from '../constants/theme';
 import { useLocation } from '../contexts/LocationContext';
 import { ShareService } from '../services/shareService';
 
-// Theme colors defined inline
-const theme = {
-  colors: {
-    navy: '#1e3a5f',
-    forest: '#2d5a3d',
-    offWhite: '#faf8f5',
-    burntOrange: '#cc5500',
-    white: '#ffffff',
-    gray: '#666666',
-    lightGray: '#999999',
-    borderGray: '#e0e0e0',
-  }
-};
-
 const { width } = Dimensions.get('window');
 
+// Rating Component
+const RatingStars = ({ 
+  rating, 
+  onRate, 
+  size = 20, 
+  editable = false,
+  showCount = false,
+  reviewCount = 0 
+}: { 
+  rating: number; 
+  onRate?: (rating: number) => void; 
+  size?: number; 
+  editable?: boolean;
+  showCount?: boolean;
+  reviewCount?: number;
+}) => {
+  const [tempRating, setTempRating] = useState(0);
+
+  return (
+    <View style={styles.ratingContainer}>
+      <View style={styles.starsContainer}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <TouchableOpacity
+            key={star}
+            disabled={!editable}
+            onPress={() => onRate?.(star)}
+            onPressIn={() => editable && setTempRating(star)}
+            onPressOut={() => editable && setTempRating(0)}
+          >
+            <Ionicons
+              name={star <= (tempRating || rating) ? 'star' : 'star-outline'}
+              size={size}
+              color={star <= (tempRating || rating) ? '#FFD700' : theme.colors.lightGray}
+            />
+          </TouchableOpacity>
+        ))}
+      </View>
+      {showCount && reviewCount > 0 && (
+        <Text style={styles.reviewCount}>({reviewCount})</Text>
+      )}
+    </View>
+  );
+};
+
+// Review Modal Component
+const ReviewModal = ({ 
+  visible, 
+  onClose, 
+  spot,
+  onSubmit 
+}: { 
+  visible: boolean; 
+  onClose: () => void;
+  spot: any;
+  onSubmit: (rating: number, review: string) => void;
+}) => {
+  const [rating, setRating] = useState(spot?.rating || 0);
+  const [review, setReview] = useState('');
+
+  const handleSubmit = () => {
+    if (rating === 0) {
+      Alert.alert('Please add a rating', 'Tap the stars to rate this location');
+      return;
+    }
+    onSubmit(rating, review);
+    setRating(0);
+    setReview('');
+    onClose();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.reviewModalContent}>
+          <View style={styles.reviewModalHeader}>
+            <Text style={styles.reviewModalTitle}>Rate & Review</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={theme.colors.gray} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.spotNameInModal}>{spot?.name}</Text>
+
+          <View style={styles.ratingSection}>
+            <Text style={styles.ratingLabel}>Your Rating</Text>
+            <RatingStars 
+              rating={rating} 
+              onRate={setRating} 
+              size={32} 
+              editable={true} 
+            />
+          </View>
+
+          <Text style={styles.reviewLabel}>Your Review (Optional)</Text>
+          <TextInput
+            style={styles.reviewInput}
+            placeholder="What did you think of this place?"
+            value={review}
+            onChangeText={setReview}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+            placeholderTextColor={theme.colors.lightGray}
+          />
+
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+            <Text style={styles.submitButtonText}>Submit Review</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 export default function SavedSpotsScreen() {
-  const { savedSpots, deleteSpot, location, getLocation } = useLocation();
+  const { savedSpots, deleteSpot, updateSpot, location, getLocation } = useLocation();
   const router = useRouter();
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [selectedSpot, setSelectedSpot] = useState<any>(null);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType | 'all'>('all');
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [spotToReview, setSpotToReview] = useState<any>(null);
   const webViewRef = React.useRef<WebView>(null);
   
   // Search and sort states
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'date' | 'distance'>('date');
+  const [sortBy, setSortBy] = useState<'name' | 'date' | 'distance' | 'rating'>('date');
   const [showSearchBar, setShowSearchBar] = useState(false);
 
   // Get current location on mount for distance calculations
@@ -99,8 +207,9 @@ export default function SavedSpotsScreen() {
       switch (sortBy) {
         case 'name':
           return a.name.localeCompare(b.name);
+        case 'rating':
+          return (b.rating || 0) - (a.rating || 0);
         case 'distance':
-          // Sort by distance from current location if available
           if (location) {
             const distA = calculateDistance(
               location.latitude,
@@ -154,22 +263,38 @@ export default function SavedSpotsScreen() {
     }
   };
 
+  const handleRateSpot = (spot: any) => {
+    setSpotToReview(spot);
+    setShowReviewModal(true);
+  };
+
+  const handleSubmitReview = async (rating: number, review: string) => {
+    if (!spotToReview) return;
+
+    const updatedSpot = {
+      ...spotToReview,
+      rating,
+      reviews: [...(spotToReview.reviews || []), review].filter(r => r),
+    };
+
+    await updateSpot(spotToReview.id, updatedSpot);
+    setSpotToReview(null);
+  };
+
   const handleSpotPress = (spot: any) => {
     setSelectedSpot(spot);
     if (spot.photos && spot.photos.length > 0) {
       setSelectedPhotoIndex(0);
       setShowPhotoGallery(true);
     } else {
-      // No photos, show on map instead
       setViewMode('map');
-      // Wait for map to render then zoom to location
       setTimeout(() => {
         const js = `
           window.focusLocation(${spot.location.latitude}, ${spot.location.longitude}, 17);
           if (window.markers && window.markers['${spot.id}']) {
             window.markers['${spot.id}'].openPopup();
           }
-          true; // Return value for iOS
+          true;
         `;
         webViewRef.current?.injectJavaScript(js);
       }, 500);
@@ -186,13 +311,11 @@ export default function SavedSpotsScreen() {
     const { latitude, longitude } = spot.location;
     const label = encodeURIComponent(spot.name);
     
-    // Create URLs for different map apps
     const appleMapsUrl = `maps:0,0?q=${label}@${latitude},${longitude}`;
     const googleMapsUrl = `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`;
     const webUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
     
-    // Determine which URL to use based on platform
-    let url = webUrl; // fallback to web
+    let url = webUrl;
     
     if (Platform.OS === 'ios') {
       url = appleMapsUrl;
@@ -200,12 +323,10 @@ export default function SavedSpotsScreen() {
       url = googleMapsUrl;
     }
     
-    // Open the URL
     Linking.canOpenURL(url).then(supported => {
       if (supported) {
         Linking.openURL(url);
       } else {
-        // Fallback to web URL if native app isn't available
         Linking.openURL(webUrl);
       }
     }).catch(err => {
@@ -223,6 +344,12 @@ export default function SavedSpotsScreen() {
 
   const renderListItem = ({ item }: any) => {
     const category = categories[item.category as CategoryType] || categories.other;
+    const distance = location ? calculateDistance(
+      location.latitude,
+      location.longitude,
+      item.location.latitude,
+      item.location.longitude
+    ) : null;
     
     return (
       <TouchableOpacity 
@@ -237,10 +364,32 @@ export default function SavedSpotsScreen() {
             </View>
             <View style={styles.headerText}>
               <Text style={styles.listItemTitle}>{item.name}</Text>
-              <Text style={[styles.categoryBadge, { color: category.color }]}>
-                {category.label}
-              </Text>
+              <View style={styles.metaRow}>
+                <Text style={[styles.categoryBadge, { color: category.color }]}>
+                  {category.label}
+                </Text>
+                {distance && (
+                  <Text style={styles.distanceText}>
+                    • {distance < 1000 ? `${distance.toFixed(0)}m` : `${(distance / 1000).toFixed(1)}km`}
+                  </Text>
+                )}
+              </View>
             </View>
+          </View>
+          
+          {/* Rating Display */}
+          <View style={styles.ratingRow}>
+            <RatingStars 
+              rating={item.rating || 0} 
+              size={16} 
+              showCount={true}
+              reviewCount={item.reviews?.length || 0}
+            />
+            {!item.rating && (
+              <TouchableOpacity onPress={() => handleRateSpot(item)}>
+                <Text style={styles.addRatingText}>Add rating</Text>
+              </TouchableOpacity>
+            )}
           </View>
           
           {item.description && (
@@ -273,9 +422,6 @@ export default function SavedSpotsScreen() {
           )}
           
           <View style={styles.listItemFooter}>
-            <Text style={styles.listItemCoords}>
-              📍 {item.location.latitude.toFixed(4)}, {item.location.longitude.toFixed(4)}
-            </Text>
             <Text style={styles.listItemDate}>
               {new Date(item.timestamp).toLocaleDateString()}
             </Text>
@@ -290,8 +436,15 @@ export default function SavedSpotsScreen() {
           )}
         </View>
         
-        {/* Updated Action Buttons with Share */}
+        {/* Action Buttons */}
         <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.rateButton]}
+            onPress={() => handleRateSpot(item)}
+          >
+            <Ionicons name="star-outline" size={20} color="#FFD700" />
+          </TouchableOpacity>
+          
           <TouchableOpacity
             style={[styles.actionButton, styles.shareButton]}
             onPress={() => handleShareSpot(item)}
@@ -324,7 +477,7 @@ export default function SavedSpotsScreen() {
     );
   };
 
-  // Generate Leaflet HTML
+  // Generate Leaflet HTML with proper theme colors
   const generateMapHTML = () => {
     if (filteredSpots.length === 0) return '';
 
@@ -336,6 +489,7 @@ export default function SavedSpotsScreen() {
 
     const markers = filteredSpots.map(spot => {
       const category = categories[spot.category as CategoryType] || categories.other;
+      const rating = spot.rating ? `⭐ ${spot.rating.toFixed(1)}` : '';
       return `
         var marker${spot.id} = L.circleMarker([${spot.location.latitude}, ${spot.location.longitude}], {
           radius: 10,
@@ -346,7 +500,7 @@ export default function SavedSpotsScreen() {
           fillOpacity: 0.8
         })
         .addTo(map)
-        .bindPopup('<b style="color: ${category.color}">${category.label}</b><br><b>${spot.name}</b><br>${spot.description || 'No description'}');
+        .bindPopup('<b style="color: ${category.color}">${category.label}</b><br><b>${spot.name}</b><br>${rating}<br>${spot.description || 'No description'}');
       `;
     }).join('\n');
 
@@ -374,17 +528,14 @@ export default function SavedSpotsScreen() {
 
           ${markers}
 
-          // Store markers globally for access
           window.markers = {
             ${filteredSpots.map(spot => `'${spot.id}': marker${spot.id}`).join(',\n')}
           };
 
-          // Function to focus on a specific location
           window.focusLocation = function(lat, lng, zoom) {
             map.setView([lat, lng], zoom || 16);
           };
 
-          // Fit bounds to show all markers initially
           var group = new L.featureGroup([
             ${filteredSpots.map(spot => 
               `L.circleMarker([${spot.location.latitude}, ${spot.location.longitude}])`
@@ -402,6 +553,18 @@ export default function SavedSpotsScreen() {
   if (savedSpots.length === 0) {
     return (
       <View style={styles.emptyContainer}>
+        <Stack.Screen 
+          options={{ 
+            title: 'Saved Spots',
+            headerStyle: {
+              backgroundColor: theme.colors.forest,
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }} 
+        />
         <Ionicons name="location-outline" size={80} color="#ccc" />
         <Text style={styles.emptyText}>No saved locations yet</Text>
         <TouchableOpacity 
@@ -416,53 +579,71 @@ export default function SavedSpotsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Category Filter */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoryFilter}
-      >
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            selectedCategory === 'all' && styles.filterChipActive
-          ]}
-          onPress={() => setSelectedCategory('all')}
+      <Stack.Screen 
+        options={{ 
+          title: 'Saved Spots',
+          headerStyle: {
+            backgroundColor: theme.colors.forest,
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }} 
+      />
+      
+      {/* Category Filter with proper scroll */}
+      <View style={styles.categoryFilterWrapper}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoryFilter}
+          contentContainerStyle={styles.categoryFilterContent}
         >
-          <Text style={[
-            styles.filterChipText,
-            selectedCategory === 'all' && styles.filterChipTextActive
-          ]}>
-            All ({savedSpots.length})
-          </Text>
-        </TouchableOpacity>
-        {categoryList.map((category) => {
-          const count = savedSpots.filter(s => s.category === category.id).length;
-          if (count === 0) return null;
-          return (
-            <TouchableOpacity
-              key={category.id}
-              style={[
-                styles.filterChip,
-                selectedCategory === category.id && { backgroundColor: category.color }
-              ]}
-              onPress={() => setSelectedCategory(category.id)}
-            >
-              <Ionicons 
-                name={category.icon} 
-                size={16} 
-                color={selectedCategory === category.id ? 'white' : category.color} 
-              />
-              <Text style={[
-                styles.filterChipText,
-                selectedCategory === category.id && { color: 'white' }
-              ]}>
-                {category.label} ({count})
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+          <TouchableOpacity
+            style={[
+              styles.filterChip,
+              selectedCategory === 'all' && styles.filterChipActive
+            ]}
+            onPress={() => setSelectedCategory('all')}
+          >
+            <Text style={[
+              styles.filterChipText,
+              selectedCategory === 'all' && styles.filterChipTextActive
+            ]}>
+              All ({savedSpots.length})
+            </Text>
+          </TouchableOpacity>
+          {categoryList.map((category) => {
+            const count = savedSpots.filter(s => s.category === category.id).length;
+            if (count === 0) return null;
+            return (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.filterChip,
+                  selectedCategory === category.id && { backgroundColor: category.color }
+                ]}
+                onPress={() => setSelectedCategory(category.id)}
+              >
+                <Ionicons 
+                  name={category.icon} 
+                  size={16} 
+                  color={selectedCategory === category.id ? 'white' : category.color} 
+                />
+                <Text 
+                  style={[
+                    styles.filterChipText,
+                    selectedCategory === category.id && { color: 'white' }
+                  ]}
+                >
+                  {category.label} ({count})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* View Mode Toggle with Search */}
       <View style={styles.viewToggle}>
@@ -542,6 +723,14 @@ export default function SavedSpotsScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
+                style={[styles.sortChip, sortBy === 'rating' && styles.sortChipActive]}
+                onPress={() => setSortBy('rating')}
+              >
+                <Text style={[styles.sortChipText, sortBy === 'rating' && styles.sortChipTextActive]}>
+                  Top Rated
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[styles.sortChip, sortBy === 'name' && styles.sortChipActive]}
                 onPress={() => setSortBy('name')}
               >
@@ -600,6 +789,14 @@ export default function SavedSpotsScreen() {
       >
         <Ionicons name="add" size={30} color="white" />
       </TouchableOpacity>
+
+      {/* Review Modal */}
+      <ReviewModal
+        visible={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        spot={spotToReview}
+        onSubmit={handleSubmitReview}
+      />
 
       {/* Photo Gallery Modal */}
       <Modal
@@ -737,6 +934,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 10,
+    paddingBottom: 80,
   },
   listItem: {
     backgroundColor: 'white',
@@ -776,10 +974,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.navy,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
   categoryBadge: {
     fontSize: 12,
     fontWeight: '500',
-    marginTop: 2,
+  },
+  distanceText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginLeft: 4,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  starsContainer: {
+    flexDirection: 'row',
+  },
+  reviewCount: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginLeft: 6,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  addRatingText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginLeft: 8,
+    textDecorationLine: 'underline',
   },
   listItemDescription: {
     fontSize: 14,
@@ -835,10 +1065,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  listItemCoords: {
-    fontSize: 12,
-    color: theme.colors.gray,
-  },
   listItemDate: {
     fontSize: 12,
     color: theme.colors.gray,
@@ -849,23 +1075,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButton: {
-    padding: 10,
+    padding: 8,
     marginVertical: 2,
+  },
+  rateButton: {
+    backgroundColor: '#FFF8DC',
+    borderRadius: 20,
+    marginBottom: 5,
   },
   shareButton: {
     backgroundColor: theme.colors.offWhite,
     borderRadius: 20,
     marginBottom: 5,
   },
-  directionsButton: {
-    // Style for directions button
-  },
-  editButton: {
-    // Style for edit button
-  },
-  deleteButton: {
-    // Style for delete button
-  },
+  directionsButton: {},
+  editButton: {},
+  deleteButton: {},
   map: {
     flex: 1,
   },
@@ -884,6 +1109,73 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  // Review Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  reviewModalContent: {
+    backgroundColor: theme.colors.white,
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  reviewModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  reviewModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  spotNameInModal: {
+    fontSize: 16,
+    color: theme.colors.gray,
+    marginBottom: 20,
+  },
+  ratingSection: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  ratingLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.navy,
+    marginBottom: 10,
+  },
+  reviewLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.navy,
+    marginBottom: 8,
+  },
+  reviewInput: {
+    backgroundColor: theme.colors.offWhite,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    minHeight: 100,
+    marginBottom: 20,
+    color: theme.colors.navy,
+  },
+  submitButton: {
+    backgroundColor: theme.colors.forest,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
   // Gallery styles
   galleryContainer: {
@@ -946,21 +1238,26 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: theme.colors.burntOrange,
   },
-  categoryFilter: {
+  categoryFilterWrapper: {
     backgroundColor: 'white',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    maxHeight: 60,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
+  },
+  categoryFilter: {
+    paddingVertical: 10,
+    maxHeight: 60,
+  },
+  categoryFilterContent: {
+    paddingHorizontal: 10,
+    paddingRight: 20,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     backgroundColor: theme.colors.offWhite,
-    borderRadius: 16,
+    borderRadius: 20,
     marginRight: 8,
     borderWidth: 1,
     borderColor: theme.colors.borderGray,
