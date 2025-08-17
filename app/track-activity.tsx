@@ -1,6 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,19 +10,19 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { WebView } from 'react-native-webview';
-import { theme } from '../constants/theme';
-import { ActivityType, useActivity } from '../contexts/ActivityContext';
+} from "react-native";
+import { WebView } from "react-native-webview";
+import { theme } from "../constants/theme";
+import { ActivityType, useActivity } from "../contexts/ActivityContext";
 
 const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
-  { type: 'bike', label: 'Bike', icon: 'bicycle' },
-  { type: 'run', label: 'Run', icon: 'walk' },
-  { type: 'walk', label: 'Walk', icon: 'footsteps' },
-  { type: 'hike', label: 'Hike', icon: 'trail-sign' },
-  { type: 'paddleboard', label: 'Paddle', icon: 'boat' },
-  { type: 'climb', label: 'Climb', icon: 'trending-up' },
-  { type: 'other', label: 'Other', icon: 'fitness' },
+  { type: "bike", label: "Bike", icon: "bicycle" },
+  { type: "run", label: "Run", icon: "walk" },
+  { type: "walk", label: "Walk", icon: "footsteps" },
+  { type: "hike", label: "Hike", icon: "trail-sign" },
+  { type: "paddleboard", label: "Paddle", icon: "boat" },
+  { type: "climb", label: "Climb", icon: "trending-up" },
+  { type: "other", label: "Other", icon: "fitness" },
 ];
 
 export default function TrackActivityScreen() {
@@ -43,16 +43,20 @@ export default function TrackActivityScreen() {
   } = useActivity();
 
   const router = useRouter();
-  const [selectedActivity, setSelectedActivity] = useState<ActivityType>('bike');
-  const [activityName, setActivityName] = useState('');
-  const [activityNotes, setActivityNotes] = useState('');
+  const [selectedActivity, setSelectedActivity] =
+    useState<ActivityType>("bike");
+  const [activityName, setActivityName] = useState("");
+  const [activityNotes, setActivityNotes] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Generate Leaflet HTML for the route
   const generateRouteMapHTML = () => {
     if (currentRoute.length === 0) {
       // Show current location if no route yet
-      const center = currentLocation || { latitude: 47.6062, longitude: -122.3321 };
+      const center = currentLocation || {
+        latitude: 47.6062,
+        longitude: -122.3321,
+      };
       return `
         <!DOCTYPE html>
         <html>
@@ -92,7 +96,9 @@ export default function TrackActivityScreen() {
 
     const firstPoint = currentRoute[0];
     const lastPoint = currentRoute[currentRoute.length - 1];
-    const routeCoords = currentRoute.map(point => `[${point.latitude}, ${point.longitude}]`).join(',');
+    const routeCoords = currentRoute
+      .map((point) => `[${point.latitude}, ${point.longitude}]`)
+      .join(",");
 
     return `
       <!DOCTYPE html>
@@ -161,7 +167,7 @@ export default function TrackActivityScreen() {
 
   useEffect(() => {
     if (error) {
-      Alert.alert('Error', error);
+      Alert.alert("Error", error);
     }
   }, [error]);
 
@@ -184,25 +190,25 @@ export default function TrackActivityScreen() {
   const handleSaveActivity = async () => {
     const name = activityName.trim() || `${selectedActivity} activity`;
     await stopTracking(name, activityNotes);
-    setActivityName('');
-    setActivityNotes('');
+    setActivityName("");
+    setActivityNotes("");
     setShowSaveDialog(false);
-    Alert.alert('Success', 'Activity saved!', [
-      { text: 'OK', onPress: () => router.back() }
+    Alert.alert("Success", "Activity saved!", [
+      { text: "OK", onPress: () => router.back() },
     ]);
   };
 
   const handleCancel = () => {
     Alert.alert(
-      'Discard Activity?',
-      'Are you sure you want to discard this activity?',
+      "Discard Activity?",
+      "Are you sure you want to discard this activity?",
       [
-        { text: 'Keep Recording', style: 'cancel' },
+        { text: "Keep Recording", style: "cancel" },
         {
-          text: 'Discard',
-          style: 'destructive',
+          text: "Discard",
+          style: "destructive",
           onPress: async () => {
-            await stopTracking('', '');
+            await stopTracking("", "");
             router.back();
           },
         },
@@ -215,20 +221,21 @@ export default function TrackActivityScreen() {
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+        .toString()
+        .padStart(2, "0")}`;
     }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
   const formatDistance = (meters: number) => {
-    if (meters < 1000) {
-      return `${meters.toFixed(0)} m`;
-    }
-    return `${(meters / 1000).toFixed(2)} km`;
+    const miles = meters * 0.000621371;
+    return `${miles.toFixed(2)} mi`;
   };
 
   const formatSpeed = (kmh: number) => {
-    return `${kmh.toFixed(1)} km/h`;
+    const mph = kmh * 0.621371;
+    return `${mph.toFixed(1)} mph`;
   };
 
   if (loading) {
@@ -253,19 +260,21 @@ export default function TrackActivityScreen() {
               key={activity.type}
               style={[
                 styles.activityCard,
-                selectedActivity === activity.type && styles.activityCardSelected,
+                selectedActivity === activity.type &&
+                  styles.activityCardSelected,
               ]}
               onPress={() => setSelectedActivity(activity.type)}
             >
               <Ionicons
                 name={activity.icon as any}
                 size={32}
-                color={selectedActivity === activity.type ? 'white' : '#007AFF'}
+                color={selectedActivity === activity.type ? "white" : "#007AFF"}
               />
               <Text
                 style={[
                   styles.activityLabel,
-                  selectedActivity === activity.type && styles.activityLabelSelected,
+                  selectedActivity === activity.type &&
+                    styles.activityLabelSelected,
                 ]}
               >
                 {activity.label}
@@ -279,9 +288,9 @@ export default function TrackActivityScreen() {
           <Text style={styles.startButtonText}>Start Tracking</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.manualButton} 
-          onPress={() => router.push('/add-activity')}
+        <TouchableOpacity
+          style={styles.manualButton}
+          onPress={() => router.push("/add-activity")}
         >
           <Ionicons name="create-outline" size={20} color={theme.colors.navy} />
           <Text style={styles.manualButtonText}>Add Past Activity</Text>
@@ -320,21 +329,32 @@ export default function TrackActivityScreen() {
             <Text style={styles.summaryTitle}>Activity Summary</Text>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Distance:</Text>
-              <Text style={styles.summaryValue}>{formatDistance(currentDistance)}</Text>
+              <Text style={styles.summaryValue}>
+                {formatDistance(currentDistance)}
+              </Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Duration:</Text>
-              <Text style={styles.summaryValue}>{formatDuration(currentDuration)}</Text>
+              <Text style={styles.summaryValue}>
+                {formatDuration(currentDuration)}
+              </Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Avg Speed:</Text>
               <Text style={styles.summaryValue}>
-                {formatSpeed(currentDistance > 0 ? (currentDistance / 1000) / (currentDuration / 3600) : 0)}
+                {formatSpeed(
+                  currentDistance > 0
+                    ? currentDistance / 1000 / (currentDuration / 3600)
+                    : 0
+                )}
               </Text>
             </View>
           </View>
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSaveActivity}>
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={handleSaveActivity}
+          >
             <Text style={styles.saveButtonText}>Save Activity</Text>
           </TouchableOpacity>
 
@@ -353,11 +373,15 @@ export default function TrackActivityScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Distance</Text>
-            <Text style={styles.statValue}>{formatDistance(currentDistance)}</Text>
+            <Text style={styles.statValue}>
+              {formatDistance(currentDistance)}
+            </Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Duration</Text>
-            <Text style={styles.statValue}>{formatDuration(currentDuration)}</Text>
+            <Text style={styles.statValue}>
+              {formatDuration(currentDuration)}
+            </Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Speed</Text>
@@ -389,7 +413,10 @@ export default function TrackActivityScreen() {
               <Text style={styles.controlButtonText}>Pause</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.resumeButton} onPress={handleResume}>
+            <TouchableOpacity
+              style={styles.resumeButton}
+              onPress={handleResume}
+            >
               <Ionicons name="play" size={32} color="white" />
               <Text style={styles.controlButtonText}>Resume</Text>
             </TouchableOpacity>
@@ -408,72 +435,72 @@ export default function TrackActivityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
   header: {
     padding: 20,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: "#e0e0e0",
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#333",
+    textAlign: "center",
   },
   activityGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     padding: 10,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   activityCard: {
-    width: '30%',
+    width: "30%",
     aspectRatio: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     margin: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+    borderColor: theme.colors.borderGray,
   },
   activityCardSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: theme.colors.forest, // Changed from '#007AFF'
+    borderColor: theme.colors.forest, // Changed from '#007AFF'
   },
   activityLabel: {
     marginTop: 8,
     fontSize: 14,
-    color: '#333',
-    fontWeight: '600',
+    color: "#333",
+    fontWeight: "600",
   },
   activityLabelSelected: {
-    color: 'white',
+    color: "white",
   },
   startButton: {
-    backgroundColor: '#34C759',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: theme.colors.forest, // Changed from '#34C759'
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     margin: 20,
     padding: 18,
     borderRadius: 12,
   },
   startButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginLeft: 10,
   },
   trackingContainer: {
     flex: 1,
   },
   statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     backgroundColor: theme.colors.white,
     paddingVertical: 15,
     paddingHorizontal: 10,
@@ -481,46 +508,46 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.borderGray,
   },
   statCard: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
   },
   statLabel: {
     fontSize: 12,
     color: theme.colors.gray,
     marginBottom: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   statValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: theme.colors.navy,
   },
   mapContainer: {
     flex: 1,
-    position: 'relative',
+    position: "relative",
   },
   map: {
     flex: 1,
   },
   pausedOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 20,
-    alignSelf: 'center',
+    alignSelf: "center",
     backgroundColor: theme.colors.burntOrange,
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
   },
   pausedText: {
-    color: 'white',
+    color: "white",
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 1,
   },
   controlsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     backgroundColor: theme.colors.white,
     paddingVertical: 20,
     paddingHorizontal: 30,
@@ -532,9 +559,9 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -545,9 +572,9 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -558,39 +585,39 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 5,
   },
   controlButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
     marginTop: 4,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   saveDialog: {
     padding: 20,
   },
   saveTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 20,
   },
   label: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: "600",
+    color: "#333",
     marginBottom: 8,
   },
   input: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
@@ -598,117 +625,117 @@ const styles = StyleSheet.create({
   },
   textArea: {
     height: 100,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   summaryCard: {
-    backgroundColor: '#f8f8f8',
+    backgroundColor: "#f8f8f8",
     padding: 15,
     borderRadius: 8,
     marginBottom: 20,
   },
   summaryTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 10,
-    color: '#333',
+    color: "#333",
   },
   summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 8,
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
   },
   summaryValue: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: "600",
+    color: "#333",
   },
   saveButton: {
-    backgroundColor: '#34C759',
+    backgroundColor: theme.colors.forest,
     padding: 16,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 10,
   },
   saveButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   discardButton: {
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   discardButtonText: {
-    color: '#FF3B30',
+    color: theme.colors.burntOrange,
     fontSize: 16,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#666',
+    color: "#666",
   },
   viewMapButton: {
-    backgroundColor: '#007AFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#007AFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 12,
     borderRadius: 8,
     marginTop: 15,
   },
   viewMapButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   mapToggleButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 20,
     right: 20,
-    backgroundColor: '#007AFF',
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: "#007AFF",
+    flexDirection: "row",
+    alignItems: "center",
     padding: 10,
     borderRadius: 8,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 5,
   },
   mapToggleText: {
-    color: 'white',
+    color: "white",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 5,
   },
   manualButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     margin: 20,
     marginTop: 0,
     padding: 16,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: theme.colors.forest,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   manualButtonText: {
     color: theme.colors.navy,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
 });

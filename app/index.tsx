@@ -256,7 +256,7 @@ export default function DashboardScreen() {
     { icon: "add-circle", label: "Add New", route: "/save-location" },
     { divider: true },
     { icon: "stats-chart", label: "Statistics", route: "/statistics" }, // <- UPDATE THIS LINE
-    { icon: "trophy", label: "Achievements", route: "/statistics" }, // <- UPDATE THIS LINE TOO
+    { icon: 'trophy', label: 'Achievements', route: '/statistics#achievements' },
     { divider: true },
     { icon: "settings", label: "Settings", route: "/settings" },
     { icon: "information-circle", label: "About", route: "/" },
@@ -469,39 +469,50 @@ export default function DashboardScreen() {
         {/* Recent Activity Section */}
         <View style={styles.recentSection}>
           <Text style={styles.sectionTitle}>Recent Adventures</Text>
-          {activities.slice(0, 3).map((activity) => {
-            const icon = (activityIcons as any)[activity.type] || "fitness";
-            return (
-              <TouchableOpacity
-                key={activity.id}
-                style={styles.recentCard}
-                onPress={() => router.push("/past-activities")}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.recentIcon,
-                    { backgroundColor: theme.colors.forest + "20" },
-                  ]}
+          {[...activities]
+            .sort(
+              (a, b) =>
+                new Date(b.startTime).getTime() -
+                new Date(a.startTime).getTime()
+            )
+            .slice(0, 3)
+            .map((activity) => {
+              const icon = (activityIcons as any)[activity.type] || "fitness";
+              return (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={styles.recentCard}
+                  onPress={() => router.push("/past-activities")}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons name={icon} size={20} color={theme.colors.forest} />
-                </View>
-                <View style={styles.recentInfo}>
-                  <Text style={styles.recentName}>{activity.name}</Text>
-                  <Text style={styles.recentMeta}>
-                    {new Date(activity.startTime).toLocaleDateString()} •{" "}
-                    {(activity.distance / 1000).toFixed(1)} km •{" "}
-                    {formatDuration(activity.duration)}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={theme.colors.lightGray}
-                />
-              </TouchableOpacity>
-            );
-          })}
+                  <View
+                    style={[
+                      styles.recentIcon,
+                      { backgroundColor: theme.colors.forest + "20" },
+                    ]}
+                  >
+                    <Ionicons
+                      name={icon}
+                      size={20}
+                      color={theme.colors.forest}
+                    />
+                  </View>
+                  <View style={styles.recentInfo}>
+                    <Text style={styles.recentName}>{activity.name}</Text>
+                    <Text style={styles.recentMeta}>
+                      {new Date(activity.startTime).toLocaleDateString()} •{" "}
+                      {(activity.distance / 1000).toFixed(1)} km •{" "}
+                      {formatDuration(activity.duration)}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={theme.colors.lightGray}
+                  />
+                </TouchableOpacity>
+              );
+            })}
           {activities.length > 0 && (
             <TouchableOpacity
               style={styles.viewStatsButton}
@@ -525,7 +536,6 @@ export default function DashboardScreen() {
 
       {/* Floating Action Buttons */}
       <View style={styles.profileSection}>
-       
         <Text style={styles.profileName}>Explorer</Text>
         <Text style={styles.profileStats}>
           {savedSpots.length} places • {activities.length} activities
