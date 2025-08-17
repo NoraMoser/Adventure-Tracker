@@ -6,10 +6,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { theme } from '../constants/theme';
 import { ActivityProvider } from '../contexts/ActivityContext';
 import { LocationProvider } from '../contexts/LocationContext';
+import { SettingsProvider } from '../contexts/SettingsContext';
 import { WishlistProvider } from '../contexts/WishlistContext';
 
 export default function RootLayout() {
   return (
+     <SettingsProvider>
     <LocationProvider>
       <ActivityProvider>
         <WishlistProvider>
@@ -224,5 +226,6 @@ export default function RootLayout() {
         </WishlistProvider>
       </ActivityProvider>
     </LocationProvider>
+    </SettingsProvider>
   );
 }

@@ -1,3 +1,4 @@
+// track-activity.tsx - Updated with Settings Integration
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -14,6 +15,7 @@ import {
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { ActivityType, useActivity } from "../contexts/ActivityContext";
+import { useSettings } from "../contexts/SettingsContext"; // ADD THIS
 
 const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
   { type: "bike", label: "Bike", icon: "bicycle" },
@@ -43,11 +45,22 @@ export default function TrackActivityScreen() {
   } = useActivity();
 
   const router = useRouter();
-  const [selectedActivity, setSelectedActivity] =
-    useState<ActivityType>("bike");
+  const { formatDistance, formatSpeed, settings } = useSettings(); // ADD THIS
+  
+  // Use default activity type from settings
+  const [selectedActivity, setSelectedActivity] = useState<ActivityType>(
+    settings.defaultActivityType || "bike"
+  );
   const [activityName, setActivityName] = useState("");
   const [activityNotes, setActivityNotes] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  // Update selected activity when settings change
+  useEffect(() => {
+    if (!isTracking && settings.defaultActivityType) {
+      setSelectedActivity(settings.defaultActivityType);
+    }
+  }, [settings.defaultActivityType, isTracking]);
 
   // Generate Leaflet HTML for the route
   const generateRouteMapHTML = () => {
@@ -228,15 +241,7 @@ export default function TrackActivityScreen() {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const formatDistance = (meters: number) => {
-    const miles = meters * 0.000621371;
-    return `${miles.toFixed(2)} mi`;
-  };
-
-  const formatSpeed = (kmh: number) => {
-    const mph = kmh * 0.621371;
-    return `${mph.toFixed(1)} mph`;
-  };
+  // REMOVED old formatDistance and formatSpeed - now using from useSettings()
 
   if (loading) {
     return (
@@ -252,6 +257,11 @@ export default function TrackActivityScreen() {
       <ScrollView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Choose Activity Type</Text>
+          <Text style={styles.subtitle}>
+            Default: {settings.defaultActivityType ? 
+              settings.defaultActivityType.charAt(0).toUpperCase() + settings.defaultActivityType.slice(1) : 
+              'None'}
+          </Text>
         </View>
 
         <View style={styles.activityGrid}>
@@ -344,7 +354,7 @@ export default function TrackActivityScreen() {
               <Text style={styles.summaryValue}>
                 {formatSpeed(
                   currentDistance > 0
-                    ? currentDistance / 1000 / (currentDuration / 3600)
+                    ? (currentDistance / 1000) / (currentDuration / 3600)
                     : 0
                 )}
               </Text>
@@ -369,7 +379,7 @@ export default function TrackActivityScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.trackingContainer}>
-        {/* Stats Cards at Top */}
+        {/* Stats Cards at Top - Now using formatters! */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Distance</Text>
@@ -449,6 +459,12 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
   },
+  subtitle: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    textAlign: "center",
+    marginTop: 5,
+  },
   activityGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -468,8 +484,8 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.borderGray,
   },
   activityCardSelected: {
-    backgroundColor: theme.colors.forest, // Changed from '#007AFF'
-    borderColor: theme.colors.forest, // Changed from '#007AFF'
+    backgroundColor: theme.colors.forest,
+    borderColor: theme.colors.forest,
   },
   activityLabel: {
     marginTop: 8,
@@ -481,7 +497,7 @@ const styles = StyleSheet.create({
     color: "white",
   },
   startButton: {
-    backgroundColor: theme.colors.forest, // Changed from '#34C759'
+    backgroundColor: theme.colors.forest,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

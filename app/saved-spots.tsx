@@ -1,4 +1,4 @@
-// saved-spots.tsx
+// saved-spots.tsx - Updated with Settings Integration
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -21,6 +21,7 @@ import { WebView } from 'react-native-webview';
 import { categories, categoryList, CategoryType } from '../constants/categories';
 import { theme } from '../constants/theme';
 import { useLocation } from '../contexts/LocationContext';
+import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
 import { ShareService } from '../services/shareService';
 
 const { width } = Dimensions.get('window');
@@ -146,6 +147,7 @@ const ReviewModal = ({
 
 export default function SavedSpotsScreen() {
   const { savedSpots, deleteSpot, updateSpot, location, getLocation } = useLocation();
+  const { formatDistance, settings, getMapTileUrl } = useSettings(); // ADD THIS
   const router = useRouter();
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [selectedSpot, setSelectedSpot] = useState<any>(null);
@@ -370,7 +372,7 @@ export default function SavedSpotsScreen() {
                 </Text>
                 {distance && (
                   <Text style={styles.distanceText}>
-                    • {distance < 1000 ? `${distance.toFixed(0)}m` : `${(distance / 1000).toFixed(1)}km`}
+                    • {formatDistance(distance)}
                   </Text>
                 )}
               </View>
@@ -477,7 +479,7 @@ export default function SavedSpotsScreen() {
     );
   };
 
-  // Generate Leaflet HTML with proper theme colors
+  // Generate Leaflet HTML with proper theme colors AND user's map style preference
   const generateMapHTML = () => {
     if (filteredSpots.length === 0) return '';
 
@@ -486,6 +488,14 @@ export default function SavedSpotsScreen() {
     
     const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
     const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+
+    // Get the correct tile URL based on user's map style preference
+    const tileUrl = getMapTileUrl();
+    const attribution = settings.mapStyle === 'satellite' 
+      ? '© Esri' 
+      : settings.mapStyle === 'terrain'
+      ? '© OpenTopoMap'
+      : '© OpenStreetMap contributors';
 
     const markers = filteredSpots.map(spot => {
       const category = categories[spot.category as CategoryType] || categories.other;
@@ -521,9 +531,10 @@ export default function SavedSpotsScreen() {
         <script>
           var map = L.map('map').setView([${centerLat}, ${centerLng}], 13);
           
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
+          // Use the tile layer based on user's preference
+          L.tileLayer('${tileUrl}', {
+            attribution: '${attribution}',
+            maxZoom: ${settings.mapStyle === 'satellite' ? 18 : 19}
           }).addTo(map);
 
           ${markers}
@@ -645,7 +656,7 @@ export default function SavedSpotsScreen() {
         </ScrollView>
       </View>
 
-      {/* View Mode Toggle with Search */}
+      {/* View Mode Toggle with Search - Now shows map style! */}
       <View style={styles.viewToggle}>
         <TouchableOpacity
           style={[styles.toggleButton, viewMode === 'list' && styles.toggleButtonActive]}
@@ -671,7 +682,8 @@ export default function SavedSpotsScreen() {
             color={viewMode === 'map' ? 'white' : theme.colors.forest} 
           />
           <Text style={[styles.toggleText, viewMode === 'map' && styles.toggleTextActive]}>
-            Map
+            {settings.mapStyle === 'satellite' ? 'Satellite' : 
+             settings.mapStyle === 'terrain' ? 'Terrain' : 'Map'}
           </Text>
         </TouchableOpacity>
         
@@ -874,6 +886,7 @@ export default function SavedSpotsScreen() {
   );
 }
 
+// Styles remain exactly the same
 const styles = StyleSheet.create({
   container: {
     flex: 1,

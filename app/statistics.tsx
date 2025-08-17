@@ -1,4 +1,4 @@
-// statistics.tsx
+// statistics.tsx - Updated with Settings Integration
 import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -14,6 +14,7 @@ import { LineChart, PieChart, ProgressChart } from 'react-native-chart-kit';
 import { theme } from '../constants/theme';
 import { useActivity } from '../contexts/ActivityContext';
 import { useLocation } from '../contexts/LocationContext';
+import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
 
 const { width } = Dimensions.get('window');
 
@@ -103,6 +104,7 @@ const AchievementBadge = ({
 export default function StatisticsScreen() {
   const { activities } = useActivity();
   const { savedSpots } = useLocation();
+  const { formatDistance, formatSpeed, convertDistance, getDistanceUnit, getSpeedUnit } = useSettings(); // ADD THIS
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year'>('week');
   const [selectedMetric, setSelectedMetric] = useState<'distance' | 'duration' | 'activities'>('distance');
 
@@ -205,7 +207,8 @@ export default function StatisticsScreen() {
           });
           
           if (selectedMetric === 'distance') {
-            data.push(dayActivities.reduce((sum, act) => sum + act.distance / 1000, 0));
+            // Use convertDistance to respect user's units preference
+            data.push(dayActivities.reduce((sum, act) => sum + convertDistance(act.distance), 0));
           } else if (selectedMetric === 'duration') {
             data.push(dayActivities.reduce((sum, act) => sum + act.duration / 3600, 0));
           } else {
@@ -228,7 +231,7 @@ export default function StatisticsScreen() {
           });
           
           if (selectedMetric === 'distance') {
-            data.push(weekActivities.reduce((sum, act) => sum + act.distance / 1000, 0));
+            data.push(weekActivities.reduce((sum, act) => sum + convertDistance(act.distance), 0));
           } else if (selectedMetric === 'duration') {
             data.push(weekActivities.reduce((sum, act) => sum + act.duration / 3600, 0));
           } else {
@@ -251,7 +254,7 @@ export default function StatisticsScreen() {
           });
           
           if (selectedMetric === 'distance') {
-            data.push(monthActivities.reduce((sum, act) => sum + act.distance / 1000, 0));
+            data.push(monthActivities.reduce((sum, act) => sum + convertDistance(act.distance), 0));
           } else if (selectedMetric === 'duration') {
             data.push(monthActivities.reduce((sum, act) => sum + act.duration / 3600, 0));
           } else {
@@ -279,7 +282,7 @@ export default function StatisticsScreen() {
       personalRecords,
       timeBasedData: getTimeBasedData(),
     };
-  }, [activities, savedSpots, selectedPeriod, selectedMetric]);
+  }, [activities, savedSpots, selectedPeriod, selectedMetric, convertDistance]); // Added convertDistance to deps
 
   // Calculate achievement progress
   const achievements = ACHIEVEMENTS.map(achievement => {
@@ -388,8 +391,15 @@ export default function StatisticsScreen() {
     return `${minutes}m`;
   };
 
-  const formatDistance = (meters: number) => {
-    return `${(meters / 1000).toFixed(1)} km`;
+  // Get the correct metric label based on user's units preference
+  const getMetricLabel = () => {
+    if (selectedMetric === 'distance') {
+      return `Distance (${getDistanceUnit() === 'kilometers' ? 'km' : 'mi'})`;
+    } else if (selectedMetric === 'duration') {
+      return 'Duration (hrs)';
+    } else {
+      return 'Activities';
+    }
   };
 
   return (
@@ -427,7 +437,7 @@ export default function StatisticsScreen() {
           </View>
           <View style={styles.smallStatCard}>
             <Ionicons name="navigate" size={20} color={theme.colors.burntOrange} />
-            <Text style={styles.smallStatNumber}>{formatDistance(stats.totalDistance)}</Text>
+            <Text style={styles.smallStatNumber}>{formatDistance(stats.totalDistance, 0)}</Text>
             <Text style={styles.smallStatLabel}>Total</Text>
           </View>
           <View style={styles.smallStatCard}>
@@ -500,7 +510,7 @@ export default function StatisticsScreen() {
                 styles.metricChipText,
                 selectedMetric === metric && styles.metricChipTextActive
               ]}>
-                {metric === 'distance' ? 'Distance (km)' :
+                {metric === 'distance' ? `Distance (${getDistanceUnit() === 'kilometers' ? 'km' : 'mi'})` :
                  metric === 'duration' ? 'Duration (hrs)' : 'Activities'}
               </Text>
             </TouchableOpacity>
@@ -537,14 +547,14 @@ export default function StatisticsScreen() {
         )}
       </View>
 
-      {/* Personal Records */}
+      {/* Personal Records - Updated with formatters */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Personal Records</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <PersonalRecordCard
             title="Longest Distance"
-            value={formatDistance(stats.personalRecords.longestDistance.distance).split(' ')[0]}
-            unit="km"
+            value={formatDistance(stats.personalRecords.longestDistance.distance, 1).split(' ')[0]}
+            unit={formatDistance(stats.personalRecords.longestDistance.distance, 1).split(' ')[1] || ''}
             icon="trending-up"
             date={new Date(stats.personalRecords.longestDistance.startTime).toLocaleDateString()}
             color={theme.colors.forest}
@@ -559,8 +569,8 @@ export default function StatisticsScreen() {
           />
           <PersonalRecordCard
             title="Fastest Speed"
-            value={stats.personalRecords.fastestSpeed.maxSpeed.toFixed(1)}
-            unit="km/h"
+            value={formatSpeed(stats.personalRecords.fastestSpeed.maxSpeed).split(' ')[0]}
+            unit={getSpeedUnit()}
             icon="speedometer"
             date={new Date(stats.personalRecords.fastestSpeed.startTime).toLocaleDateString()}
             color={theme.colors.burntOrange}
@@ -615,7 +625,7 @@ export default function StatisticsScreen() {
         </View>
       </View>
 
-      {/* Average Stats */}
+      {/* Average Stats - Updated with formatters */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Averages</Text>
         <View style={styles.averageCards}>
@@ -631,7 +641,7 @@ export default function StatisticsScreen() {
           </View>
           <View style={styles.averageCard}>
             <Ionicons name="speedometer" size={24} color={theme.colors.burntOrange} />
-            <Text style={styles.averageValue}>{stats.avgSpeed.toFixed(1)} km/h</Text>
+            <Text style={styles.averageValue}>{formatSpeed(stats.avgSpeed)}</Text>
             <Text style={styles.averageLabel}>avg speed</Text>
           </View>
         </View>
@@ -642,6 +652,7 @@ export default function StatisticsScreen() {
   );
 }
 
+// Styles remain the same
 const styles = StyleSheet.create({
   container: {
     flex: 1,

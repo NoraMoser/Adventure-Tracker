@@ -1,3 +1,4 @@
+// add-activity.tsx - Updated with Settings Integration
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { theme } from '../constants/theme';
 import { ActivityType, useActivity } from '../contexts/ActivityContext';
+import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
 
 const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
   { type: 'bike', label: 'Bike', icon: 'bicycle' },
@@ -27,16 +29,22 @@ const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
 
 export default function AddActivityScreen() {
   const { addManualActivity } = useActivity();
+  const { settings, formatDistance, getDistanceUnit } = useSettings(); // ADD THIS
   const router = useRouter();
 
-  const [activityType, setActivityType] = useState<ActivityType>('bike');
+  // Use default activity type from settings
+  const [activityType, setActivityType] = useState<ActivityType>(
+    settings.defaultActivityType || 'bike'
+  );
   const [name, setName] = useState('');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [duration, setDuration] = useState({ hours: '0', minutes: '0' });
   const [distance, setDistance] = useState('');
-  const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>('km');
+  const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>(
+    settings.units === 'imperial' ? 'mi' : 'km' // Use user's preference!
+  );
   const [notes, setNotes] = useState('');
 
   const handleSave = async () => {
@@ -118,6 +126,11 @@ export default function AddActivityScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Add Past Activity</Text>
         <Text style={styles.subtitle}>Record an activity you forgot to track</Text>
+        {settings.defaultActivityType && (
+          <Text style={styles.defaultNote}>
+            Default: {settings.defaultActivityType.charAt(0).toUpperCase() + settings.defaultActivityType.slice(1)}
+          </Text>
+        )}
       </View>
 
       {/* Activity Type Selection */}
@@ -240,9 +253,11 @@ export default function AddActivityScreen() {
         </View>
       </View>
 
-      {/* Distance */}
+      {/* Distance - Now respects user's unit preference! */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Distance (Optional)</Text>
+        <Text style={styles.sectionTitle}>
+          Distance (Optional) - Using {getDistanceUnit()}
+        </Text>
         <View style={styles.distanceContainer}>
           <TextInput
             style={[styles.input, styles.distanceInput]}
@@ -320,6 +335,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 5,
+  },
+  defaultNote: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginTop: 5,
+    fontStyle: 'italic',
   },
   section: {
     padding: 20,

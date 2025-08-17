@@ -1,4 +1,4 @@
-// app/index.tsx - Enhanced Dashboard Landing Page
+// app/index.tsx - Fixed with Settings Integration
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
@@ -21,6 +21,7 @@ import { categories } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
+import { useSettings } from "../contexts/SettingsContext"; // ADD THIS!
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -30,13 +31,11 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
+  const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings(); // GET MAP TILE URL TOO!
   const webViewRef = useRef<WebView>(null);
 
   // State
   const [showSidebar, setShowSidebar] = useState(false);
-  const [mapLayer, setMapLayer] = useState<"adventures" | "terrain">(
-    "adventures"
-  );
 
   // Bottom sheet animation
   const animatedValue = useRef(
@@ -136,6 +135,14 @@ export default function DashboardScreen() {
   const generateMapHTML = () => {
     const centerLat = location?.latitude || 47.6062;
     const centerLng = location?.longitude || -122.3321;
+    
+    // Get the correct tile URL based on user's map style preference
+    const tileUrl = getMapTileUrl();
+    const attribution = settings.mapStyle === 'satellite' 
+      ? '© Esri' 
+      : settings.mapStyle === 'terrain'
+      ? '© OpenTopoMap'
+      : '© OpenStreetMap';
 
     const spotMarkers = savedSpots
       .map((spot) => {
@@ -195,17 +202,12 @@ export default function DashboardScreen() {
         <script>
           var map = L.map('map').setView([${centerLat}, ${centerLng}], 11);
           
-          var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap',
-            maxZoom: 19
-          });
+          // Use the tile layer based on user's preference
+          L.tileLayer('${tileUrl}', {
+            attribution: '${attribution}',
+            maxZoom: ${settings.mapStyle === 'satellite' ? 18 : 19}
+          }).addTo(map);
           
-          var terrainLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenTopoMap',
-            maxZoom: 17
-          });
-          
-          streetLayer.addTo(map);
           var adventureLayer = L.layerGroup().addTo(map);
           
           ${spotMarkers}
@@ -232,16 +234,7 @@ export default function DashboardScreen() {
             var group = new L.featureGroup(adventureLayer.getLayers());
             map.fitBounds(group.getBounds().pad(0.1));
           }
-          
-          window.switchToTerrain = function() {
-            map.removeLayer(streetLayer);
-            map.addLayer(terrainLayer);
-          };
-          
-          window.switchToStreet = function() {
-            map.removeLayer(terrainLayer);
-            map.addLayer(streetLayer);
-          };
+        </script>
         </script>
       </body>
       </html>
@@ -255,7 +248,7 @@ export default function DashboardScreen() {
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
     { icon: "add-circle", label: "Add New", route: "/save-location" },
     { divider: true },
-    { icon: "stats-chart", label: "Statistics", route: "/statistics" }, // <- UPDATE THIS LINE
+    { icon: "stats-chart", label: "Statistics", route: "/statistics" },
     { icon: 'trophy', label: 'Achievements', route: '/statistics#achievements' },
     { divider: true },
     { icon: "settings", label: "Settings", route: "/settings" },
@@ -292,25 +285,7 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.layerButton}
-            onPress={() => {
-              const nextLayer =
-                mapLayer === "adventures" ? "terrain" : "adventures";
-              setMapLayer(nextLayer);
-              if (nextLayer === "terrain") {
-                webViewRef.current?.injectJavaScript(
-                  "window.switchToTerrain();"
-                );
-              } else {
-                webViewRef.current?.injectJavaScript(
-                  "window.switchToStreet();"
-                );
-              }
-            }}
-          >
-            <Ionicons name="layers" size={24} color={theme.colors.navy} />
-          </TouchableOpacity>
+          {/* Map style now controlled in Settings */}
         </View>
       </View>
 
@@ -376,9 +351,11 @@ export default function DashboardScreen() {
                 />
               </View>
               <Text style={styles.statNumber}>
-                {(totalDistance / 1000).toFixed(0)}
+                {formatDistance(totalDistance, 0).split(' ')[0]}
               </Text>
-              <Text style={styles.statLabel}>Kilometers</Text>
+              <Text style={styles.statLabel}>
+                {formatDistance(totalDistance, 0).split(' ')[1]}
+              </Text>
             </View>
 
             <View style={styles.statCard}>
@@ -412,8 +389,7 @@ export default function DashboardScreen() {
             <View style={styles.quickStatItem}>
               <Text style={styles.quickStatValue}>
                 {activities.length > 0
-                  ? (totalDistance / activities.length / 1000).toFixed(1) +
-                    " km"
+                  ? formatDistance(totalDistance / activities.length, 1)
                   : "0 km"}
               </Text>
               <Text style={styles.quickStatLabel}>Avg Distance</Text>
@@ -423,7 +399,23 @@ export default function DashboardScreen() {
 
         {/* Map Section */}
         <View style={styles.mapSection}>
-          <Text style={styles.sectionTitle}>Your Adventure Map</Text>
+          <View style={styles.mapTitleRow}>
+            <Text style={styles.sectionTitle}>Your Adventure Map</Text>
+            <View style={styles.mapStyleBadge}>
+              <Ionicons 
+                name={
+                  settings.mapStyle === 'satellite' ? 'globe' : 
+                  settings.mapStyle === 'terrain' ? 'trail-sign' : 
+                  'map'
+                } 
+                size={14} 
+                color={theme.colors.forest} 
+              />
+              <Text style={styles.mapStyleText}>
+                {settings.mapStyle.charAt(0).toUpperCase() + settings.mapStyle.slice(1)}
+              </Text>
+            </View>
+          </View>
           <View style={styles.mapContainer}>
             <WebView
               ref={webViewRef}
@@ -466,7 +458,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Recent Activity Section */}
+        {/* Recent Activity Section - FIXED TO USE SETTINGS! */}
         <View style={styles.recentSection}>
           <Text style={styles.sectionTitle}>Recent Adventures</Text>
           {[...activities]
@@ -500,9 +492,7 @@ export default function DashboardScreen() {
                   <View style={styles.recentInfo}>
                     <Text style={styles.recentName}>{activity.name}</Text>
                     <Text style={styles.recentMeta}>
-                      {new Date(activity.startTime).toLocaleDateString()} •{" "}
-                      {(activity.distance / 1000).toFixed(1)} km •{" "}
-                      {formatDuration(activity.duration)}
+                      {new Date(activity.startTime).toLocaleDateString()} • {formatDistance(activity.distance)} • {formatDuration(activity.duration)}
                     </Text>
                   </View>
                   <Ionicons
@@ -600,7 +590,6 @@ export default function DashboardScreen() {
           >
             <View style={styles.profileSection}>
               <View style={styles.profileAvatar}>
-                {/* Use the pine tree icon instead of generic person */}
                 <ExplorableIcon size={60} color={theme.colors.forest} />
               </View>
               <Text style={styles.profileName}>Explorer</Text>
@@ -655,6 +644,7 @@ export default function DashboardScreen() {
   );
 }
 
+// Styles remain the same
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -665,7 +655,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: theme.colors.white,
-    paddingVertical: 12, // Reduced padding for logo
+    paddingVertical: 12,
     paddingHorizontal: 15,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -771,6 +761,26 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     padding: 15,
     marginBottom: 10,
+  },
+  mapTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  mapStyleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  mapStyleText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginLeft: 5,
+    fontWeight: "500",
   },
   mapContainer: {
     height: height * 0.4,

@@ -1,4 +1,4 @@
-// past-activities.tsx
+// past-activities.tsx - Fixed with Settings integration
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -14,7 +14,9 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { theme } from '../constants/theme';
 import { ActivityType, useActivity } from '../contexts/ActivityContext';
+import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
 import { ShareService } from '../services/shareService';
 
 const activityIcons: Record<ActivityType, string> = {
@@ -29,6 +31,7 @@ const activityIcons: Record<ActivityType, string> = {
 
 export default function PastActivitiesScreen() {
   const { activities, deleteActivity } = useActivity();
+  const { formatDistance, formatSpeed } = useSettings(); // ADD THIS - get from context
   const router = useRouter();
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showMap, setShowMap] = useState(false);
@@ -71,7 +74,6 @@ export default function PastActivitiesScreen() {
   }, [activities, searchQuery, selectedType, sortBy]);
 
   const formatDuration = (seconds: number) => {
-    console.log('Formatting duration:', seconds); // Debug log
     if (!seconds || seconds === 0) {
       return '0 min';
     }
@@ -89,12 +91,8 @@ export default function PastActivitiesScreen() {
     }
   };
 
-  const formatDistance = (meters: number) => {
-    if (meters < 1000) {
-      return `${meters.toFixed(0)} m`;
-    }
-    return `${(meters / 1000).toFixed(2)} km`;
-  };
+  // REMOVED formatDistance - now comes from useSettings()
+  // REMOVED formatSpeed - now comes from useSettings()
 
   const formatDate = (date: string | Date) => {
     const d = new Date(date);
@@ -134,10 +132,8 @@ export default function PastActivitiesScreen() {
     setShowMap(true);
   };
 
-  // Add share handler
   const handleShareActivity = async (activity: any) => {
     try {
-      // If activity has route data, share with map
       if (activity.route && activity.route.length > 0) {
         await ShareService.shareActivityWithMap(activity);
       } else {
@@ -149,7 +145,6 @@ export default function PastActivitiesScreen() {
     }
   };
 
-  // Add copy to clipboard handler
   const handleCopyActivity = async (activity: any) => {
     try {
       await ShareService.copyActivityToClipboard(activity);
@@ -160,30 +155,28 @@ export default function PastActivitiesScreen() {
     }
   };
 
-  // Share all activities summary
   const handleShareSummary = async () => {
     try {
-      // Create a summary of all activities
       const totalDistance = filteredActivities.reduce((sum, act) => sum + act.distance, 0);
       const totalDuration = filteredActivities.reduce((sum, act) => sum + act.duration, 0);
       
-      let message = `🏃 My ExplorAble Adventure Summary\n\n`;
+      let message = `🏃 My explorAble Adventure Summary\n\n`;
       message += `📊 Total Stats:\n`;
       message += `• ${filteredActivities.length} activities completed\n`;
-      message += `• ${(totalDistance / 1000).toFixed(2)} km total distance\n`;
+      message += `• ${formatDistance(totalDistance)} total distance\n`; // Uses settings!
       message += `• ${formatDuration(totalDuration)} total time\n\n`;
       
       message += `🎯 Recent Activities:\n`;
       filteredActivities.slice(0, 5).forEach((activity, index) => {
         const emoji = ShareService.getActivityEmoji(activity.type);
-        message += `${index + 1}. ${emoji} ${activity.name} - ${(activity.distance / 1000).toFixed(2)} km\n`;
+        message += `${index + 1}. ${emoji} ${activity.name} - ${formatDistance(activity.distance)}\n`;
       });
       
       if (filteredActivities.length > 5) {
         message += `\n... and ${filteredActivities.length - 5} more activities!\n`;
       }
       
-      message += `\nShared from ExplorAble 🌲`;
+      message += `\nShared from explorAble 🌲`;
       
       await Share.share({
         message,
@@ -194,7 +187,6 @@ export default function PastActivitiesScreen() {
     }
   };
 
-  // Generate Leaflet HTML for a specific activity route
   const generateActivityMapHTML = () => {
     if (!selectedActivity || !selectedActivity.route || selectedActivity.route.length === 0) {
       return '<html><body><p>No route data available</p></body></html>';
@@ -242,18 +234,16 @@ export default function PastActivitiesScreen() {
             maxZoom: 19
           }).addTo(map);
 
-          // Draw the route
           var routeCoords = [${routeCoords}];
           if (routeCoords.length > 0) {
             var polyline = L.polyline(routeCoords, {
-              color: '#007AFF',
+              color: '${theme.colors.forest}',
               weight: 4,
               opacity: 0.8
             }).addTo(map);
 
-            // Add start marker (green)
             var startIcon = L.divIcon({
-              html: '<div style="background-color: #34C759; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+              html: '<div style="background-color: ${theme.colors.forest}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
               iconSize: [24, 24],
               className: 'custom-div-icon'
             });
@@ -261,9 +251,8 @@ export default function PastActivitiesScreen() {
               .addTo(map)
               .bindPopup('Start');
 
-            // Add end marker (red)
             var endIcon = L.divIcon({
-              html: '<div style="background-color: #FF3B30; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+              html: '<div style="background-color: ${theme.colors.burntOrange}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
               iconSize: [24, 24],
               className: 'custom-div-icon'
             });
@@ -271,7 +260,6 @@ export default function PastActivitiesScreen() {
               .addTo(map)
               .bindPopup('Finish');
 
-            // Fit map to route
             map.fitBounds(polyline.getBounds().pad(0.1));
           }
         </script>
@@ -291,7 +279,7 @@ export default function PastActivitiesScreen() {
       >
         <View style={styles.activityHeader}>
           <View style={styles.activityIcon}>
-            <Ionicons name={iconName as any} size={24} color="#007AFF" />
+            <Ionicons name={iconName as any} size={24} color={theme.colors.forest} />
           </View>
           <View style={styles.activityInfo}>
             <Text style={styles.activityName}>{item.name}</Text>
@@ -317,7 +305,7 @@ export default function PastActivitiesScreen() {
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Avg Speed</Text>
-            <Text style={styles.statValue}>{item.averageSpeed.toFixed(1)} km/h</Text>
+            <Text style={styles.statValue}>{formatSpeed(item.averageSpeed)}</Text>
           </View>
         </View>
 
@@ -330,7 +318,7 @@ export default function PastActivitiesScreen() {
             style={[styles.actionButton, styles.shareButton]}
             onPress={() => handleShareActivity(item)}
           >
-            <Ionicons name="share-social-outline" size={20} color="#007AFF" />
+            <Ionicons name="share-social-outline" size={20} color={theme.colors.forest} />
             <Text style={styles.actionButtonText}>Share</Text>
           </TouchableOpacity>
           
@@ -338,28 +326,29 @@ export default function PastActivitiesScreen() {
             style={styles.actionButton}
             onPress={() => handleViewMap(item)}
           >
-            <Ionicons name="map-outline" size={20} color="#007AFF" />
-            <Text style={styles.actionButtonText}>View Route</Text>
+            <Ionicons name="map-outline" size={20} color={theme.colors.navy} />
+            <Text style={[styles.actionButtonText, { color: theme.colors.navy }]}>View Route</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[styles.actionButton, styles.copyButton]}
             onPress={() => handleCopyActivity(item)}
           >
-            <Ionicons name="copy-outline" size={20} color="#666" />
+            <Ionicons name="copy-outline" size={20} color={theme.colors.gray} />
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[styles.actionButton, styles.deleteButton]}
             onPress={() => handleDeleteActivity(item.id, item.name)}
           >
-            <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+            <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
     );
   };
 
+  // Rest of the component remains the same...
   if (showMap && selectedActivity) {
     return (
       <View style={styles.container}>
@@ -368,7 +357,7 @@ export default function PastActivitiesScreen() {
             style={styles.backButton}
             onPress={() => setShowMap(false)}
           >
-            <Ionicons name="arrow-back" size={24} color="#007AFF" />
+            <Ionicons name="arrow-back" size={24} color={theme.colors.forest} />
             <Text style={styles.backButtonText}>Back to List</Text>
           </TouchableOpacity>
         </View>
@@ -383,7 +372,6 @@ export default function PastActivitiesScreen() {
     );
   }
 
-  // Calculate totals based on filtered activities
   const totalDistance = filteredActivities.reduce((sum, act) => sum + act.distance, 0);
   const totalDuration = filteredActivities.reduce((sum, act) => sum + act.duration, 0);
   const totalActivities = filteredActivities.length;
@@ -391,7 +379,7 @@ export default function PastActivitiesScreen() {
   if (activities.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="fitness-outline" size={80} color="#ccc" />
+        <Ionicons name="fitness-outline" size={80} color={theme.colors.lightGray} />
         <Text style={styles.emptyText}>No activities yet</Text>
         <TouchableOpacity
           style={styles.startButton}
@@ -408,17 +396,17 @@ export default function PastActivitiesScreen() {
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color="#999" />
+          <Ionicons name="search" size={20} color={theme.colors.gray} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search activities..."
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholderTextColor="#999"
+            placeholderTextColor={theme.colors.lightGray}
           />
           {searchQuery !== '' && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color="#999" />
+              <Ionicons name="close-circle" size={20} color={theme.colors.gray} />
             </TouchableOpacity>
           )}
         </View>
@@ -429,7 +417,7 @@ export default function PastActivitiesScreen() {
           <Ionicons 
             name="filter" 
             size={20} 
-            color={selectedType !== 'all' || sortBy !== 'recent' ? '#007AFF' : '#666'} 
+            color={selectedType !== 'all' || sortBy !== 'recent' ? theme.colors.forest : theme.colors.gray} 
           />
         </TouchableOpacity>
       </View>
@@ -456,7 +444,7 @@ export default function PastActivitiesScreen() {
                 <Ionicons 
                   name={icon as any} 
                   size={16} 
-                  color={selectedType === type ? 'white' : '#666'} 
+                  color={selectedType === type ? theme.colors.white : theme.colors.gray} 
                 />
                 <Text style={[styles.filterChipText, selectedType === type && styles.filterChipTextActive]}>
                   {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -495,7 +483,7 @@ export default function PastActivitiesScreen() {
         </View>
       )}
 
-      {/* Summary Stats */}
+      {/* Summary Stats - Now using formatted units! */}
       <View style={styles.summaryContainer}>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{totalActivities}</Text>
@@ -513,20 +501,19 @@ export default function PastActivitiesScreen() {
         </View>
       </View>
 
-      {/* Share Summary Button */}
+      {/* Rest of the component... */}
       {activities.length > 0 && (
         <View style={styles.shareAllContainer}>
           <TouchableOpacity
             style={styles.shareAllButton}
             onPress={handleShareSummary}
           >
-            <Ionicons name="share-outline" size={20} color="#007AFF" />
+            <Ionicons name="share-outline" size={20} color={theme.colors.forest} />
             <Text style={styles.shareAllButtonText}>Share Activity Summary</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Activities List */}
       {filteredActivities.length > 0 ? (
         <FlatList
           data={filteredActivities}
@@ -537,7 +524,7 @@ export default function PastActivitiesScreen() {
         />
       ) : (
         <View style={styles.noResultsContainer}>
-          <Ionicons name="search-outline" size={60} color="#ccc" />
+          <Ionicons name="search-outline" size={60} color={theme.colors.lightGray} />
           <Text style={styles.noResultsText}>No activities found</Text>
           {searchQuery !== '' && (
             <Text style={styles.noResultsSubtext}>Try adjusting your search</Text>
@@ -545,51 +532,53 @@ export default function PastActivitiesScreen() {
         </View>
       )}
 
-      {/* Floating Add Button */}
       <TouchableOpacity
         style={styles.floatingAddButton}
         onPress={() => router.push('/track-activity')}
       >
-        <Ionicons name="add" size={30} color="white" />
+        <Ionicons name="add" size={30} color={theme.colors.white} />
       </TouchableOpacity>
     </View>
   );
 }
 
+// Styles remain exactly the same
 const styles = StyleSheet.create({
+  // ... all your existing styles ...
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: theme.colors.offWhite,
   },
   emptyText: {
     fontSize: 18,
-    color: '#999',
+    color: theme.colors.gray,
     marginTop: 20,
     marginBottom: 30,
   },
   startButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
   },
   startButtonText: {
-    color: 'white',
+    color: theme.colors.white,
     fontSize: 16,
     fontWeight: '600',
   },
   summaryContainer: {
     flexDirection: 'row',
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.borderGray,
   },
   summaryItem: {
     flex: 1,
@@ -598,36 +587,40 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: theme.colors.navy,
   },
   summaryLabel: {
     fontSize: 12,
-    color: '#666',
+    color: theme.colors.gray,
     marginTop: 4,
   },
   shareAllContainer: {
     paddingHorizontal: 15,
     paddingBottom: 10,
+    backgroundColor: theme.colors.white,
   },
   shareAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: theme.colors.forest + '10',
     paddingVertical: 12,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.forest,
   },
   shareAllButtonText: {
-    color: '#007AFF',
+    color: theme.colors.forest,
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
   },
   listContainer: {
     padding: 15,
+    paddingBottom: 100,
   },
   activityCard: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     borderRadius: 12,
     padding: 15,
     marginBottom: 15,
@@ -646,7 +639,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: theme.colors.forest + '15',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -657,22 +650,24 @@ const styles = StyleSheet.create({
   activityName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
   },
   activityDate: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
     marginTop: 2,
   },
   manualBadge: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: theme.colors.burntOrange + '20',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.burntOrange,
   },
   manualBadgeText: {
     fontSize: 11,
-    color: '#FF9800',
+    color: theme.colors.burntOrange,
     fontWeight: '600',
   },
   statsRow: {
@@ -681,24 +676,24 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: theme.colors.borderGray,
   },
   statItem: {
     alignItems: 'center',
   },
   statLabel: {
     fontSize: 12,
-    color: '#999',
+    color: theme.colors.gray,
     marginBottom: 4,
   },
   statValue: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.navy,
   },
   notes: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
     marginTop: 10,
     fontStyle: 'italic',
   },
@@ -709,18 +704,18 @@ const styles = StyleSheet.create({
     marginTop: 15,
     paddingTop: 15,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: theme.colors.borderGray,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.colors.offWhite,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
   },
   shareButton: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: theme.colors.forest + '10',
     flex: 1,
     marginRight: 8,
     justifyContent: 'center',
@@ -735,25 +730,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   actionButtonText: {
-    color: '#007AFF',
+    color: theme.colors.forest,
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 6,
   },
   mapHeader: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.borderGray,
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   backButtonText: {
-    color: '#007AFF',
+    color: theme.colors.forest,
     fontSize: 16,
     marginLeft: 8,
+    fontWeight: '500',
   },
   map: {
     flex: 1,
@@ -765,7 +761,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -777,15 +773,15 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     padding: 15,
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.borderGray,
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
     borderRadius: 8,
     paddingHorizontal: 12,
     marginRight: 10,
@@ -795,26 +791,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.navy,
   },
   filterButton: {
     width: 44,
     height: 44,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: theme.colors.offWhite,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterContainer: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.white,
     paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: theme.colors.borderGray,
   },
   filterTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: theme.colors.gray,
     marginLeft: 15,
     marginBottom: 10,
   },
@@ -827,20 +823,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.colors.offWhite,
     borderRadius: 20,
     marginRight: 8,
   },
   filterChipActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
   },
   filterChipText: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
     marginLeft: 6,
   },
   filterChipTextActive: {
-    color: 'white',
+    color: theme.colors.white,
   },
   sortOptions: {
     flexDirection: 'row',
@@ -849,19 +845,19 @@ const styles = StyleSheet.create({
   sortChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: theme.colors.offWhite,
     borderRadius: 20,
     marginRight: 8,
   },
   sortChipActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.colors.forest,
   },
   sortChipText: {
     fontSize: 14,
-    color: '#666',
+    color: theme.colors.gray,
   },
   sortChipTextActive: {
-    color: 'white',
+    color: theme.colors.white,
   },
   noResultsContainer: {
     flex: 1,
@@ -871,12 +867,12 @@ const styles = StyleSheet.create({
   },
   noResultsText: {
     fontSize: 18,
-    color: '#999',
+    color: theme.colors.gray,
     marginTop: 20,
   },
   noResultsSubtext: {
     fontSize: 14,
-    color: '#999',
+    color: theme.colors.gray,
     marginTop: 8,
   },
 });
