@@ -1,8 +1,10 @@
-// app/index.tsx - Fixed with Settings Integration
+// app/index.tsx - Updated to check onboarding status
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+    ActivityIndicator,
     Animated,
     Dimensions,
     Modal,
@@ -21,7 +23,7 @@ import { categories } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
-import { useSettings } from "../contexts/SettingsContext"; // ADD THIS!
+import { useSettings } from "../contexts/SettingsContext";
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -31,8 +33,12 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
-  const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings(); // GET MAP TILE URL TOO!
+  const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings();
   const webViewRef = useRef<WebView>(null);
+
+  // Onboarding check state
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
+  const [userName, setUserName] = useState<string>('');
 
   // State
   const [showSidebar, setShowSidebar] = useState(false);
@@ -74,12 +80,52 @@ export default function DashboardScreen() {
     }).start();
   };
 
+  // Check onboarding status on mount
   useEffect(() => {
-    if (!location) {
-      getLocation();
-    }
+    checkOnboardingStatus();
   }, []);
 
+  useEffect(() => {
+    if (!location && !isCheckingOnboarding) {
+      getLocation();
+    }
+  }, [isCheckingOnboarding]);
+
+  const checkOnboardingStatus = async () => {
+    try {
+      const onboardingComplete = await AsyncStorage.getItem('onboardingComplete');
+      const savedUserName = await AsyncStorage.getItem('userName');
+      
+      if (savedUserName) {
+        setUserName(savedUserName);
+      }
+      
+      if (onboardingComplete !== 'true') {
+        // Navigate to onboarding
+        router.replace('/onboarding');
+      } else {
+        // Continue with the dashboard
+        setIsCheckingOnboarding(false);
+      }
+    } catch (error) {
+      console.error('Error checking onboarding status:', error);
+      // If there's an error, continue to dashboard
+      setIsCheckingOnboarding(false);
+    }
+  };
+
+  // Show loading while checking onboarding
+  if (isCheckingOnboarding) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <ExplorableIcon size={80} />
+        <ActivityIndicator size="large" color={theme.colors.forest} style={{ marginTop: 20 }} />
+        <Text style={styles.loadingText}>Loading your adventures...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Rest of your existing dashboard code continues here...
   // Calculate statistics
   const totalDistance = activities.reduce((sum, act) => sum + act.distance, 0);
   const totalDuration = activities.reduce((sum, act) => sum + act.duration, 0);
@@ -202,7 +248,6 @@ export default function DashboardScreen() {
         <script>
           var map = L.map('map').setView([${centerLat}, ${centerLng}], 11);
           
-          // Use the tile layer based on user's preference
           L.tileLayer('${tileUrl}', {
             attribution: '${attribution}',
             maxZoom: ${settings.mapStyle === 'satellite' ? 18 : 19}
@@ -235,25 +280,28 @@ export default function DashboardScreen() {
             map.fitBounds(group.getBounds().pad(0.1));
           }
         </script>
-        </script>
       </body>
       </html>
     `;
   };
 
-  const sidebarItems = [
-    { icon: "map", label: "Dashboard", route: "/", active: true },
-    { icon: "location", label: "Saved Spots", route: "/saved-spots" },
-    { icon: "fitness", label: "Activities", route: "/past-activities" },
-    { icon: "heart", label: "Wishlist", route: "/wishlist" },
-    { icon: "add-circle", label: "Add New", route: "/save-location" },
-    { divider: true },
-    { icon: "stats-chart", label: "Statistics", route: "/statistics" },
-    { icon: 'trophy', label: 'Achievements', route: '/statistics#achievements' },
-    { divider: true },
-    { icon: "settings", label: "Settings", route: "/settings" },
-    { icon: "information-circle", label: "About", route: "/" },
-  ];
+// Add this to your existing sidebarItems array in index.tsx
+// Place it after the "Activities" item and before the divider
+
+const sidebarItems = [
+  { icon: "map", label: "Dashboard", route: "/", active: true },
+  { icon: "location", label: "Saved Spots", route: "/saved-spots" },
+  { icon: "fitness", label: "Activities", route: "/past-activities" },
+  { icon: "people", label: "Friends Feed", route: "/friends-feed" }, // ADD THIS LINE
+  { icon: "heart", label: "Wishlist", route: "/wishlist" },
+  { icon: "add-circle", label: "Add New", route: "/save-location" },
+  { divider: true },
+  { icon: "stats-chart", label: "Statistics", route: "/statistics" },
+  { icon: 'trophy', label: 'Achievements', route: '/statistics#achievements' },
+  { divider: true },
+  { icon: "settings", label: "Settings", route: "/settings" },
+  { icon: "information-circle", label: "About", route: "/" },
+];
 
   const activityIcons = {
     bike: "bicycle",
@@ -279,7 +327,6 @@ export default function DashboardScreen() {
           <Ionicons name="menu" size={28} color={theme.colors.navy} />
         </TouchableOpacity>
 
-        {/* Logo instead of text */}
         <View style={styles.logoContainer}>
           <ExplorableLogo width={140} variant="default" />
         </View>
@@ -289,11 +336,25 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Main Content ScrollView */}
+      {/* Welcome message if user provided name */}
+      {userName && (
+        <View style={styles.welcomeBar}>
+          <View style={styles.welcomeContent}>
+            <Text style={styles.welcomeText}>Welcome back, {userName}!</Text>
+            <View style={styles.treeIcon}>
+              <View style={styles.triangle} />
+              <View style={styles.trunk} />
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Main Content ScrollView - rest of your existing code... */}
       <ScrollView
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
       >
+        {/* Rest of your existing dashboard content... */}
         {/* Stats Cards Section */}
         <View style={styles.statsSection}>
           <Text style={styles.sectionTitle}>This Week</Text>
@@ -458,7 +519,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Recent Activity Section - FIXED TO USE SETTINGS! */}
+        {/* Recent Activity Section */}
         <View style={styles.recentSection}>
           <Text style={styles.sectionTitle}>Recent Adventures</Text>
           {[...activities]
@@ -526,7 +587,7 @@ export default function DashboardScreen() {
 
       {/* Floating Action Buttons */}
       <View style={styles.profileSection}>
-        <Text style={styles.profileName}>Explorer</Text>
+        <Text style={styles.profileName}>{userName || 'Explorer'}</Text>
         <Text style={styles.profileStats}>
           {savedSpots.length} places • {activities.length} activities
         </Text>
@@ -571,7 +632,7 @@ export default function DashboardScreen() {
         </View>
       </Animated.View>
 
-      {/* Sidebar Modal */}
+      {/* Sidebar Modal - rest of your existing sidebar code... */}
       <Modal
         visible={showSidebar}
         animationType="none"
@@ -592,7 +653,7 @@ export default function DashboardScreen() {
               <View style={styles.profileAvatar}>
                 <ExplorableIcon size={60} color={theme.colors.forest} />
               </View>
-              <Text style={styles.profileName}>Explorer</Text>
+              <Text style={styles.profileName}>{userName || 'Explorer'}</Text>
               <Text style={styles.profileStats}>
                 {savedSpots.length} places • {activities.length} activities
               </Text>
@@ -644,8 +705,60 @@ export default function DashboardScreen() {
   );
 }
 
-// Styles remain the same
+// Add these new styles to your existing styles
 const styles = StyleSheet.create({
+  // Add loading styles
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.offWhite,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: theme.colors.gray,
+  },
+  welcomeBar: {
+    backgroundColor: theme.colors.forest + '10',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.forest + '20',
+  },
+  welcomeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  welcomeText: {
+    fontSize: 14,
+    color: theme.colors.forest,
+    fontWeight: '500',
+  },
+  treeIcon: {
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  triangle: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderBottomWidth: 12,
+    borderStyle: 'solid',
+    backgroundColor: 'transparent',
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: theme.colors.forest,
+  },
+  trunk: {
+    width: 4,
+    height: 4,
+    backgroundColor: theme.colors.navy,
+    marginTop: -1,
+  },
+  // ... rest of your existing styles
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,

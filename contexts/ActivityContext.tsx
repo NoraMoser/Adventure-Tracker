@@ -39,8 +39,6 @@ interface ActivityContextType {
   currentSpeed: number;
   location: LocationPoint | null;
 
-  // Add this line after the Activity interface definition  
-  
   // Saved activities
   activities: Activity[];
   
@@ -247,6 +245,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const stopTracking = async (name: string, notes?: string) => {
     try {
+      // Clean up tracking resources
       if (locationSubscription.current) {
         locationSubscription.current.remove();
         locationSubscription.current = null;
@@ -257,59 +256,77 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
         durationInterval.current = null;
       }
 
-      // Calculate final duration accounting for paused time
-      let finalDuration = currentDuration;
-      
-      // If we're currently paused, we already have the correct duration
-      // If not paused, calculate one final time
-      if (!pauseStartRef.current && startTimeRef.current) {
-        finalDuration = Math.floor((Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000);
+      // Check if this is a discard action
+      if (name === "" && notes === "DISCARD_ACTIVITY") {
+        console.log('Discarding activity - not saving');
+        // Reset tracking state without saving
+        setIsTracking(false);
+        setIsPaused(false);
+        setCurrentRoute([]);
+        setCurrentDistance(0);
+        setCurrentDuration(0);
+        setCurrentSpeed(0);
+        setCurrentLocation(null);
+        startTimeRef.current = null;
+        pausedTimeRef.current = 0;
+        pauseStartRef.current = null;
+        return; // Exit without saving
       }
-      
-      console.log('Saving activity with duration:', finalDuration);
-      console.log('Current duration was:', currentDuration);
-      console.log('Start time:', startTimeRef.current);
-      console.log('Paused time:', pausedTimeRef.current);
 
-      // Calculate final stats
-      const endTime = new Date();
-      const startTime = new Date(startTimeRef.current || Date.now());
-      const avgSpeed = currentDistance > 0 ? (currentDistance / 1000) / (finalDuration / 3600) : 0;
-      
-      // Find max speed from route
-      let maxSpeed = 0;
-      for (let i = 1; i < currentRoute.length; i++) {
-        const timeDiff = (currentRoute[i].timestamp - currentRoute[i - 1].timestamp) / 1000; // seconds
-        if (timeDiff > 0) {
-          const dist = calculateDistance(
-            currentRoute[i - 1].latitude,
-            currentRoute[i - 1].longitude,
-            currentRoute[i].latitude,
-            currentRoute[i].longitude
-          );
-          const speed = (dist / 1000) / (timeDiff / 3600); // km/h
-          maxSpeed = Math.max(maxSpeed, speed);
+      // Only save if we have a valid name or meaningful data
+      if (name || currentDistance > 0) {
+        console.log('Saving activity:', name);
+        
+        // Calculate final duration accounting for paused time
+        let finalDuration = currentDuration;
+        
+        // If we're currently paused, we already have the correct duration
+        // If not paused, calculate one final time
+        if (!pauseStartRef.current && startTimeRef.current) {
+          finalDuration = Math.floor((Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000);
         }
+
+        // Calculate final stats
+        const endTime = new Date();
+        const startTime = new Date(startTimeRef.current || Date.now());
+        const avgSpeed = currentDistance > 0 ? (currentDistance / 1000) / (finalDuration / 3600) : 0;
+        
+        // Find max speed from route
+        let maxSpeed = 0;
+        for (let i = 1; i < currentRoute.length; i++) {
+          const timeDiff = (currentRoute[i].timestamp - currentRoute[i - 1].timestamp) / 1000; // seconds
+          if (timeDiff > 0) {
+            const dist = calculateDistance(
+              currentRoute[i - 1].latitude,
+              currentRoute[i - 1].longitude,
+              currentRoute[i].latitude,
+              currentRoute[i].longitude
+            );
+            const speed = (dist / 1000) / (timeDiff / 3600); // km/h
+            maxSpeed = Math.max(maxSpeed, speed);
+          }
+        }
+
+        const newActivity: Activity = {
+          id: Date.now().toString(),
+          type: currentActivity,
+          name: name || `${currentActivity} activity`,
+          startTime,
+          endTime,
+          duration: finalDuration,
+          distance: currentDistance,
+          route: currentRoute,
+          averageSpeed: avgSpeed,
+          maxSpeed,
+          notes: notes && notes !== "DISCARD_ACTIVITY" ? notes : undefined,
+          isManualEntry: false,
+        };
+
+        const updatedActivities = [...activities, newActivity];
+        setActivities(updatedActivities);
+        await saveActivities(updatedActivities);
+        console.log('Activity saved successfully');
       }
-
-      const newActivity: Activity = {
-        id: Date.now().toString(),
-        type: currentActivity,
-        name,
-        startTime,
-        endTime,
-        duration: finalDuration, // Use the calculated final duration
-        distance: currentDistance,
-        route: currentRoute,
-        averageSpeed: avgSpeed,
-        maxSpeed,
-        notes,
-        isManualEntry: false,
-      };
-
-      const updatedActivities = [...activities, newActivity];
-      setActivities(updatedActivities);
-      await saveActivities(updatedActivities);
 
       // Reset tracking state
       setIsTracking(false);
@@ -318,6 +335,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
       setCurrentDistance(0);
       setCurrentDuration(0);
       setCurrentSpeed(0);
+      setCurrentLocation(null);
       startTimeRef.current = null;
       pausedTimeRef.current = 0;
       pauseStartRef.current = null;

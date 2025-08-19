@@ -1,37 +1,183 @@
-// settings.tsx - Complete with ActivityPickerModal at the bottom
+// settings.tsx - Enhanced with full Export/Import functionality
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
-import * as FileSystem from 'expo-file-system';
 import { Stack, useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import React, { useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
-    Linking,
-    Platform,
+    Modal,
     ScrollView,
     StyleSheet,
     Switch,
     Text,
+    TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { ActivityPickerModal } from '../components/ActivityPickerModal';
 import { ExplorableIcon } from '../components/Logo';
 import { theme } from '../constants/theme';
 import { useActivity } from '../contexts/ActivityContext';
 import { useLocation } from '../contexts/LocationContext';
-import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
+import { useSettings } from '../contexts/SettingsContext';
 import { useWishlist } from '../contexts/WishlistContext';
+import { ExportService } from '../services/exportService';
+
+// Export Modal Component
+const ExportModal = ({ 
+  visible, 
+  onClose,
+  onExport
+}: { 
+  visible: boolean; 
+  onClose: () => void;
+  onExport: (format: 'json' | 'csv' | 'gpx', method: 'share' | 'email') => void;
+}) => {
+  const [selectedFormat, setSelectedFormat] = useState<'json' | 'csv' | 'gpx'>('json');
+  const [emailAddress, setEmailAddress] = useState('');
+  const [showEmailInput, setShowEmailInput] = useState(false);
+
+  const exportFormats = [
+    { 
+      id: 'json', 
+      name: 'JSON Backup', 
+      description: 'Complete backup with all data',
+      icon: 'code-outline',
+      color: theme.colors.forest
+    },
+    { 
+      id: 'csv', 
+      name: 'CSV Export', 
+      description: 'Spreadsheet format for analysis',
+      icon: 'grid-outline',
+      color: theme.colors.navy
+    },
+    { 
+      id: 'gpx', 
+      name: 'GPX Tracks', 
+      description: 'GPS routes for other apps',
+      icon: 'navigate-outline',
+      color: theme.colors.burntOrange
+    },
+  ];
+
+  const handleExport = () => {
+    if (showEmailInput && !emailAddress.trim()) {
+      Alert.alert('Email Required', 'Please enter an email address');
+      return;
+    }
+    onExport(selectedFormat, showEmailInput ? 'email' : 'share');
+    onClose();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Export Data</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={theme.colors.gray} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.modalSubtitle}>Choose export format:</Text>
+
+          {exportFormats.map(format => (
+            <TouchableOpacity
+              key={format.id}
+              style={[
+                styles.formatOption,
+                selectedFormat === format.id && styles.formatOptionSelected
+              ]}
+              onPress={() => setSelectedFormat(format.id as any)}
+            >
+              <View style={[styles.formatIcon, { backgroundColor: format.color + '20' }]}>
+                <Ionicons name={format.icon as any} size={24} color={format.color} />
+              </View>
+              <View style={styles.formatInfo}>
+                <Text style={styles.formatName}>{format.name}</Text>
+                <Text style={styles.formatDescription}>{format.description}</Text>
+              </View>
+              {selectedFormat === format.id && (
+                <Ionicons name="checkmark-circle" size={24} color={theme.colors.forest} />
+              )}
+            </TouchableOpacity>
+          ))}
+
+          <View style={styles.exportMethodSection}>
+            <Text style={styles.modalSubtitle}>Export via:</Text>
+            
+            <View style={styles.methodButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.methodButton,
+                  !showEmailInput && styles.methodButtonActive
+                ]}
+                onPress={() => setShowEmailInput(false)}
+              >
+                <Ionicons name="share-social" size={20} color={!showEmailInput ? theme.colors.white : theme.colors.gray} />
+                <Text style={[styles.methodButtonText, !showEmailInput && styles.methodButtonTextActive]}>
+                  Share
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.methodButton,
+                  showEmailInput && styles.methodButtonActive
+                ]}
+                onPress={() => setShowEmailInput(true)}
+              >
+                <Ionicons name="mail" size={20} color={showEmailInput ? theme.colors.white : theme.colors.gray} />
+                <Text style={[styles.methodButtonText, showEmailInput && styles.methodButtonTextActive]}>
+                  Email
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {showEmailInput && (
+              <TextInput
+                style={styles.emailInput}
+                placeholder="Enter email address"
+                value={emailAddress}
+                onChangeText={setEmailAddress}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholderTextColor={theme.colors.lightGray}
+              />
+            )}
+          </View>
+
+          <TouchableOpacity style={styles.exportButton} onPress={handleExport}>
+            <Ionicons name="download-outline" size={20} color={theme.colors.white} />
+            <Text style={styles.exportButtonText}>Export</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { savedSpots } = useLocation();
   const { activities } = useActivity();
   const { wishlistItems } = useWishlist();
-  const { settings, updateSettings } = useSettings(); // USE CONTEXT INSTEAD OF LOCAL STATE
+  const { settings, updateSettings } = useSettings();
+  
   const [showActivityPicker, setShowActivityPicker] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const updateSetting = async (key: string, value: any) => {
     await updateSettings({ [key]: value });
@@ -43,34 +189,135 @@ export default function SettingsScreen() {
     });
   };
 
-  const exportData = async () => {
+  // Enhanced export functionality
+  const handleExport = async (format: 'json' | 'csv' | 'gpx', method: 'share' | 'email') => {
+    setIsExporting(true);
     try {
-      const data = {
-        exportDate: new Date().toISOString(),
-        appVersion: Application.nativeApplicationVersion || '1.0.0',
-        settings,
-        savedSpots,
-        activities,
-        wishlistItems,
-      };
+      let fileUri: string;
+      let filename: string;
+      let mimeType: string;
 
-      const jsonString = JSON.stringify(data, null, 2);
-      const filename = `explorable-backup-${new Date().toISOString().split('T')[0]}.json`;
-      const fileUri = FileSystem.documentDirectory + filename;
+      switch (format) {
+        case 'json':
+          const backup = await ExportService.createBackup(
+            settings,
+            savedSpots,
+            activities,
+            wishlistItems
+          );
+          fileUri = backup.uri;
+          filename = backup.filename;
+          mimeType = 'application/json';
+          break;
 
-      await FileSystem.writeAsStringAsync(fileUri, jsonString);
+        case 'csv':
+          const csvFiles = await ExportService.exportAsCSV(savedSpots, activities);
+          // For CSV, we'll share the activities file (you could let user choose)
+          fileUri = csvFiles.activitiesUri;
+          filename = `explorable_activities_${new Date().toISOString().split('T')[0]}.csv`;
+          mimeType = 'text/csv';
+          
+          // Also share spots CSV
+          Alert.alert(
+            'CSV Export',
+            'Two CSV files created:\n• Activities data\n• Saved locations\n\nSharing activities first.',
+            [
+              {
+                text: 'Share Both',
+                onPress: async () => {
+                  await ExportService.shareFile(csvFiles.activitiesUri, 'text/csv');
+                  setTimeout(() => {
+                    ExportService.shareFile(csvFiles.spotsUri, 'text/csv');
+                  }, 1000);
+                }
+              },
+              { text: 'Activities Only', onPress: () => {} }
+            ]
+          );
+          break;
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
-          dialogTitle: 'Export explorAble Data',
-        });
-      } else {
-        Alert.alert('Export Complete', `Data saved to ${filename}`);
+        case 'gpx':
+          const gpx = await ExportService.exportActivitiesAsGPX(activities);
+          fileUri = gpx.uri;
+          filename = gpx.filename;
+          mimeType = 'application/gpx+xml';
+          break;
+
+        default:
+          throw new Error('Invalid export format');
       }
+
+      // Get file size for user info
+      const fileSize = await ExportService.getFileSize(fileUri);
+
+      if (method === 'email') {
+        await ExportService.emailBackup(fileUri, filename, undefined);
+      } else {
+        await ExportService.shareFile(fileUri, mimeType);
+      }
+
+      // Show success with file info
+      Alert.alert(
+        'Export Ready',
+        `File: ${filename}\nSize: ${fileSize}\n\nYour data has been prepared for export.`,
+        [{ text: 'OK' }]
+      );
+
     } catch (error) {
-      Alert.alert('Export Failed', 'Could not export your data');
+      console.error('Export error:', error);
+      Alert.alert('Export Failed', 'Could not export your data. Please try again.');
+    } finally {
+      setIsExporting(false);
+      setShowExportModal(false);
     }
+  };
+
+  // Import functionality
+  const handleImport = async () => {
+    Alert.alert(
+      'Import Backup',
+      'This will replace all current data with the imported backup. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Import',
+          style: 'destructive',
+          onPress: async () => {
+            setIsImporting(true);
+            try {
+              const data = await ExportService.importBackup();
+              
+              if (data) {
+                const success = await ExportService.restoreFromBackup(data);
+                
+                if (success) {
+                  Alert.alert(
+                    'Import Successful',
+                    `Imported backup from ${new Date(data.exportDate).toLocaleDateString()}\n\n• ${data.savedSpots?.length || 0} locations\n• ${data.activities?.length || 0} activities\n• ${data.wishlistItems?.length || 0} wishlist items`,
+                    [
+                      {
+                        text: 'Restart App',
+                        onPress: () => {
+                          // Force app reload to reflect new data
+                          router.replace('/');
+                        }
+                      }
+                    ]
+                  );
+                } else {
+                  Alert.alert('Import Failed', 'Could not restore data from backup');
+                }
+              }
+            } catch (error) {
+              console.error('Import error:', error);
+              Alert.alert('Import Failed', 'Could not import backup file');
+            } finally {
+              setIsImporting(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const clearAllData = () => {
@@ -116,7 +363,12 @@ export default function SettingsScreen() {
   };
 
   const contactSupport = () => {
-    Linking.openURL('mailto:your.email@example.com?subject=explorAble Support Request');
+    // You can replace this with your actual support email
+    Alert.alert(
+      'Contact Support',
+      'Email: support@explorable.app\n\nWe\'d love to hear from you!',
+      [{ text: 'OK' }]
+    );
   };
 
   const rateApp = () => {
@@ -128,12 +380,11 @@ export default function SettingsScreen() {
   };
 
   const shareApp = () => {
-    const message = `Check out explorAble - Track your outdoor adventures! 🌲 Built with React Native & Expo.`;
-    if (Platform.OS === 'ios') {
-      Linking.openURL(`sms:&body=${encodeURIComponent(message)}`);
-    } else {
-      Linking.openURL(`sms:?body=${encodeURIComponent(message)}`);
-    }
+    Alert.alert(
+      'Share explorAble',
+      'Share this app with your adventure buddies!',
+      [{ text: 'OK' }]
+    );
   };
 
   const settingSections = [
@@ -215,9 +466,16 @@ export default function SettingsScreen() {
         {
           type: 'action',
           label: 'Export Data',
-          subtitle: 'Download all your data',
+          subtitle: 'Backup to JSON, CSV, or GPX',
           icon: 'download-outline',
-          onPress: exportData,
+          onPress: () => setShowExportModal(true),
+        },
+        {
+          type: 'action',
+          label: 'Import Backup',
+          subtitle: 'Restore from backup file',
+          icon: 'cloud-download-outline',
+          onPress: handleImport,
         },
         {
           type: 'action',
@@ -333,6 +591,10 @@ export default function SettingsScreen() {
                 ]}
                 onPress={item.type !== 'switch' ? item.onPress : undefined}
                 activeOpacity={item.type === 'switch' ? 1 : 0.7}
+                disabled={
+                  (item.label === 'Export Data' && isExporting) ||
+                  (item.label === 'Import Backup' && isImporting)
+                }
               >
                 <View style={styles.settingContent}>
                   {item.icon && (
@@ -352,6 +614,12 @@ export default function SettingsScreen() {
                     )}
                   </View>
                 </View>
+
+                {/* Show loading indicator for export/import */}
+                {((item.label === 'Export Data' && isExporting) ||
+                  (item.label === 'Import Backup' && isImporting)) && (
+                  <ActivityIndicator size="small" color={theme.colors.forest} />
+                )}
 
                 {item.type === 'switch' && (
                   <Switch
@@ -376,11 +644,11 @@ export default function SettingsScreen() {
                   </View>
                 )}
 
-                {item.type === 'link' && (
+                {item.type === 'link' && !isExporting && !isImporting && (
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
                 )}
 
-                {item.type === 'action' && !item.danger && (
+                {item.type === 'action' && !item.danger && !isExporting && !isImporting && (
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
                 )}
               </TouchableOpacity>
@@ -395,7 +663,14 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      {/* ActivityPickerModal - THIS IS THE MODAL! */}
+      {/* Export Modal */}
+      <ExportModal
+        visible={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+      />
+
+      {/* Activity Picker Modal */}
       <ActivityPickerModal
         visible={showActivityPicker}
         currentValue={settings.defaultActivityType as any}
@@ -534,5 +809,129 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.lightGray,
     marginTop: 4,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: theme.colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    marginBottom: 15,
+    marginTop: 10,
+  },
+  formatOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  formatOptionSelected: {
+    borderColor: theme.colors.forest,
+    backgroundColor: theme.colors.forest + '10',
+  },
+  formatIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15,
+  },
+  formatInfo: {
+    flex: 1,
+  },
+  formatName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  formatDescription: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  exportMethodSection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+  },
+  methodButtons: {
+    flexDirection: 'row',
+    marginBottom: 15,
+  },
+  methodButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginHorizontal: 5,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  methodButtonActive: {
+    backgroundColor: theme.colors.forest,
+    borderColor: theme.colors.forest,
+  },
+  methodButtonText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.gray,
+  },
+  methodButtonTextActive: {
+    color: theme.colors.white,
+  },
+  emailInput: {
+    backgroundColor: theme.colors.offWhite,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: theme.colors.navy,
+  },
+  exportButton: {
+    backgroundColor: theme.colors.forest,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  exportButtonText: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

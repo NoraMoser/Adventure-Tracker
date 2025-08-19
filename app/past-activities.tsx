@@ -1,13 +1,15 @@
-// past-activities.tsx - Fixed with Settings integration
+// past-activities.tsx - Updated with Social Sharing Features
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Modal,
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,7 +18,8 @@ import {
 import { WebView } from 'react-native-webview';
 import { theme } from '../constants/theme';
 import { ActivityType, useActivity } from '../contexts/ActivityContext';
-import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
+import { useFriends } from '../contexts/FriendsContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { ShareService } from '../services/shareService';
 
 const activityIcons: Record<ActivityType, string> = {
@@ -29,16 +32,144 @@ const activityIcons: Record<ActivityType, string> = {
   other: 'fitness',
 };
 
+// Share with Friends Modal Component
+const ShareWithFriendsModal = ({ 
+  visible, 
+  onClose, 
+  activity,
+  onShare 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  activity: any;
+  onShare: (selectedFriends: string[], message?: string) => void;
+}) => {
+  const { friends } = useFriends();
+  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
+  const [shareMessage, setShareMessage] = useState('');
+  const [shareToAll, setShareToAll] = useState(false);
+  
+  const toggleFriend = (friendId: string) => {
+    if (selectedFriends.includes(friendId)) {
+      setSelectedFriends(selectedFriends.filter(id => id !== friendId));
+    } else {
+      setSelectedFriends([...selectedFriends, friendId]);
+    }
+  };
+  
+  const handleShare = () => {
+    const friendsToShare = shareToAll ? friends.map(f => f.id) : selectedFriends;
+    if (friendsToShare.length === 0) {
+      Alert.alert('Select Friends', 'Please select at least one friend to share with');
+      return;
+    }
+    onShare(friendsToShare, shareMessage);
+    onClose();
+  };
+  
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.shareModalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Share Activity</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={theme.colors.gray} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.activityPreview}>
+            <Text style={styles.previewTitle}>{activity?.name}</Text>
+            <View style={styles.previewStats}>
+              <Text style={styles.previewStat}>
+                <Ionicons name="navigate" size={14} /> {(activity?.distance / 1000).toFixed(2)} km
+              </Text>
+              <Text style={styles.previewStat}>
+                <Ionicons name="time" size={14} /> {Math.round(activity?.duration / 60)} min
+              </Text>
+            </View>
+          </View>
+          
+          <TextInput
+            style={styles.shareMessageInput}
+            placeholder="Add a message (optional)..."
+            value={shareMessage}
+            onChangeText={setShareMessage}
+            multiline
+            numberOfLines={3}
+            placeholderTextColor={theme.colors.lightGray}
+          />
+          
+          <View style={styles.shareToAllContainer}>
+            <Text style={styles.shareToAllText}>Share with all friends</Text>
+            <Switch
+              value={shareToAll}
+              onValueChange={setShareToAll}
+              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
+              thumbColor={shareToAll ? theme.colors.white : theme.colors.lightGray}
+            />
+          </View>
+          
+          {!shareToAll && (
+            <ScrollView style={styles.friendsList}>
+              <Text style={styles.friendsListTitle}>Select Friends:</Text>
+              {friends.filter(f => f.status === 'accepted').map(friend => (
+                <TouchableOpacity
+                  key={friend.id}
+                  style={styles.friendItem}
+                  onPress={() => toggleFriend(friend.id)}
+                >
+                  <View style={styles.friendInfo}>
+                    <View style={styles.friendAvatar}>
+                      <Text>{friend.avatar || '👤'}</Text>
+                    </View>
+                    <Text style={styles.friendName}>{friend.displayName}</Text>
+                  </View>
+                  <Ionicons
+                    name={selectedFriends.includes(friend.id) ? 'checkbox' : 'square-outline'}
+                    size={24}
+                    color={selectedFriends.includes(friend.id) ? theme.colors.forest : theme.colors.gray}
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+              <Ionicons name="share-social" size={20} color="white" />
+              <Text style={styles.shareButtonText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 export default function PastActivitiesScreen() {
   const { activities, deleteActivity } = useActivity();
-  const { formatDistance, formatSpeed } = useSettings(); // ADD THIS - get from context
+  const { shareActivity, friends, privacySettings } = useFriends();
+  const { formatDistance, formatSpeed } = useSettings();
   const router = useRouter();
+  
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showMap, setShowMap] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<ActivityType | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'distance' | 'duration'>('recent');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [activityToShare, setActivityToShare] = useState<any>(null);
+  const [autoShareEnabled, setAutoShareEnabled] = useState(privacySettings.shareActivitiesWithFriends);
 
   // Filter and sort activities
   const filteredActivities = useMemo(() => {
@@ -91,9 +222,6 @@ export default function PastActivitiesScreen() {
     }
   };
 
-  // REMOVED formatDistance - now comes from useSettings()
-  // REMOVED formatSpeed - now comes from useSettings()
-
   const formatDate = (date: string | Date) => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', { 
@@ -145,6 +273,33 @@ export default function PastActivitiesScreen() {
     }
   };
 
+  const handleShareWithFriends = (activity: any) => {
+    if (friends.filter(f => f.status === 'accepted').length === 0) {
+      Alert.alert(
+        'No Friends Yet',
+        'Add some friends to share your activities with them!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Find Friends', onPress: () => router.push('/friends') }
+        ]
+      );
+      return;
+    }
+    setActivityToShare(activity);
+    setShowShareModal(true);
+  };
+
+  const handleShareToFriends = async (selectedFriends: string[], message?: string) => {
+    try {
+      await shareActivity(activityToShare.id, selectedFriends);
+      Alert.alert('Success', 'Activity shared with friends!');
+      setShowShareModal(false);
+      setActivityToShare(null);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to share activity with friends');
+    }
+  };
+
   const handleCopyActivity = async (activity: any) => {
     try {
       await ShareService.copyActivityToClipboard(activity);
@@ -163,7 +318,7 @@ export default function PastActivitiesScreen() {
       let message = `🏃 My explorAble Adventure Summary\n\n`;
       message += `📊 Total Stats:\n`;
       message += `• ${filteredActivities.length} activities completed\n`;
-      message += `• ${formatDistance(totalDistance)} total distance\n`; // Uses settings!
+      message += `• ${formatDistance(totalDistance)} total distance\n`;
       message += `• ${formatDuration(totalDuration)} total time\n\n`;
       
       message += `🎯 Recent Activities:\n`;
@@ -323,11 +478,19 @@ export default function PastActivitiesScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity
+            style={[styles.actionButton, styles.friendsButton]}
+            onPress={() => handleShareWithFriends(item)}
+          >
+            <Ionicons name="people-outline" size={20} color={theme.colors.navy} />
+            <Text style={[styles.actionButtonText, { color: theme.colors.navy }]}>Friends</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
             style={styles.actionButton}
             onPress={() => handleViewMap(item)}
           >
-            <Ionicons name="map-outline" size={20} color={theme.colors.navy} />
-            <Text style={[styles.actionButtonText, { color: theme.colors.navy }]}>View Route</Text>
+            <Ionicons name="map-outline" size={20} color={theme.colors.gray} />
+            <Text style={[styles.actionButtonText, { color: theme.colors.gray }]}>Map</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -348,7 +511,6 @@ export default function PastActivitiesScreen() {
     );
   };
 
-  // Rest of the component remains the same...
   if (showMap && selectedActivity) {
     return (
       <View style={styles.container}>
@@ -393,6 +555,25 @@ export default function PastActivitiesScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Auto-share Toggle Bar */}
+      {friends.filter(f => f.status === 'accepted').length > 0 && (
+        <View style={styles.autoShareBar}>
+          <View style={styles.autoShareContent}>
+            <Ionicons name="people" size={20} color={theme.colors.forest} />
+            <Text style={styles.autoShareText}>Auto-share with friends</Text>
+          </View>
+          <Switch
+            value={autoShareEnabled}
+            onValueChange={(value) => {
+              setAutoShareEnabled(value);
+              // Update privacy settings
+            }}
+            trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
+            thumbColor={autoShareEnabled ? theme.colors.white : theme.colors.lightGray}
+          />
+        </View>
+      )}
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
@@ -483,7 +664,7 @@ export default function PastActivitiesScreen() {
         </View>
       )}
 
-      {/* Summary Stats - Now using formatted units! */}
+      {/* Summary Stats */}
       <View style={styles.summaryContainer}>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{totalActivities}</Text>
@@ -501,7 +682,6 @@ export default function PastActivitiesScreen() {
         </View>
       </View>
 
-      {/* Rest of the component... */}
       {activities.length > 0 && (
         <View style={styles.shareAllContainer}>
           <TouchableOpacity
@@ -538,16 +718,42 @@ export default function PastActivitiesScreen() {
       >
         <Ionicons name="add" size={30} color={theme.colors.white} />
       </TouchableOpacity>
+
+      {/* Share with Friends Modal */}
+      <ShareWithFriendsModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        activity={activityToShare}
+        onShare={handleShareToFriends}
+      />
     </View>
   );
 }
 
-// Styles remain exactly the same
 const styles = StyleSheet.create({
-  // ... all your existing styles ...
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
+  },
+  autoShareBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.forest + '10',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.forest + '20',
+  },
+  autoShareContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  autoShareText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: theme.colors.forest,
+    fontWeight: '500',
   },
   emptyContainer: {
     flex: 1,
@@ -716,7 +922,13 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     backgroundColor: theme.colors.forest + '10',
-    flex: 1,
+    flex: 0.3,
+    marginRight: 8,
+    justifyContent: 'center',
+  },
+  friendsButton: {
+    backgroundColor: theme.colors.navy + '10',
+    flex: 0.3,
     marginRight: 8,
     justifyContent: 'center',
   },
@@ -874,5 +1086,136 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 8,
+  },
+  // Share Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  shareModalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  activityPreview: {
+    backgroundColor: theme.colors.offWhite,
+    margin: 20,
+    padding: 15,
+    borderRadius: 12,
+  },
+  previewTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.navy,
+    marginBottom: 8,
+  },
+  previewStats: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  previewStat: {
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
+  shareMessageInput: {
+    backgroundColor: theme.colors.offWhite,
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 14,
+    color: theme.colors.navy,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  shareToAllContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 15,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+  },
+  shareToAllText: {
+    fontSize: 16,
+    color: theme.colors.navy,
+    fontWeight: '500',
+  },
+  friendsList: {
+    maxHeight: 200,
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  friendsListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.gray,
+    marginBottom: 10,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  friendInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  friendAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.offWhite,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  friendName: {
+    fontSize: 14,
+    color: theme.colors.navy,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: theme.colors.offWhite,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    color: theme.colors.gray,
+    fontWeight: '600',
+  },
+  shareButtonText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
