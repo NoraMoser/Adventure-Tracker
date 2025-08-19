@@ -1,12 +1,20 @@
-// services/shareService.ts
+// services/shareService.ts - Enhanced with activity sharing and privacy controls
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as Linking from 'expo-linking';
 import * as Sharing from 'expo-sharing';
-import { Platform, Share } from 'react-native';
+import { Alert, Platform, Share } from 'react-native';
 import { categories, CategoryType } from '../constants/categories';
 import { Activity } from '../contexts/ActivityContext';
 import { SavedSpot } from '../contexts/LocationContext';
+
+export interface ShareOptions {
+  includeRoute?: boolean;
+  includeExactLocation?: boolean;
+  shareToFriends?: boolean;
+  friendIds?: string[];
+  message?: string;
+}
 
 export class ShareService {
   /**
@@ -172,9 +180,9 @@ export class ShareService {
   }
 
   /**
-   * Create a shareable message for an activity
+   * Create a shareable message for an activity with privacy options
    */
-  static createActivityMessage(activity: Activity): string {
+  static createActivityMessage(activity: Activity, options: ShareOptions = {}): string {
     const activityEmoji = this.getActivityEmoji(activity.type);
     const distance = (activity.distance / 1000).toFixed(2);
     const duration = this.formatDuration(activity.duration);
@@ -186,19 +194,43 @@ export class ShareService {
     message += `\n• Duration: ${duration}`;
     message += `\n• Avg Speed: ${avgSpeed} km/h`;
     
+    if (activity.maxSpeed && activity.maxSpeed > 0) {
+      message += `\n• Max Speed: ${activity.maxSpeed.toFixed(1)} km/h`;
+    }
+    
+    if (activity.elevationGain && activity.elevationGain > 0) {
+      message += `\n• Elevation Gain: ${Math.round(activity.elevationGain)}m`;
+    }
+    
     if (activity.notes) {
       message += `\n\n💭 ${activity.notes}`;
     }
     
-    // Add route preview if available
-    if (activity.route && activity.route.length > 0) {
+    // Add route information based on privacy settings
+    if (options.includeRoute && activity.route && activity.route.length > 0) {
       const startPoint = activity.route[0];
       const endPoint = activity.route[activity.route.length - 1];
-      message += `\n\n📍 Route:`;
-      message += `\n• Start: ${startPoint.latitude.toFixed(4)}, ${startPoint.longitude.toFixed(4)}`;
-      message += `\n• End: ${endPoint.latitude.toFixed(4)}, ${endPoint.longitude.toFixed(4)}`;
+      
+      if (options.includeExactLocation) {
+        message += `\n\n📍 Route:`;
+        message += `\n• Start: ${startPoint.latitude.toFixed(4)}, ${startPoint.longitude.toFixed(4)}`;
+        message += `\n• End: ${endPoint.latitude.toFixed(4)}, ${endPoint.longitude.toFixed(4)}`;
+        
+        // Add Google Maps link for route
+        const routeUrl = this.createRouteUrl(activity.route);
+        if (routeUrl) {
+          message += `\n🗺️ View Route: ${routeUrl}`;
+        }
+      } else {
+        // Just show general area
+        message += `\n\n📍 General Area: ${this.getGeneralArea(startPoint.latitude, startPoint.longitude)}`;
+      }
+    } else if (!options.includeRoute) {
+      message += `\n\n📍 Route details hidden for privacy`;
     }
     
+    const date = new Date(activity.startTime).toLocaleDateString();
+    message += `\n\n📅 ${date}`;
     message += `\n\nShared from ExplorAble 🌲`;
     
     return message;
@@ -234,17 +266,99 @@ export class ShareService {
   }
 
   /**
-   * Share activity
+   * Share activity with privacy options and user prompts
    */
-  static async shareActivity(activity: Activity) {
-    try {
-      const message = this.createActivityMessage(activity);
+  static async shareActivity(activity: Activity, customOptions?: ShareOptions): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // If custom options provided, use them directly
+      if (customOptions) {
+        this.performActivityShare(activity, customOptions)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
+      // Show privacy options dialog
+      const hasRoute = activity.route && activity.route.length > 0;
       
-      const result = await Share.share({
+      if (!hasRoute) {
+        // No route data, just share basic stats
+        const options: ShareOptions = { includeRoute: false };
+        this.performActivityShare(activity, options)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
+      // Activity has route data, ask user about privacy preferences
+      Alert.alert(
+        'Share Activity',
+        'How much detail would you like to share?',
+        [
+          {
+            text: 'Stats Only',
+            onPress: () => {
+              const options: ShareOptions = { includeRoute: false };
+              this.performActivityShare(activity, options)
+                .then(resolve)
+                .catch(reject);
+            }
+          },
+          {
+            text: 'General Area',
+            onPress: () => {
+              const options: ShareOptions = { 
+                includeRoute: true, 
+                includeExactLocation: false 
+              };
+              this.performActivityShare(activity, options)
+                .then(resolve)
+                .catch(reject);
+            }
+          },
+          {
+            text: 'Full Route',
+            onPress: () => {
+              const options: ShareOptions = { 
+                includeRoute: true, 
+                includeExactLocation: true 
+              };
+              this.performActivityShare(activity, options)
+                .then(resolve)
+                .catch(reject);
+            }
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => resolve({ action: 'cancelled' })
+          }
+        ]
+      );
+    });
+  }
+
+  /**
+   * Perform the actual activity share
+   */
+  private static async performActivityShare(activity: Activity, options: ShareOptions) {
+    try {
+      const message = this.createActivityMessage(activity, options);
+      
+      const shareOptions: any = {
         message,
         title: `Check out my ${activity.type} activity!`,
-      });
-      
+      };
+
+      // If including full route, add map URL for iOS
+      if (Platform.OS === 'ios' && options.includeRoute && options.includeExactLocation && activity.route) {
+        const routeUrl = this.createRouteUrl(activity.route);
+        if (routeUrl) {
+          shareOptions.url = routeUrl;
+        }
+      }
+
+      const result = await Share.share(shareOptions);
       return result;
     } catch (error) {
       console.error('Error sharing activity:', error);
@@ -255,12 +369,13 @@ export class ShareService {
   /**
    * Share activity with route map (creates a static map URL)
    */
-  static async shareActivityWithMap(activity: Activity) {
+  static async shareActivityWithMap(activity: Activity, options: ShareOptions = {}) {
     try {
-      const message = this.createActivityMessage(activity);
+      const includeRoute = options.includeRoute !== false; // default to true
+      const message = this.createActivityMessage(activity, { ...options, includeRoute });
       
-      // If there's a route, add a static map preview
-      if (activity.route && activity.route.length > 0) {
+      // If there's a route and we're including it, add a static map preview
+      if (includeRoute && activity.route && activity.route.length > 0 && options.includeExactLocation) {
         // Create a simplified path for URL (limit points to avoid URL length issues)
         const simplifiedRoute = this.simplifyRoute(activity.route, 20);
         const pathString = simplifiedRoute
@@ -282,11 +397,34 @@ export class ShareService {
         return await Share.share(shareOptions);
       }
       
-      return this.shareActivity(activity);
+      return this.performActivityShare(activity, options);
     } catch (error) {
       console.error('Error sharing activity with map:', error);
-      return this.shareActivity(activity);
+      return this.performActivityShare(activity, options);
     }
+  }
+
+  /**
+   * Create route URL for Google Maps
+   */
+  private static createRouteUrl(route: any[]): string | null {
+    if (!route || route.length < 2) return null;
+    
+    const start = route[0];
+    const end = route[route.length - 1];
+    
+    // Create Google Maps directions URL
+    return `https://www.google.com/maps/dir/${start.latitude},${start.longitude}/${end.latitude},${end.longitude}`;
+  }
+
+  /**
+   * Get general area description instead of exact coordinates
+   */
+  private static getGeneralArea(latitude: number, longitude: number): string {
+    // Round to fewer decimal places for privacy
+    const roundedLat = Math.round(latitude * 100) / 100;
+    const roundedLon = Math.round(longitude * 100) / 100;
+    return `${roundedLat}, ${roundedLon} area`;
   }
 
   /**
@@ -308,6 +446,53 @@ export class ShareService {
     }
     
     return simplified;
+  }
+
+  /**
+   * Share activity to friends feed (internal app sharing)
+   */
+  static async shareActivityToFriends(
+    activity: Activity, 
+    friendIds: string[], 
+    options: ShareOptions = {}
+  ): Promise<{ success: boolean; sharedActivity?: any }> {
+    try {
+      // Create a shared activity object for the friends feed
+      const sharedActivity = {
+        id: `shared_${activity.id}_${Date.now()}`,
+        type: 'activity' as const,
+        timestamp: new Date(),
+        data: {
+          ...activity,
+          sharedBy: {
+            id: 'currentUser', // This would come from your auth context
+            username: 'currentUser',
+            displayName: 'You',
+            avatar: '🏃',
+          },
+          sharedAt: new Date(),
+          likes: [],
+          comments: [],
+          privacySettings: {
+            includeRoute: options.includeRoute || false,
+            includeExactLocation: options.includeExactLocation || false,
+          }
+        }
+      };
+
+      // In a real app, this would be an API call to your backend
+      // For now, we'll return the shared activity object so it can be added to the feed
+      console.log('Sharing activity to friends:', friendIds);
+      console.log('Shared activity data:', sharedActivity);
+
+      return { 
+        success: true, 
+        sharedActivity 
+      };
+    } catch (error) {
+      console.error('Error sharing activity to friends:', error);
+      return { success: false };
+    }
   }
 
   /**
@@ -361,9 +546,9 @@ export class ShareService {
   /**
    * Copy activity to clipboard
    */
-  static async copyActivityToClipboard(activity: Activity) {
+  static async copyActivityToClipboard(activity: Activity, options: ShareOptions = {}) {
     try {
-      const message = this.createActivityMessage(activity);
+      const message = this.createActivityMessage(activity, options);
       await Clipboard.setStringAsync(message);
       return message;
     } catch (error) {

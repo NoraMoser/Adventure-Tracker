@@ -1,4 +1,4 @@
-// settings.tsx - Enhanced with full Export/Import functionality
+// settings.tsx - Enhanced with full Export/Import functionality and Friends Settings
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
@@ -20,6 +20,7 @@ import { ActivityPickerModal } from '../components/ActivityPickerModal';
 import { ExplorableIcon } from '../components/Logo';
 import { theme } from '../constants/theme';
 import { useActivity } from '../contexts/ActivityContext';
+import { useFriends } from '../contexts/FriendsContext';
 import { useLocation } from '../contexts/LocationContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useWishlist } from '../contexts/WishlistContext';
@@ -173,6 +174,7 @@ export default function SettingsScreen() {
   const { activities } = useActivity();
   const { wishlistItems } = useWishlist();
   const { settings, updateSettings } = useSettings();
+  const { privacySettings: friendsPrivacy, updatePrivacySettings } = useFriends();
   
   const [showActivityPicker, setShowActivityPicker] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -438,6 +440,50 @@ export default function SettingsScreen() {
             const nextIndex = (currentIndex + 1) % styles.length;
             updateSetting('mapStyle', styles[nextIndex]);
           },
+        },
+      ],
+    },
+    {
+      title: 'Social & Sharing',
+      icon: 'people-outline',
+      items: [
+        {
+          type: 'switch',
+          label: 'Auto-share Activities',
+          subtitle: 'Automatically share completed activities with friends',
+          value: friendsPrivacy.autoShareActivities,
+          onValueChange: (value: boolean) => updatePrivacySettings({ autoShareActivities: value }),
+        },
+        {
+          type: 'select',
+          label: 'Default Activity Privacy',
+          subtitle: 'How much detail to share by default',
+          value: friendsPrivacy.defaultActivityPrivacy,
+          displayValue: 
+            friendsPrivacy.defaultActivityPrivacy === 'stats_only' ? 'Stats Only' :
+            friendsPrivacy.defaultActivityPrivacy === 'general_area' ? 'General Area' :
+            'Full Route',
+          onPress: () => {
+            const options = ['stats_only', 'general_area', 'full_route'];
+            const labels = ['Stats Only', 'General Area', 'Full Route'];
+            const currentIndex = options.indexOf(friendsPrivacy.defaultActivityPrivacy);
+            const nextIndex = (currentIndex + 1) % options.length;
+            updatePrivacySettings({ 
+              defaultActivityPrivacy: options[nextIndex] as 'stats_only' | 'general_area' | 'full_route'
+            });
+          },
+        },
+        {
+          type: 'switch',
+          label: 'Share Locations with Friends',
+          value: friendsPrivacy.shareLocationsWithFriends,
+          onValueChange: (value: boolean) => updatePrivacySettings({ shareLocationsWithFriends: value }),
+        },
+        {
+          type: 'switch',
+          label: 'Show Online Status',
+          value: friendsPrivacy.showOnlineStatus,
+          onValueChange: (value: boolean) => updatePrivacySettings({ showOnlineStatus: value }),
         },
       ],
     },

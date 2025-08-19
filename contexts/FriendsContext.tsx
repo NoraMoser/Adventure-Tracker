@@ -1,4 +1,4 @@
-// contexts/FriendsContext.tsx
+// contexts/FriendsContext.tsx - Enhanced with activity sharing
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
@@ -28,6 +28,10 @@ export interface SharedActivity extends Activity {
   sharedAt: Date;
   likes: string[];
   comments: Comment[];
+  privacySettings?: {
+    includeRoute: boolean;
+    includeExactLocation: boolean;
+  };
 }
 
 export interface SharedLocation extends SavedSpot {
@@ -78,13 +82,14 @@ interface FriendsContextType {
   unblockUser: (userId: string) => Promise<void>;
   
   // Sharing
-  shareActivity: (activityId: string, friendIds?: string[]) => Promise<void>;
+  shareActivity: (activityId: string, friendIds?: string[], options?: any) => Promise<void>;
   shareLocation: (locationId: string, friendIds?: string[]) => Promise<void>;
   shareAchievement: (achievementId: string, achievementName: string, achievementIcon: string) => Promise<void>;
   
   // Feed
   feed: FeedItem[];
   refreshFeed: () => Promise<void>;
+  addActivityToFeed: (activity: Activity, options?: any) => Promise<void>;
   
   // Interactions
   likeItem: (itemId: string) => Promise<void>;
@@ -103,6 +108,8 @@ interface FriendsContextType {
     shareLocationsWithFriends: boolean;
     allowFriendRequests: boolean;
     showOnlineStatus: boolean;
+    defaultActivityPrivacy: 'stats_only' | 'general_area' | 'full_route';
+    autoShareActivities: boolean;
   };
   updatePrivacySettings: (settings: Partial<FriendsContextType['privacySettings']>) => Promise<void>;
   
@@ -162,11 +169,22 @@ const generateMockFeed = (friends: Friend[]): FeedItem[] => {
         endTime: new Date(now.getTime() - 3600000),
         duration: 3600,
         distance: 5000,
-        route: [],
+        route: [
+          { latitude: 47.7231, longitude: -122.1309, timestamp: now.getTime() - 7200000 },
+          { latitude: 47.7241, longitude: -122.1319, timestamp: now.getTime() - 6600000 },
+          { latitude: 47.7251, longitude: -122.1329, timestamp: now.getTime() - 6000000 },
+        ],
         averageSpeed: 5,
         maxSpeed: 8,
         isManualEntry: false,
-        sharedBy: friends[0],
+        sharedBy: friends[0] || {
+          id: 'friend1',
+          username: 'adventurer123',
+          displayName: 'Sarah Adventures',
+          avatar: '🏔️',
+          friendsSince: new Date(),
+          status: 'accepted' as const
+        },
         sharedAt: new Date(now.getTime() - 3600000),
         likes: ['friend2', 'friend3'],
         comments: [
@@ -178,6 +196,10 @@ const generateMockFeed = (friends: Friend[]): FeedItem[] => {
             timestamp: new Date(now.getTime() - 1800000),
           },
         ],
+        privacySettings: {
+          includeRoute: true,
+          includeExactLocation: false,
+        }
       } as SharedActivity,
     },
     {
@@ -192,7 +214,14 @@ const generateMockFeed = (friends: Friend[]): FeedItem[] => {
         category: 'viewpoint',
         description: 'Amazing hidden gem with crystal clear water!',
         photos: [],
-        sharedBy: friends[1],
+        sharedBy: friends[1] || {
+          id: 'friend2',
+          username: 'trailblazer',
+          displayName: 'Mike Trails',
+          avatar: '🥾',
+          friendsSince: new Date(),
+          status: 'accepted' as const
+        },
         sharedAt: new Date(now.getTime() - 86400000),
         likes: ['friend1', 'currentUser'],
         comments: [],
@@ -207,7 +236,14 @@ const generateMockFeed = (friends: Friend[]): FeedItem[] => {
         achievementId: 'week_streak',
         achievementName: 'Week Warrior',
         achievementIcon: 'flame',
-        sharedBy: friends[2],
+        sharedBy: friends[2] || {
+          id: 'friend3',
+          username: 'naturelover',
+          displayName: 'Emma Nature',
+          avatar: '🌲',
+          friendsSince: new Date(),
+          status: 'accepted' as const
+        },
         sharedAt: new Date(now.getTime() - 172800000),
         likes: ['friend1', 'friend2', 'currentUser'],
         comments: [
@@ -234,6 +270,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     shareLocationsWithFriends: true,
     allowFriendRequests: true,
     showOnlineStatus: true,
+    defaultActivityPrivacy: 'general_area' as 'stats_only' | 'general_area' | 'full_route',
+    autoShareActivities: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -287,6 +325,14 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
       await AsyncStorage.setItem('friends', JSON.stringify(updatedFriends));
     } catch (err) {
       console.error('Error saving friends:', err);
+    }
+  };
+
+  const saveFeed = async (updatedFeed: FeedItem[]) => {
+    try {
+      await AsyncStorage.setItem('friendsFeed', JSON.stringify(updatedFeed));
+    } catch (err) {
+      console.error('Error saving feed:', err);
     }
   };
 
@@ -401,8 +447,10 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const shareActivity = async (activityId: string, friendIds?: string[]) => {
+  const shareActivity = async (activityId: string, friendIds?: string[], options?: any) => {
     try {
+      console.log('Sharing activity:', activityId, 'to friends:', friendIds, 'with options:', options);
+      
       // In production, this would post to a server
       Alert.alert('Success', 'Activity shared with friends!');
     } catch (err) {
@@ -431,16 +479,63 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
+  const addActivityToFeed = async (activity: Activity, options: any = {}) => {
+    try {
+      console.log('Adding activity to feed:', activity.name, 'with options:', options);
+      
+      // Create a shared activity for the feed
+      const sharedActivity: SharedActivity = {
+        ...activity,
+        sharedBy: {
+          id: currentUserId,
+          username: 'currentUser',
+          displayName: 'You',
+          avatar: '🏃',
+          friendsSince: new Date(),
+          status: 'accepted',
+        },
+        sharedAt: new Date(),
+        likes: [],
+        comments: [],
+        privacySettings: {
+          includeRoute: options.includeRoute || false,
+          includeExactLocation: options.includeExactLocation || false,
+        },
+      };
+
+      const newFeedItem: FeedItem = {
+        id: `feed_${activity.id}_${Date.now()}`,
+        type: 'activity',
+        timestamp: new Date(),
+        data: sharedActivity,
+      };
+
+      const updatedFeed = [newFeedItem, ...feed];
+      setFeed(updatedFeed);
+      await saveFeed(updatedFeed);
+      
+      console.log('Activity added to feed successfully');
+    } catch (err) {
+      console.error('Error adding activity to feed:', err);
+      setError('Failed to add activity to feed');
+    }
+  };
+
   const refreshFeed = async () => {
     try {
       setLoading(true);
       
-      // In production, this would fetch from a server
-      // For now, generate mock feed
-      const mockFeed = generateMockFeed(friends.length > 0 ? friends : generateMockFriends());
-      setFeed(mockFeed);
-      
-      await AsyncStorage.setItem('friendsFeed', JSON.stringify(mockFeed));
+      // Try to load existing feed first
+      const feedJson = await AsyncStorage.getItem('friendsFeed');
+      if (feedJson) {
+        const storedFeed = JSON.parse(feedJson);
+        setFeed(storedFeed);
+      } else {
+        // Generate mock feed if none exists
+        const mockFeed = generateMockFeed(friends.length > 0 ? friends : generateMockFriends());
+        setFeed(mockFeed);
+        await saveFeed(mockFeed);
+      }
     } catch (err) {
       console.error('Error refreshing feed:', err);
       setError('Failed to refresh feed');
@@ -461,6 +556,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
         return item;
       });
       setFeed(updatedFeed);
+      await saveFeed(updatedFeed);
     } catch (err) {
       console.error('Error liking item:', err);
     }
@@ -476,6 +572,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
         return item;
       });
       setFeed(updatedFeed);
+      await saveFeed(updatedFeed);
     } catch (err) {
       console.error('Error unliking item:', err);
     }
@@ -499,6 +596,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
         return item;
       });
       setFeed(updatedFeed);
+      await saveFeed(updatedFeed);
     } catch (err) {
       console.error('Error adding comment:', err);
     }
@@ -514,6 +612,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
         return item;
       });
       setFeed(updatedFeed);
+      await saveFeed(updatedFeed);
     } catch (err) {
       console.error('Error deleting comment:', err);
     }
@@ -578,6 +677,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     shareAchievement,
     feed,
     refreshFeed,
+    addActivityToFeed,
     likeItem,
     unlikeItem,
     addComment,
