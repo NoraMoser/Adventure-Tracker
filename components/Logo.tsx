@@ -66,7 +66,7 @@ export const ExplorableLogo: React.FC<LogoProps> = ({
     <Svg width={actualWidth} height={actualHeight} viewBox="0 0 200 50">
       {/* "explor" text */}
       <SvgText
-        x="10"
+        x="13"
         y="35"
         fontSize="32"
         fontWeight="500"

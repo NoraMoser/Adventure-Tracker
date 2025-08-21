@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - Debug version to find loading issue
+// contexts/AuthContext.tsx - Fixed version
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Session, User } from "@supabase/supabase-js";
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -39,6 +39,7 @@ interface AuthContextType {
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   syncLocalData: () => Promise<void>;
   setOfflineMode: (enabled: boolean) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -58,6 +59,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuthStatus = async () => {
     console.log('🔍 AuthContext: Checking auth status...');
     try {
+      // Set a timeout to prevent infinite loading
+      const timeoutId = setTimeout(() => {
+        console.log('🔍 AuthContext: Timeout - forcing loading to false');
+        setLoading(false);
+      }, 5000); // 5 second timeout
+
       // Check if user chose offline mode
       const offlineMode = await AsyncStorage.getItem("offlineMode");
       console.log('🔍 AuthContext: Offline mode check:', offlineMode);
@@ -65,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (offlineMode === "true") {
         console.log('🔍 AuthContext: Setting offline mode');
         setIsOfflineMode(true);
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
@@ -78,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (sessionError) {
         console.error('🔍 AuthContext: Session error:', sessionError);
+        clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
@@ -88,19 +97,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session);
         setUser(session.user);
         console.log('🔍 AuthContext: Loading profile for user:', session.user.id);
-        await loadProfile(session.user.id);
-
-        // Update last active
-        console.log('🔍 AuthContext: Updating last active...');
-        await updateLastActive(session.user.id);
-
-        // Sync local data in background (don't await)
-        console.log('🔍 AuthContext: Starting background sync...');
-        syncLocalData().catch(err => {
-          console.error('🔍 AuthContext: Sync error (non-blocking):', err);
+        
+        // Don't await profile loading - do it in background
+        loadProfile(session.user.id).catch(err => {
+          console.error('🔍 AuthContext: Profile load error (non-blocking):', err);
         });
+
+        // Update last active in background
+        updateLastActive(session.user.id).catch(err => {
+          console.error('🔍 AuthContext: Last active update error (non-blocking):', err);
+        });
+
+        // DON'T auto-sync on every login - this causes duplicates
+        // Only sync if explicitly requested or after certain actions
+        console.log('🔍 AuthContext: Skipping auto-sync to prevent duplicates');
       }
       
+      clearTimeout(timeoutId);
       console.log('🔍 AuthContext: Auth check complete, setting loading to false');
       setLoading(false);
     } catch (error) {
@@ -151,6 +164,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem("userProfile", JSON.stringify(data));
     } catch (error) {
       console.error("🔍 AuthContext: Error loading profile:", error);
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) throw error;
+      
+      if (data) {
+        setProfile(data);
+        // Also update local storage
+        await AsyncStorage.setItem("userProfile", JSON.stringify(data));
+      }
+    } catch (error) {
+      console.error('Error refreshing profile:', error);
     }
   };
 
@@ -305,8 +340,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setIsOfflineMode(false);
 
-      // Sync local data after sign in
-      await syncLocalData();
+      // DON'T auto-sync on sign in - let user manually sync if needed
+      // This prevents duplicate locations being created
+      console.log('Skipping auto-sync on sign in to prevent duplicates');
+      
+      // Optional: Show a message to user about syncing
+      // Alert.alert('Signed In', 'You can manually sync your data from Settings if needed.');
     } catch (error: any) {
       Alert.alert("Sign In Error", error.message);
       throw error;
@@ -421,6 +460,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signOut,
     updateProfile,
+    refreshProfile,
     syncLocalData,
     setOfflineMode,
   };

@@ -1,4 +1,4 @@
-// contexts/LocationContext.tsx - Complete file with Supabase integration
+// contexts/LocationContext.tsx - Fixed version without reviews column
 import * as Location from 'expo-location';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { CategoryType } from '../constants/categories';
@@ -19,7 +19,6 @@ interface SavedSpot {
   description?: string;
   category: CategoryType;
   rating?: number;
-  reviews?: string[];
 }
 
 interface LocationContextType {
@@ -114,9 +113,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           photos: spot.photos || [],
           timestamp: new Date(spot.created_at),
           description: spot.description,
-          category: spot.category as CategoryType,
+          category: spot.category as CategoryType || 'other',
           rating: spot.rating,
-          reviews: spot.reviews || [],
         }));
         setSavedSpots(transformedSpots);
       }
@@ -171,11 +169,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           name: spot.name,
           latitude: spot.location.latitude,
           longitude: spot.location.longitude,
-          description: spot.description,
-          category: spot.category,
-          rating: spot.rating,
+          description: spot.description || null,
+          category: spot.category || 'other',
+          rating: spot.rating || null,
           photos: spot.photos || [],
-          reviews: spot.reviews || [],
+          // removed reviews field
         })
         .select()
         .single();
@@ -193,9 +191,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           photos: data.photos || [],
           timestamp: new Date(data.created_at),
           description: data.description,
-          category: data.category as CategoryType,
+          category: data.category as CategoryType || 'other',
           rating: data.rating,
-          reviews: data.reviews || [],
         };
         
         // Update local state
@@ -296,11 +293,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           name: updatedSpot.name,
           latitude: updatedSpot.location.latitude,
           longitude: updatedSpot.location.longitude,
-          description: updatedSpot.description,
-          category: updatedSpot.category,
-          rating: updatedSpot.rating,
+          description: updatedSpot.description || null,
+          category: updatedSpot.category || 'other',
+          rating: updatedSpot.rating || null,
           photos: updatedSpot.photos || [],
-          reviews: updatedSpot.reviews || [],
+          // removed reviews field
           updated_at: new Date().toISOString(),
         })
         .eq('id', spotId)

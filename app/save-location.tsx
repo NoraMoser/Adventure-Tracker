@@ -1,8 +1,8 @@
-// save-location-enhanced.tsx
+// save-location.tsx - Fixed version with always-editable location name
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -36,7 +36,9 @@ export default function SaveLocationScreen() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
+  
+  // Ref for the location name input
+  const locationNameInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     // Get current location when screen loads
@@ -67,7 +69,7 @@ export default function SaveLocationScreen() {
       setSuggestions(suggestions);
       
       // Auto-select the first suggestion if available
-      if (suggestions.length > 0 && !manualMode) {
+      if (suggestions.length > 0) {
         const firstSuggestion = suggestions[0];
         setSelectedSuggestion(firstSuggestion);
         setLocationName(firstSuggestion.name);
@@ -127,14 +129,23 @@ export default function SaveLocationScreen() {
     
     // Auto-categorize
     autoSelectCategory(suggestion);
+    
+    // Focus the input so user can edit if needed
+    setTimeout(() => {
+      locationNameInputRef.current?.focus();
+    }, 100);
   };
 
   const handleManualEntry = () => {
-    setManualMode(true);
     setSelectedSuggestion(null);
     setLocationName('');
     setLocationDescription('');
     setShowSuggestions(false);
+    
+    // Focus the input
+    setTimeout(() => {
+      locationNameInputRef.current?.focus();
+    }, 100);
   };
 
   const handleTakePhoto = async () => {
@@ -145,7 +156,7 @@ export default function SaveLocationScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -164,7 +175,7 @@ export default function SaveLocationScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -193,7 +204,7 @@ export default function SaveLocationScreen() {
 
     try {
       // Save location with photos and category
-      await saveCurrentLocation(locationName, locationDescription, photos, selectedCategory);
+      await saveCurrentLocation(locationName.trim(), locationDescription.trim(), photos, selectedCategory);
       
       // Clear form and navigate back
       setLocationName('');
@@ -218,7 +229,14 @@ export default function SaveLocationScreen() {
 
   const handleGetLocation = () => {
     getLocation();
-    setManualMode(false); // Reset manual mode when getting new location
+    // Reset suggestions when getting new location
+    setSelectedSuggestion(null);
+    setSuggestions([]);
+  };
+
+  const handleLocationNameChange = (text: string) => {
+    console.log('Location name changing to:', text);
+    setLocationName(text);
   };
 
   if (loading) {
@@ -247,9 +265,9 @@ export default function SaveLocationScreen() {
                 <ActivityIndicator size="small" color={theme.colors.forest} />
                 <Text style={styles.suggestionsLoadingText}>Finding nearby places...</Text>
               </View>
-            ) : suggestions.length > 0 && !manualMode ? (
+            ) : suggestions.length > 0 ? (
               <View style={styles.suggestionsContainer}>
-                <Text style={styles.suggestionsTitle}>Are you at one of these places?</Text>
+                <Text style={styles.suggestionsTitle}>Detected nearby places:</Text>
                 
                 {selectedSuggestion && (
                   <View style={styles.selectedSuggestion}>
@@ -282,7 +300,7 @@ export default function SaveLocationScreen() {
                   onPress={handleManualEntry}
                 >
                   <Ionicons name="create-outline" size={16} color={theme.colors.burntOrange} />
-                  <Text style={styles.manualEntryText}>Enter manually instead</Text>
+                  <Text style={styles.manualEntryText}>Clear and enter manually</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -381,15 +399,22 @@ export default function SaveLocationScreen() {
         </ScrollView>
 
         <Text style={styles.label}>
-          Location Name * {manualMode && <Text style={styles.manualModeIndicator}>(Manual Entry)</Text>}
+          Location Name *
+          {selectedSuggestion && (
+            <Text style={styles.labelHint}> (you can edit this)</Text>
+          )}
         </Text>
         <TextInput
+          ref={locationNameInputRef}
           style={styles.input}
           value={locationName}
-          onChangeText={setLocationName}
-          placeholder={manualMode ? "e.g., Secret Beach Spot" : "Using detected location name"}
+          onChangeText={handleLocationNameChange}
+          placeholder="e.g., Secret Beach Spot"
           placeholderTextColor="#999"
-          editable={manualMode || !selectedSuggestion}
+          editable={true}  // Always editable
+          keyboardType="default"
+          autoCapitalize="words"
+          autoCorrect={false}
         />
 
         <Text style={styles.label}>Description (Optional)</Text>
@@ -475,7 +500,7 @@ export default function SaveLocationScreen() {
                   }}
                 >
                   <Ionicons name="create" size={20} color={theme.colors.burntOrange} />
-                  <Text style={styles.manualOptionText}>Enter name manually</Text>
+                  <Text style={styles.manualOptionText}>Clear and enter manually</Text>
                 </TouchableOpacity>
               }
             />
@@ -717,9 +742,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 5,
   },
-  manualModeIndicator: {
+  labelHint: {
     fontSize: 12,
-    color: theme.colors.burntOrange,
+    color: theme.colors.gray,
     fontWeight: 'normal',
   },
   input: {
@@ -736,10 +761,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    color: theme.colors.navy,
+    minHeight: 48,
   },
   textArea: {
     height: 100,
     paddingTop: 12,
+    textAlignVertical: 'top',
   },
   saveButton: {
     backgroundColor: theme.colors.forest,

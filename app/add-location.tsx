@@ -24,6 +24,8 @@ export default function AddLocationScreen() {
   const { saveManualLocation, location: currentLocation } = useLocation();
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
+  const locationNameInputRef = useRef<TextInput>(null);
+  const descriptionInputRef = useRef<TextInput>(null);
 
   const [selectedLocation, setSelectedLocation] = useState<{
     latitude: number;
@@ -35,8 +37,7 @@ export default function AddLocationScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] =
-    useState<CategoryType>("other");
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>("other");
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
@@ -50,6 +51,17 @@ export default function AddLocationScreen() {
       getCurrentLocation();
     }
   }, []);
+
+  // Focus the location name input when form appears
+  useEffect(() => {
+    if (showForm && locationNameInputRef.current) {
+      // Small delay to ensure the form is fully rendered
+      const timer = setTimeout(() => {
+        locationNameInputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showForm]);
 
   const getCurrentLocation = async () => {
     try {
@@ -184,9 +196,9 @@ export default function AddLocationScreen() {
     try {
       // Save the location with the selected coordinates, photos, and category
       await saveManualLocation(
-        locationName,
+        locationName.trim(),
         selectedLocation,
-        locationDescription,
+        locationDescription.trim(),
         photos,
         selectedCategory
       );
@@ -216,6 +228,13 @@ export default function AddLocationScreen() {
     } catch (err) {
       Alert.alert("Error", "Failed to save location");
     }
+  };
+
+  const handleCancelForm = () => {
+    setShowForm(false);
+    setLocationName("");
+    setLocationDescription("");
+    // Keep the marker on the map but hide the form
   };
 
   const generateMapHTML = () => {
@@ -305,6 +324,16 @@ export default function AddLocationScreen() {
     }
   };
 
+  const handleLocationNameChange = (text: string) => {
+    console.log("Location name changing to:", text); // Debug log
+    setLocationName(text);
+  };
+
+  const handleDescriptionChange = (text: string) => {
+    console.log("Description changing to:", text); // Debug log
+    setLocationDescription(text);
+  };
+
   return (
     <View style={styles.container}>
       {/* Search Bar */}
@@ -349,6 +378,8 @@ export default function AddLocationScreen() {
           scrollEnabled={true}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          // Disable interaction with WebView when form is shown
+          pointerEvents={showForm ? "none" : "auto"}
         />
 
         {/* Current Location Button */}
@@ -363,10 +394,15 @@ export default function AddLocationScreen() {
       {/* Location Form */}
       {showForm && selectedLocation && (
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.formContainer}
+          keyboardVerticalOffset={0}
         >
-          <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.form} 
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.formTitle}>Save This Location</Text>
 
             <View style={styles.coordinatesDisplay}>
@@ -379,25 +415,35 @@ export default function AddLocationScreen() {
 
             <Text style={styles.label}>Location Name *</Text>
             <TextInput
+              ref={locationNameInputRef}
               style={styles.input}
               value={locationName}
-              onChangeText={setLocationName}
+              onChangeText={handleLocationNameChange}
               placeholder="e.g., Best Coffee Shop"
               placeholderTextColor={theme.colors.lightGray}
-              autoFocus={true} // Add this
-              editable={true} // Add this explicitly
-              selectTextOnFocus={true} // Add this
+              editable={true}
+              keyboardType="default"
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="next"
+              onSubmitEditing={() => descriptionInputRef.current?.focus()}
             />
 
             <Text style={styles.label}>Description (Optional)</Text>
             <TextInput
+              ref={descriptionInputRef}
               style={[styles.input, styles.textArea]}
               value={locationDescription}
-              onChangeText={setLocationDescription}
+              onChangeText={handleDescriptionChange}
               placeholder="What makes this place special?"
               placeholderTextColor={theme.colors.lightGray}
-              multiline
+              editable={true}
+              multiline={true}
               numberOfLines={3}
+              textAlignVertical="top"
+              keyboardType="default"
+              autoCapitalize="sentences"
+              autoCorrect={true}
             />
 
             {/* Photo Section */}
@@ -446,7 +492,7 @@ export default function AddLocationScreen() {
             <View style={styles.formButtons}>
               <TouchableOpacity
                 style={[styles.button, styles.cancelButton]}
-                onPress={() => setShowForm(false)}
+                onPress={handleCancelForm}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
@@ -535,7 +581,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: "50%",
+    maxHeight: "60%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -580,15 +626,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 15,
     color: theme.colors.navy,
+    minHeight: 45,
   },
   textArea: {
     height: 80,
     textAlignVertical: "top",
+    paddingTop: 12,
   },
   formButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 10,
+    marginBottom: 20,
   },
   button: {
     flex: 1,
@@ -659,26 +708,5 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: "white",
     borderRadius: 12,
-  },
-  categoryScroll: {
-    marginBottom: 15,
-    maxHeight: 40,
-  },
-  categoryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  categoryChipText: {
-    marginLeft: 4,
-    fontSize: 12,
-    fontWeight: "500",
-    color: theme.colors.gray,
   },
 });

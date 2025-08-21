@@ -1,10 +1,11 @@
-// app/index.tsx - Complete new version with proper auth handling
+// app/index.tsx - Complete file with profile editing
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Alert,
     Animated,
     Dimensions,
     Modal,
@@ -13,6 +14,7 @@ import {
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -25,6 +27,7 @@ import { useActivity } from "../contexts/ActivityContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
+import { supabase } from "../lib/supabase";
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -32,7 +35,7 @@ const BOTTOM_SHEET_MIN_HEIGHT = 80;
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { user, profile, isOfflineMode, loading: authLoading } = useAuth();
+  const { user, profile, isOfflineMode, loading: authLoading, refreshProfile } = useAuth();
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
   const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings();
@@ -41,6 +44,7 @@ export default function DashboardScreen() {
   // State
   const [isInitializing, setIsInitializing] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
 
   // Bottom sheet animation
   const animatedValue = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
@@ -116,6 +120,220 @@ export default function DashboardScreen() {
 
     initializeApp();
   }, [user, isOfflineMode, authLoading, router]);
+
+  // Profile Edit Modal Component
+  const ProfileEditModal = () => {
+    const [localDisplayName, setLocalDisplayName] = useState(profile?.display_name || profile?.username || "");
+    const [localUsername, setLocalUsername] = useState(profile?.username || "");
+    const [saving, setSaving] = useState(false);
+    const [checkingUsername, setCheckingUsername] = useState(false);
+    const [usernameError, setUsernameError] = useState("");
+
+    // Check if username is available
+    const checkUsernameAvailability = async (username: string) => {
+      if (!username || username === profile?.username) {
+        setUsernameError("");
+        return true;
+      }
+
+      setCheckingUsername(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username.toLowerCase())
+          .single();
+
+        if (data) {
+          setUsernameError("Username already taken");
+          setCheckingUsername(false);
+          return false;
+        }
+        
+        setUsernameError("");
+        setCheckingUsername(false);
+        return true;
+      } catch (err) {
+        // No user found with this username - it's available!
+        setUsernameError("");
+        setCheckingUsername(false);
+        return true;
+      }
+    };
+
+    const handleUsernameChange = (text: string) => {
+      // Only allow alphanumeric and underscore
+      const cleaned = text.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      setLocalUsername(cleaned);
+      
+      // Clear error when user types
+      if (usernameError) {
+        setUsernameError("");
+      }
+    };
+
+    const handleSave = async () => {
+      if (!user || !localDisplayName.trim() || !localUsername.trim()) {
+        Alert.alert('Error', 'Display name and username are required');
+        return;
+      }
+      
+      // Check username availability if it changed
+      if (localUsername !== profile?.username) {
+        const isAvailable = await checkUsernameAvailability(localUsername);
+        if (!isAvailable) {
+          Alert.alert('Error', 'Username is already taken');
+          return;
+        }
+      }
+
+      setSaving(true);
+      try {
+        const updates: any = {
+          display_name: localDisplayName.trim(),
+          updated_at: new Date().toISOString()
+        };
+
+        // Only update username if it changed
+        if (localUsername !== profile?.username) {
+          updates.username = localUsername.toLowerCase();
+        }
+
+        const { error } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', user.id);
+
+        if (error) throw error;
+
+        // Fetch the updated profile
+        const { data: updatedProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (updatedProfile) {
+          // Refresh the profile using the context method
+          await refreshProfile();
+          Alert.alert(
+            'Success', 
+            'Profile updated successfully!',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  setShowProfileEdit(false);
+                }
+              }
+            ]
+          );
+        }
+      } catch (error: any) {
+        console.error('Error updating profile:', error);
+        if (error.code === '23505') {
+          Alert.alert('Error', 'Username is already taken');
+        } else {
+          Alert.alert('Error', 'Failed to update profile');
+        }
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    return (
+      <Modal
+        visible={showProfileEdit}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowProfileEdit(false)}
+      >
+        <View style={profileEditStyles.overlay}>
+          <View style={profileEditStyles.content}>
+            <View style={profileEditStyles.header}>
+              <Text style={profileEditStyles.title}>Edit Profile</Text>
+              <TouchableOpacity onPress={() => setShowProfileEdit(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={profileEditStyles.form}>
+              <Text style={profileEditStyles.label}>Display Name</Text>
+              <TextInput
+                style={profileEditStyles.input}
+                value={localDisplayName}
+                onChangeText={setLocalDisplayName}
+                placeholder="Enter your display name"
+                placeholderTextColor={theme.colors.lightGray}
+                autoFocus
+                maxLength={50}
+              />
+              <Text style={profileEditStyles.hint}>
+                This is how your name appears to friends
+              </Text>
+
+              <Text style={profileEditStyles.label}>Username</Text>
+              <View style={profileEditStyles.usernameContainer}>
+                <Text style={profileEditStyles.usernamePrefix}>@</Text>
+                <TextInput
+                  style={[
+                    profileEditStyles.usernameInput,
+                    usernameError && profileEditStyles.inputError
+                  ]}
+                  value={localUsername}
+                  onChangeText={handleUsernameChange}
+                  onBlur={() => checkUsernameAvailability(localUsername)}
+                  placeholder="username"
+                  placeholderTextColor={theme.colors.lightGray}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={30}
+                />
+                {checkingUsername && (
+                  <ActivityIndicator size="small" color={theme.colors.forest} style={profileEditStyles.usernameSpinner} />
+                )}
+              </View>
+              {usernameError ? (
+                <Text style={profileEditStyles.errorText}>{usernameError}</Text>
+              ) : (
+                <Text style={profileEditStyles.hint}>
+                  Unique identifier for your profile (letters, numbers, underscore only)
+                </Text>
+              )}
+
+              <View style={profileEditStyles.currentInfo}>
+                <Text style={profileEditStyles.infoLabel}>Email:</Text>
+                <Text style={profileEditStyles.infoValue}>{user?.email}</Text>
+              </View>
+            </View>
+
+            <View style={profileEditStyles.actions}>
+              <TouchableOpacity
+                style={profileEditStyles.cancelBtn}
+                onPress={() => setShowProfileEdit(false)}
+              >
+                <Text style={profileEditStyles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[profileEditStyles.saveBtn, saving && profileEditStyles.saveBtnDisabled]}
+                onPress={handleSave}
+                disabled={saving || !localDisplayName.trim()}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={20} color="white" />
+                    <Text style={profileEditStyles.saveText}>Save</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
 
   // Show loading screen while checking auth
   if (isInitializing || authLoading) {
@@ -388,10 +606,6 @@ export default function DashboardScreen() {
             <Text style={styles.welcomeText}>
               Welcome back, {profile.display_name || profile.username}!
             </Text>
-            <View style={styles.treeIcon}>
-              <View style={styles.triangle} />
-              <View style={styles.trunk} />
-            </View>
           </View>
         </View>
       )}
@@ -621,7 +835,14 @@ export default function DashboardScreen() {
           />
 
           <Animated.View style={[styles.sidebar]}>
-            <View style={styles.profileSection}>
+            <TouchableOpacity 
+              style={styles.profileSection}
+              onPress={() => {
+                setShowSidebar(false);
+                setShowProfileEdit(true);
+              }}
+              activeOpacity={0.7}
+            >
               <View style={styles.profileAvatar}>
                 <ExplorableIcon size={60} color={theme.colors.forest} />
               </View>
@@ -634,7 +855,11 @@ export default function DashboardScreen() {
               {user && (
                 <Text style={styles.profileEmail}>{user.email}</Text>
               )}
-            </View>
+              <View style={styles.editIndicator}>
+                <Ionicons name="create-outline" size={16} color={theme.colors.gray} />
+                <Text style={styles.editText}>Tap to edit</Text>
+              </View>
+            </TouchableOpacity>
 
             <ScrollView style={styles.sidebarMenu}>
               {sidebarItems.map((item, index) => {
@@ -699,6 +924,9 @@ export default function DashboardScreen() {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Profile Edit Modal */}
+      <ProfileEditModal />
     </SafeAreaView>
   );
 }
@@ -1080,6 +1308,20 @@ const styles = StyleSheet.create({
     color: theme.colors.lightGray,
     marginTop: 3,
   },
+  editIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    backgroundColor: theme.colors.white,
+    borderRadius: 12,
+  },
+  editText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginLeft: 4,
+  },
   sidebarMenu: {
     flex: 1,
   },
@@ -1124,6 +1366,142 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: theme.colors.navy,
+    marginLeft: 8,
+  },
+});
+
+// Profile Edit Modal Styles
+const profileEditStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  content: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    maxHeight: "80%",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  form: {
+    padding: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.gray,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: theme.colors.navy,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  inputError: {
+    borderColor: "#FF4757",
+  },
+  hint: {
+    fontSize: 12,
+    color: theme.colors.lightGray,
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  errorText: {
+    fontSize: 12,
+    color: "#FF4757",
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  usernameContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    paddingLeft: 12,
+  },
+  usernamePrefix: {
+    fontSize: 16,
+    color: theme.colors.gray,
+    marginRight: 2,
+  },
+  usernameInput: {
+    flex: 1,
+    padding: 12,
+    paddingLeft: 2,
+    fontSize: 16,
+    color: theme.colors.navy,
+  },
+  usernameSpinner: {
+    marginRight: 12,
+  },
+  currentInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
+  infoValue: {
+    fontSize: 14,
+    color: theme.colors.navy,
+    fontWeight: "500",
+  },
+  actions: {
+    flexDirection: "row",
+    padding: 20,
+    gap: 10,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+  },
+  cancelText: {
+    fontSize: 16,
+    color: theme.colors.gray,
+    fontWeight: "600",
+  },
+  saveBtn: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRadius: 8,
+    backgroundColor: theme.colors.forest,
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveText: {
+    fontSize: 16,
+    color: "white",
+    fontWeight: "600",
     marginLeft: 8,
   },
 });
