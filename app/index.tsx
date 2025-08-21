@@ -1,6 +1,6 @@
-// app/index.tsx - Updated to check onboarding status
+// app/index.tsx - Complete new version with proper auth handling
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -22,6 +22,7 @@ import { ExplorableIcon, ExplorableLogo } from "../components/Logo";
 import { categories } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
+import { useAuth } from "../contexts/AuthContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 
@@ -31,23 +32,18 @@ const BOTTOM_SHEET_MIN_HEIGHT = 80;
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { user, profile, isOfflineMode, loading: authLoading } = useAuth();
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
   const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings();
   const webViewRef = useRef<WebView>(null);
 
-  // Onboarding check state
-  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
-  const [userName, setUserName] = useState<string>('');
-
   // State
+  const [isInitializing, setIsInitializing] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
 
   // Bottom sheet animation
-  const animatedValue = useRef(
-    new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)
-  ).current;
-
+  const animatedValue = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -59,7 +55,6 @@ export default function DashboardScreen() {
       },
       onPanResponderRelease: (e, gesture) => {
         animatedValue.flattenOffset();
-
         if (gesture.dy < -50) {
           springAnimation(BOTTOM_SHEET_MAX_HEIGHT);
         } else if (gesture.dy > 50) {
@@ -80,70 +75,84 @@ export default function DashboardScreen() {
     }).start();
   };
 
-  // Check onboarding status on mount
+  // Initialize app
   useEffect(() => {
-    checkOnboardingStatus();
-  }, []);
+    const initializeApp = async () => {
+      try {
+        // Wait for auth to be ready
+        if (authLoading) {
+          return;
+        }
 
-  useEffect(() => {
-    if (!location && !isCheckingOnboarding) {
-      getLocation();
-    }
-  }, [isCheckingOnboarding]);
+        // Check onboarding status
+        const onboardingComplete = await AsyncStorage.getItem("onboardingComplete");
+        
+        if (onboardingComplete !== "true") {
+          console.log("Onboarding not complete - redirecting");
+          router.replace("/onboarding");
+          return;
+        }
 
-  const checkOnboardingStatus = async () => {
-    try {
-      const onboardingComplete = await AsyncStorage.getItem('onboardingComplete');
-      const savedUserName = await AsyncStorage.getItem('userName');
-      
-      if (savedUserName) {
-        setUserName(savedUserName);
+        // Check authentication
+        if (!user && !isOfflineMode) {
+          console.log("No user and not offline - redirecting to login");
+          router.replace("/auth/login");
+          return;
+        }
+
+        // All checks passed
+        console.log("Dashboard ready - User:", user?.id, "Offline:", isOfflineMode);
+        setIsInitializing(false);
+
+        // Get location after initialization
+        if (!location) {
+          getLocation();
+        }
+      } catch (error) {
+        console.error("Error initializing dashboard:", error);
+        setIsInitializing(false);
       }
-      
-      if (onboardingComplete !== 'true') {
-        // Navigate to onboarding
-        router.replace('/onboarding');
-      } else {
-        // Continue with the dashboard
-        setIsCheckingOnboarding(false);
-      }
-    } catch (error) {
-      console.error('Error checking onboarding status:', error);
-      // If there's an error, continue to dashboard
-      setIsCheckingOnboarding(false);
-    }
-  };
+    };
 
-  // Show loading while checking onboarding
-  if (isCheckingOnboarding) {
+    initializeApp();
+  }, [user, isOfflineMode, authLoading, router]);
+
+  // Show loading screen while checking auth
+  if (isInitializing || authLoading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ExplorableIcon size={80} />
-        <ActivityIndicator size="large" color={theme.colors.forest} style={{ marginTop: 20 }} />
+        <ActivityIndicator
+          size="large"
+          color={theme.colors.forest}
+          style={{ marginTop: 20 }}
+        />
         <Text style={styles.loadingText}>Loading your adventures...</Text>
       </SafeAreaView>
     );
   }
 
-  // Rest of your existing dashboard code continues here...
   // Calculate statistics
-  const totalDistance = activities.reduce((sum, act) => sum + act.distance, 0);
-  const totalDuration = activities.reduce((sum, act) => sum + act.duration, 0);
-  const thisWeekActivities = activities.filter((act) => {
-    const actDate = new Date(act.startTime);
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return actDate > weekAgo;
-  });
-  const uniqueCategories = new Set(savedSpots.map((s) => s.category)).size;
+  const stats = {
+    totalDistance: activities.reduce((sum, act) => sum + act.distance, 0),
+    totalDuration: activities.reduce((sum, act) => sum + act.duration, 0),
+    totalActivities: activities.length,
+    totalLocations: savedSpots.length,
+    thisWeekActivities: activities.filter((act) => {
+      const actDate = new Date(act.startTime);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return actDate > weekAgo;
+    }).length,
+    uniqueCategories: new Set(savedSpots.map((s) => s.category)).size,
+    currentStreak: calculateStreak(),
+  };
 
-  // Calculate current streak
-  const calculateStreak = () => {
+  function calculateStreak() {
     if (activities.length === 0) return 0;
 
     const sortedActivities = [...activities].sort(
-      (a, b) =>
-        new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
 
     let streak = 0;
@@ -166,7 +175,7 @@ export default function DashboardScreen() {
     }
 
     return streak;
-  };
+  }
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -177,50 +186,56 @@ export default function DashboardScreen() {
     return `${minutes}m`;
   };
 
-  // Generate map HTML with theme colors
   const generateMapHTML = () => {
     const centerLat = location?.latitude || 47.6062;
     const centerLng = location?.longitude || -122.3321;
-    
-    // Get the correct tile URL based on user's map style preference
-    const tileUrl = getMapTileUrl();
-    const attribution = settings.mapStyle === 'satellite' 
-      ? '© Esri' 
-      : settings.mapStyle === 'terrain'
-      ? '© OpenTopoMap'
-      : '© OpenStreetMap';
+
+    let tileUrl = "";
+    let attribution = "";
+    let maxZoom = 19;
+
+    switch (settings.mapStyle) {
+      case "satellite":
+        tileUrl = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+        attribution = "© Esri, Maxar, Earthstar Geographics";
+        maxZoom = 18;
+        break;
+      case "terrain":
+        tileUrl = "https://a.tile.opentopomap.org/{z}/{x}/{y}.png";
+        attribution = "© OpenTopoMap contributors";
+        maxZoom = 17;
+        break;
+      case "standard":
+      default:
+        tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+        attribution = "© OpenStreetMap contributors";
+        maxZoom = 19;
+        break;
+    }
 
     const spotMarkers = savedSpots
       .map((spot) => {
         const category = categories[spot.category] || categories.other;
+        const escapedName = spot.name.replace(/'/g, "\\'").replace(/"/g, '\\"');
         return `
-        L.circleMarker([${spot.location.latitude}, ${
-          spot.location.longitude
-        }], {
-          radius: 8,
-          fillColor: '${category.mapColor || category.color}',
-          color: '#fff',
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.8
-        })
-        .addTo(adventureLayer)
-        .bindPopup(\`
-          <div style="text-align: center;">
-            <b style="color: ${category.color}">${spot.name}</b><br>
-            <small>${category.label}</small>
-          </div>
-        \`);
-      `;
+          L.circleMarker([${spot.location.latitude}, ${spot.location.longitude}], {
+            radius: 8,
+            fillColor: '${category.mapColor || category.color}',
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.8
+          })
+          .addTo(adventureLayer)
+          .bindPopup("<div style='text-align: center;'><b style='color: ${category.color}'>${escapedName}</b><br><small>${category.label}</small></div>");
+        `;
       })
       .join("\n");
 
     const activityRoutes = activities
       .filter((act) => act.route && act.route.length > 0)
       .map((act) => {
-        const coords = act.route
-          .map((p) => `[${p.latitude}, ${p.longitude}]`)
-          .join(",");
+        const coords = act.route.map((p) => `[${p.latitude}, ${p.longitude}]`).join(",");
         return `
           L.polyline([${coords}], {
             color: '${theme.colors.forest}',
@@ -241,43 +256,68 @@ export default function DashboardScreen() {
         <style>
           body { margin: 0; padding: 0; }
           #map { height: 100vh; width: 100vw; }
+          .leaflet-container { background: #e0e0e0; }
         </style>
       </head>
       <body>
         <div id="map"></div>
         <script>
-          var map = L.map('map').setView([${centerLat}, ${centerLng}], 11);
-          
-          L.tileLayer('${tileUrl}', {
-            attribution: '${attribution}',
-            maxZoom: ${settings.mapStyle === 'satellite' ? 18 : 19}
-          }).addTo(map);
-          
-          var adventureLayer = L.layerGroup().addTo(map);
-          
-          ${spotMarkers}
-          ${activityRoutes}
-          
-          ${
-            location
-              ? `
-            L.circleMarker([${location.latitude}, ${location.longitude}], {
-              radius: 10,
-              fillColor: '${theme.colors.burntOrange}',
-              color: '#fff',
-              weight: 3,
-              opacity: 1,
-              fillOpacity: 0.8
-            })
-            .addTo(map)
-            .bindPopup('You are here');
-          `
-              : ""
-          }
-          
-          if (adventureLayer.getLayers().length > 0) {
-            var group = new L.featureGroup(adventureLayer.getLayers());
-            map.fitBounds(group.getBounds().pad(0.1));
+          try {
+            var map = L.map('map', {
+              center: [${centerLat}, ${centerLng}],
+              zoom: 12,
+              zoomControl: true,
+              attributionControl: true,
+              preferCanvas: true
+            });
+            
+            L.tileLayer('${tileUrl}', {
+              attribution: '${attribution}',
+              maxZoom: ${maxZoom},
+              crossOrigin: false
+            }).addTo(map);
+            
+            var adventureLayer = L.layerGroup().addTo(map);
+            
+            ${spotMarkers}
+            ${activityRoutes}
+            
+            ${location ? `
+              L.circleMarker([${location.latitude}, ${location.longitude}], {
+                radius: 10,
+                fillColor: '${theme.colors.burntOrange}',
+                color: '#fff',
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0.8
+              })
+              .addTo(map)
+              .bindPopup('You are here');
+            ` : ""}
+            
+            // Fit bounds if we have content
+            var allLayers = [];
+            adventureLayer.eachLayer(function(layer) {
+              allLayers.push(layer);
+            });
+            
+            ${location ? `
+              var currentMarker = L.circleMarker([${location.latitude}, ${location.longitude}]);
+              allLayers.push(currentMarker);
+            ` : ""}
+            
+            if (allLayers.length > 0) {
+              var group = new L.featureGroup(allLayers);
+              map.fitBounds(group.getBounds().pad(0.15), {
+                maxZoom: 14,
+                animate: false
+              });
+            } else if (${location ? "true" : "false"}) {
+              map.setView([${location?.latitude || centerLat}, ${location?.longitude || centerLng}], 13);
+            }
+          } catch (error) {
+            console.error('Map initialization error:', error);
+            document.getElementById('map').innerHTML = '<div style="padding: 20px; text-align: center;">Map loading error. Please refresh.</div>';
           }
         </script>
       </body>
@@ -285,25 +325,22 @@ export default function DashboardScreen() {
     `;
   };
 
-// Add this to your existing sidebarItems array in index.tsx
-// Place it after the "Activities" item and before the divider
+  const sidebarItems = [
+    { icon: "map", label: "Dashboard", route: "/", active: true },
+    { icon: "location", label: "Saved Spots", route: "/saved-spots" },
+    { icon: "fitness", label: "Activities", route: "/past-activities" },
+    { icon: "people", label: "Friends Feed", route: "/friends-feed" },
+    { icon: "heart", label: "Wishlist", route: "/wishlist" },
+    { icon: "add-circle", label: "Add New", route: "/save-location" },
+    { divider: true },
+    { icon: "stats-chart", label: "Statistics", route: "/statistics" },
+    { icon: "trophy", label: "Achievements", route: "/statistics#achievements" },
+    { divider: true },
+    { icon: "settings", label: "Settings", route: "/settings" },
+    { icon: "information-circle", label: "About", route: "/" },
+  ];
 
-const sidebarItems = [
-  { icon: "map", label: "Dashboard", route: "/", active: true },
-  { icon: "location", label: "Saved Spots", route: "/saved-spots" },
-  { icon: "fitness", label: "Activities", route: "/past-activities" },
-  { icon: "people", label: "Friends Feed", route: "/friends-feed" }, // ADD THIS LINE
-  { icon: "heart", label: "Wishlist", route: "/wishlist" },
-  { icon: "add-circle", label: "Add New", route: "/save-location" },
-  { divider: true },
-  { icon: "stats-chart", label: "Statistics", route: "/statistics" },
-  { icon: 'trophy', label: 'Achievements', route: '/statistics#achievements' },
-  { divider: true },
-  { icon: "settings", label: "Settings", route: "/settings" },
-  { icon: "information-circle", label: "About", route: "/" },
-];
-
-  const activityIcons = {
+  const activityIcons: Record<string, string> = {
     bike: "bicycle",
     run: "walk",
     walk: "footsteps",
@@ -332,15 +369,25 @@ const sidebarItems = [
         </View>
 
         <View style={styles.headerActions}>
-          {/* Map style now controlled in Settings */}
+          {user ? (
+            <View style={styles.authIndicator}>
+              <Ionicons name="cloud-done" size={20} color={theme.colors.forest} />
+            </View>
+          ) : isOfflineMode ? (
+            <View style={styles.authIndicator}>
+              <Ionicons name="cloud-offline" size={20} color={theme.colors.gray} />
+            </View>
+          ) : null}
         </View>
       </View>
 
-      {/* Welcome message if user provided name */}
-      {userName && (
+      {/* Welcome Bar - Only show if we have a profile */}
+      {profile && (
         <View style={styles.welcomeBar}>
           <View style={styles.welcomeContent}>
-            <Text style={styles.welcomeText}>Welcome back, {userName}!</Text>
+            <Text style={styles.welcomeText}>
+              Welcome back, {profile.display_name || profile.username}!
+            </Text>
             <View style={styles.treeIcon}>
               <View style={styles.triangle} />
               <View style={styles.trunk} />
@@ -349,13 +396,9 @@ const sidebarItems = [
         </View>
       )}
 
-      {/* Main Content ScrollView - rest of your existing code... */}
-      <ScrollView
-        style={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Rest of your existing dashboard content... */}
-        {/* Stats Cards Section */}
+      {/* Main Content */}
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        {/* Stats Section */}
         <View style={styles.statsSection}>
           <Text style={styles.sectionTitle}>This Week</Text>
 
@@ -365,12 +408,7 @@ const sidebarItems = [
               onPress={() => router.push("/statistics")}
               activeOpacity={0.7}
             >
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: "#9C27B0" + "20" },
-                ]}
-              >
+              <View style={[styles.statIconContainer, { backgroundColor: "#9C27B0" + "20" }]}>
                 <Ionicons name="stats-chart" size={24} color="#9C27B0" />
               </View>
               <Text style={styles.statNumber}>View</Text>
@@ -382,53 +420,30 @@ const sidebarItems = [
               onPress={() => router.push("/saved-spots")}
               activeOpacity={0.7}
             >
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: theme.colors.burntOrange + "20" },
-                ]}
-              >
-                <Ionicons
-                  name="location"
-                  size={24}
-                  color={theme.colors.burntOrange}
-                />
+              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.burntOrange + "20" }]}>
+                <Ionicons name="location" size={24} color={theme.colors.burntOrange} />
               </View>
-              <Text style={styles.statNumber}>{savedSpots.length}</Text>
+              <Text style={styles.statNumber}>{stats.totalLocations}</Text>
               <Text style={styles.statLabel}>Places</Text>
             </TouchableOpacity>
 
             <View style={styles.statCard}>
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: theme.colors.navy + "20" },
-                ]}
-              >
-                <Ionicons
-                  name="trending-up"
-                  size={24}
-                  color={theme.colors.navy}
-                />
+              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.navy + "20" }]}>
+                <Ionicons name="trending-up" size={24} color={theme.colors.navy} />
               </View>
               <Text style={styles.statNumber}>
-                {formatDistance(totalDistance, 0).split(' ')[0]}
+                {formatDistance(stats.totalDistance, 0).split(" ")[0]}
               </Text>
               <Text style={styles.statLabel}>
-                {formatDistance(totalDistance, 0).split(' ')[1]}
+                {formatDistance(stats.totalDistance, 0).split(" ")[1]}
               </Text>
             </View>
 
             <View style={styles.statCard}>
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: "#FFB800" + "20" },
-                ]}
-              >
+              <View style={[styles.statIconContainer, { backgroundColor: "#FFB800" + "20" }]}>
                 <Ionicons name="flame" size={24} color="#FFB800" />
               </View>
-              <Text style={styles.statNumber}>{calculateStreak()}</Text>
+              <Text style={styles.statNumber}>{stats.currentStreak}</Text>
               <Text style={styles.statLabel}>Day Streak</Text>
             </View>
           </View>
@@ -436,21 +451,19 @@ const sidebarItems = [
           {/* Quick Stats Bar */}
           <View style={styles.quickStats}>
             <View style={styles.quickStatItem}>
-              <Text style={styles.quickStatValue}>
-                {formatDuration(totalDuration)}
-              </Text>
+              <Text style={styles.quickStatValue}>{formatDuration(stats.totalDuration)}</Text>
               <Text style={styles.quickStatLabel}>Total Time</Text>
             </View>
             <View style={styles.quickStatDivider} />
             <View style={styles.quickStatItem}>
-              <Text style={styles.quickStatValue}>{uniqueCategories}</Text>
+              <Text style={styles.quickStatValue}>{stats.uniqueCategories}</Text>
               <Text style={styles.quickStatLabel}>Categories</Text>
             </View>
             <View style={styles.quickStatDivider} />
             <View style={styles.quickStatItem}>
               <Text style={styles.quickStatValue}>
-                {activities.length > 0
-                  ? formatDistance(totalDistance / activities.length, 1)
+                {stats.totalActivities > 0
+                  ? formatDistance(stats.totalDistance / stats.totalActivities, 1)
                   : "0 km"}
               </Text>
               <Text style={styles.quickStatLabel}>Avg Distance</Text>
@@ -463,20 +476,23 @@ const sidebarItems = [
           <View style={styles.mapTitleRow}>
             <Text style={styles.sectionTitle}>Your Adventure Map</Text>
             <View style={styles.mapStyleBadge}>
-              <Ionicons 
+              <Ionicons
                 name={
-                  settings.mapStyle === 'satellite' ? 'globe' : 
-                  settings.mapStyle === 'terrain' ? 'trail-sign' : 
-                  'map'
-                } 
-                size={14} 
-                color={theme.colors.forest} 
+                  settings.mapStyle === "satellite"
+                    ? "globe"
+                    : settings.mapStyle === "terrain"
+                    ? "trail-sign"
+                    : "map"
+                }
+                size={14}
+                color={theme.colors.forest}
               />
               <Text style={styles.mapStyleText}>
                 {settings.mapStyle.charAt(0).toUpperCase() + settings.mapStyle.slice(1)}
               </Text>
             </View>
           </View>
+
           <View style={styles.mapContainer}>
             <WebView
               ref={webViewRef}
@@ -484,114 +500,81 @@ const sidebarItems = [
               source={{ html: generateMapHTML() }}
               javaScriptEnabled={true}
               domStorageEnabled={true}
+              scrollEnabled={false}
+              scalesPageToFit={false}
             />
 
-            {/* Map Legend */}
             <View style={styles.mapLegend}>
               <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: theme.colors.burntOrange },
-                  ]}
-                />
+                <View style={[styles.legendDot, { backgroundColor: theme.colors.burntOrange }]} />
                 <Text style={styles.legendText}>You</Text>
               </View>
               <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: theme.colors.forest },
-                  ]}
-                />
+                <View style={[styles.legendDot, { backgroundColor: theme.colors.forest }]} />
                 <Text style={styles.legendText}>Routes</Text>
               </View>
               <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: theme.colors.navy },
-                  ]}
-                />
+                <View style={[styles.legendDot, { backgroundColor: theme.colors.navy }]} />
                 <Text style={styles.legendText}>Places</Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Recent Activity Section */}
+        {/* Recent Activities */}
         <View style={styles.recentSection}>
           <Text style={styles.sectionTitle}>Recent Adventures</Text>
-          {[...activities]
-            .sort(
-              (a, b) =>
-                new Date(b.startTime).getTime() -
-                new Date(a.startTime).getTime()
-            )
-            .slice(0, 3)
-            .map((activity) => {
-              const icon = (activityIcons as any)[activity.type] || "fitness";
-              return (
-                <TouchableOpacity
-                  key={activity.id}
-                  style={styles.recentCard}
-                  onPress={() => router.push("/past-activities")}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.recentIcon,
-                      { backgroundColor: theme.colors.forest + "20" },
-                    ]}
-                  >
-                    <Ionicons
-                      name={icon}
-                      size={20}
-                      color={theme.colors.forest}
-                    />
-                  </View>
-                  <View style={styles.recentInfo}>
-                    <Text style={styles.recentName}>{activity.name}</Text>
-                    <Text style={styles.recentMeta}>
-                      {new Date(activity.startTime).toLocaleDateString()} • {formatDistance(activity.distance)} • {formatDuration(activity.duration)}
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color={theme.colors.lightGray}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-          {activities.length > 0 && (
-            <TouchableOpacity
-              style={styles.viewStatsButton}
-              onPress={() => router.push("/statistics")}
-            >
-              <Ionicons
-                name="stats-chart"
-                size={20}
-                color={theme.colors.forest}
-              />
-              <Text style={styles.viewStatsText}>View Detailed Statistics</Text>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={theme.colors.forest}
-              />
-            </TouchableOpacity>
+          {activities.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No activities yet. Start tracking your adventures!</Text>
+              <TouchableOpacity
+                style={styles.startButton}
+                onPress={() => router.push("/track-activity")}
+              >
+                <Ionicons name="fitness" size={20} color="white" />
+                <Text style={styles.startButtonText}>Track Activity</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {[...activities]
+                .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+                .slice(0, 3)
+                .map((activity) => {
+                  const icon = activityIcons[activity.type] || "fitness";
+                  return (
+                    <TouchableOpacity
+                      key={activity.id}
+                      style={styles.recentCard}
+                      onPress={() => router.push("/past-activities")}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.recentIcon, { backgroundColor: theme.colors.forest + "20" }]}>
+                        <Ionicons name={icon as any} size={20} color={theme.colors.forest} />
+                      </View>
+                      <View style={styles.recentInfo}>
+                        <Text style={styles.recentName}>{activity.name}</Text>
+                        <Text style={styles.recentMeta}>
+                          {new Date(activity.startTime).toLocaleDateString()} •{" "}
+                          {formatDistance(activity.distance)} • {formatDuration(activity.duration)}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+                    </TouchableOpacity>
+                  );
+                })}
+              <TouchableOpacity
+                style={styles.viewStatsButton}
+                onPress={() => router.push("/statistics")}
+              >
+                <Ionicons name="stats-chart" size={20} color={theme.colors.forest} />
+                <Text style={styles.viewStatsText}>View Detailed Statistics</Text>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.forest} />
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </ScrollView>
-
-      {/* Floating Action Buttons */}
-      <View style={styles.profileSection}>
-        <Text style={styles.profileName}>{userName || 'Explorer'}</Text>
-        <Text style={styles.profileStats}>
-          {savedSpots.length} places • {activities.length} activities
-        </Text>
-      </View>
 
       {/* Bottom Sheet */}
       <Animated.View
@@ -608,31 +591,22 @@ const sidebarItems = [
         </View>
 
         <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => router.push("/save-location")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/save-location")}>
             <Ionicons name="location" size={24} color={theme.colors.forest} />
             <Text style={styles.quickActionText}>Save Spot</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => router.push("/track-activity")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/track-activity")}>
             <Ionicons name="fitness" size={24} color={theme.colors.navy} />
             <Text style={styles.quickActionText}>Track</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => router.push("/saved-spots")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/saved-spots")}>
             <Ionicons name="map" size={24} color={theme.colors.burntOrange} />
             <Text style={styles.quickActionText}>Browse</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Sidebar Modal - rest of your existing sidebar code... */}
+      {/* Sidebar Modal */}
       <Modal
         visible={showSidebar}
         animationType="none"
@@ -646,17 +620,20 @@ const sidebarItems = [
             onPress={() => setShowSidebar(false)}
           />
 
-          <Animated.View
-            style={[styles.sidebar, { transform: [{ translateX: 0 }] }]}
-          >
+          <Animated.View style={[styles.sidebar]}>
             <View style={styles.profileSection}>
               <View style={styles.profileAvatar}>
                 <ExplorableIcon size={60} color={theme.colors.forest} />
               </View>
-              <Text style={styles.profileName}>{userName || 'Explorer'}</Text>
-              <Text style={styles.profileStats}>
-                {savedSpots.length} places • {activities.length} activities
+              <Text style={styles.profileName}>
+                {profile?.display_name || profile?.username || "Explorer"}
               </Text>
+              <Text style={styles.profileStats}>
+                {stats.totalLocations} places • {stats.totalActivities} activities
+              </Text>
+              {user && (
+                <Text style={styles.profileEmail}>{user.email}</Text>
+              )}
             </View>
 
             <ScrollView style={styles.sidebarMenu}>
@@ -668,10 +645,7 @@ const sidebarItems = [
                 return (
                   <TouchableOpacity
                     key={index}
-                    style={[
-                      styles.sidebarItem,
-                      item.active && styles.sidebarItemActive,
-                    ]}
+                    style={[styles.sidebarItem, item.active && styles.sidebarItemActive]}
                     onPress={() => {
                       setShowSidebar(false);
                       if (item.route) {
@@ -682,15 +656,10 @@ const sidebarItems = [
                     <Ionicons
                       name={item.icon as any}
                       size={24}
-                      color={
-                        item.active ? theme.colors.forest : theme.colors.gray
-                      }
+                      color={item.active ? theme.colors.forest : theme.colors.gray}
                     />
                     <Text
-                      style={[
-                        styles.sidebarItemText,
-                        item.active && styles.sidebarItemTextActive,
-                      ]}
+                      style={[styles.sidebarItemText, item.active && styles.sidebarItemTextActive]}
                     >
                       {item.label}
                     </Text>
@@ -698,6 +667,35 @@ const sidebarItems = [
                 );
               })}
             </ScrollView>
+
+            {/* Auth Status in Sidebar */}
+            <View style={styles.sidebarFooter}>
+              {user ? (
+                <TouchableOpacity
+                  style={styles.authStatusButton}
+                  onPress={() => {
+                    setShowSidebar(false);
+                    router.push("/settings");
+                  }}
+                >
+                  <Ionicons name="cloud-done" size={20} color={theme.colors.forest} />
+                  <Text style={styles.authStatusText}>Synced</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.authStatusButton}
+                  onPress={() => {
+                    setShowSidebar(false);
+                    router.push("/auth/login");
+                  }}
+                >
+                  <Ionicons name="cloud-offline" size={20} color={theme.colors.gray} />
+                  <Text style={styles.authStatusText}>
+                    {isOfflineMode ? "Offline Mode" : "Sign In"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </Animated.View>
         </View>
       </Modal>
@@ -705,13 +703,11 @@ const sidebarItems = [
   );
 }
 
-// Add these new styles to your existing styles
 const styles = StyleSheet.create({
-  // Add loading styles
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
   },
   loadingText: {
@@ -719,46 +715,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.gray,
   },
-  welcomeBar: {
-    backgroundColor: theme.colors.forest + '10',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.forest + '20',
-  },
-  welcomeContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: theme.colors.forest,
-    fontWeight: '500',
-  },
-  treeIcon: {
-    marginLeft: 8,
-    alignItems: 'center',
-  },
-  triangle: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 12,
-    borderStyle: 'solid',
-    backgroundColor: 'transparent',
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: theme.colors.forest,
-  },
-  trunk: {
-    width: 4,
-    height: 4,
-    backgroundColor: theme.colors.navy,
-    marginTop: -1,
-  },
-  // ... rest of your existing styles
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
@@ -786,18 +742,51 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: -8,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: theme.colors.navy,
-    letterSpacing: 1,
-  },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
   },
-  layerButton: {
+  authIndicator: {
     padding: 8,
+  },
+  welcomeBar: {
+    backgroundColor: theme.colors.forest + "10",
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.forest + "20",
+  },
+  welcomeContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  welcomeText: {
+    fontSize: 14,
+    color: theme.colors.forest,
+    fontWeight: "500",
+  },
+  treeIcon: {
+    marginLeft: 8,
+    alignItems: "center",
+  },
+  triangle: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderBottomWidth: 12,
+    borderStyle: "solid",
+    backgroundColor: "transparent",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderBottomColor: theme.colors.forest,
+  },
+  trunk: {
+    width: 4,
+    height: 4,
+    backgroundColor: theme.colors.navy,
+    marginTop: -1,
   },
   scrollContainer: {
     flex: 1,
@@ -933,6 +922,30 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 100,
   },
+  emptyState: {
+    alignItems: "center",
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    textAlign: "center",
+    marginBottom: 15,
+  },
+  startButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  startButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
   recentCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -962,32 +975,22 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     marginTop: 2,
   },
-  fabContainer: {
-    position: "absolute",
-    bottom: 100,
-    right: 20,
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
+  viewStatsButton: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    justifyContent: "center",
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
   },
-  fabPrimary: {
-    backgroundColor: theme.colors.forest,
-  },
-  fabSecondary: {
-    backgroundColor: theme.colors.navy,
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  viewStatsText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.forest,
+    marginHorizontal: 8,
+    flex: 1,
+    textAlign: "center",
   },
   bottomSheet: {
     position: "absolute",
@@ -1072,6 +1075,11 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     marginTop: 5,
   },
+  profileEmail: {
+    fontSize: 12,
+    color: theme.colors.lightGray,
+    marginTop: 3,
+  },
   sidebarMenu: {
     flex: 1,
   },
@@ -1099,22 +1107,23 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.borderGray,
     marginVertical: 10,
   },
-  viewStatsButton: {
+  sidebarFooter: {
+    padding: 15,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+  },
+  authStatusButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
     padding: 12,
-    marginTop: 10,
-    marginHorizontal: 5,
+    borderRadius: 8,
   },
-  viewStatsText: {
+  authStatusText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: theme.colors.forest,
-    marginHorizontal: 8,
-    flex: 1,
-    textAlign: "center",
+    fontWeight: "500",
+    color: theme.colors.navy,
+    marginLeft: 8,
   },
 });

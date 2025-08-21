@@ -1,47 +1,45 @@
-// contexts/FriendsContext.tsx - Enhanced with activity sharing
+// contexts/FriendsContext.tsx - Fixed to properly sync with user changes
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
+import { supabase } from '../lib/supabase';
 import { Activity } from './ActivityContext';
-import { SavedSpot } from './LocationContext';
+import { useAuth } from './AuthContext'; // Import useAuth
 
+// Types - Keeping OLD names for compatibility
 export interface Friend {
   id: string;
   username: string;
-  displayName: string;
+  displayName: string; // Maps to display_name in DB
   avatar?: string;
   friendsSince: Date;
   status: 'pending' | 'accepted' | 'blocked';
-  lastActive?: Date;
+  lastActive?: Date; // Maps to last_active in DB
+}
+
+export interface Friendship {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: 'pending' | 'accepted' | 'blocked';
+  requested_at: string;
+  accepted_at?: string;
+  friend?: Friend;
 }
 
 export interface FriendRequest {
   id: string;
-  from: Friend;
-  to: string;
-  sentAt: Date;
+  from_user_id: string;
+  to_user_id: string;
   message?: string;
+  sent_at: string;
+  from_user?: Friend;
+  from?: Friend; // For compatibility with existing code
+  to?: string;   // For compatibility
+  sentAt?: Date; // For compatibility
 }
 
-export interface SharedActivity extends Activity {
-  sharedBy: Friend;
-  sharedAt: Date;
-  likes: string[];
-  comments: Comment[];
-  privacySettings?: {
-    includeRoute: boolean;
-    includeExactLocation: boolean;
-  };
-}
-
-export interface SharedLocation extends SavedSpot {
-  sharedBy: Friend;
-  sharedAt: Date;
-  likes: string[];
-  comments: Comment[];
-}
-
-export interface Comment {
+export interface FeedComment {
   id: string;
   userId: string;
   userName: string;
@@ -49,58 +47,90 @@ export interface Comment {
   timestamp: Date;
 }
 
-export interface FeedItem {
+export interface FeedPost {
   id: string;
   type: 'activity' | 'location' | 'achievement';
-  data: SharedActivity | SharedLocation | AchievementShare;
-  timestamp: Date;
+  timestamp?: Date;
+  data: {
+    // Activity data
+    id?: string;
+    name?: string;
+    type?: string;
+    distance?: number;
+    duration?: number;
+    averageSpeed?: number;
+    maxSpeed?: number;
+    elevationGain?: number;
+    startTime?: Date;
+    notes?: string;
+    route?: any[];
+    
+    // Location data
+    location?: {
+      latitude: number;
+      longitude: number;
+    };
+    description?: string;
+    photos?: string[];
+    category?: string;
+    
+    // Achievement data
+    achievementName?: string;
+    achievementIcon?: string;
+    
+    // Shared data
+    sharedBy: Friend;
+    sharedAt: Date;
+    likes: string[]; // Array of user IDs who liked
+    comments: FeedComment[];
+  };
 }
 
-export interface AchievementShare {
+// Add missing type
+export interface FriendSuggestion {
   id: string;
-  achievementId: string;
-  achievementName: string;
-  achievementIcon: string;
-  sharedBy: Friend;
-  sharedAt: Date;
-  likes: string[];
-  comments: Comment[];
+  username: string;
+  displayName: string;
+  avatar?: string;
+  mutualFriendsCount: number;
+  suggestionReason: string;
 }
 
+// Context Type - Keeping OLD method names for compatibility
 interface FriendsContextType {
-  // Friends management
+  // State - Using OLD names
   friends: Friend[];
-  friendRequests: FriendRequest[];
-  pendingRequests: FriendRequest[];
-  
-  // Friend actions
+  friendRequests: FriendRequest[]; // incoming requests
+  pendingRequests: FriendRequest[]; // outgoing requests (was sentRequests)
+  suggestions?: FriendSuggestion[]; // optional for compatibility
+  feed: FeedPost[];
+  loading: boolean;
+  error: string | null;
+
+  // Friend Management - OLD signatures
   sendFriendRequest: (username: string, message?: string) => Promise<void>;
   acceptFriendRequest: (requestId: string) => Promise<void>;
   declineFriendRequest: (requestId: string) => Promise<void>;
+  cancelFriendRequest?: (requestId: string) => Promise<void>; // optional
   removeFriend: (friendId: string) => Promise<void>;
-  blockUser: (userId: string) => Promise<void>;
-  unblockUser: (userId: string) => Promise<void>;
+  searchUsers: (query: string) => Promise<Friend[]>;
   
-  // Sharing
+  // Feed & Sharing - OLD signatures
+  refreshFeed: () => Promise<void>;
   shareActivity: (activityId: string, friendIds?: string[], options?: any) => Promise<void>;
   shareLocation: (locationId: string, friendIds?: string[]) => Promise<void>;
   shareAchievement: (achievementId: string, achievementName: string, achievementIcon: string) => Promise<void>;
-  
-  // Feed
-  feed: FeedItem[];
-  refreshFeed: () => Promise<void>;
   addActivityToFeed: (activity: Activity, options?: any) => Promise<void>;
   
-  // Interactions
-  likeItem: (itemId: string) => Promise<void>;
-  unlikeItem: (itemId: string) => Promise<void>;
+  // Interactions - OLD names
+  likeItem: (itemId: string) => Promise<void>; // was likePost
+  unlikeItem: (itemId: string) => Promise<void>; // was unlikePost
   addComment: (itemId: string, text: string) => Promise<void>;
   deleteComment: (itemId: string, commentId: string) => Promise<void>;
   
-  // Friend finder
-  searchUsers: (query: string) => Promise<Friend[]>;
-  getFriendActivities: (friendId: string) => SharedActivity[];
-  getFriendLocations: (friendId: string) => SharedLocation[];
+  // Friend Data
+  getFriendActivities: (friendId: string) => any[];
+  getFriendLocations: (friendId: string) => any[];
   
   // Privacy
   privacySettings: {
@@ -114,157 +144,29 @@ interface FriendsContextType {
   updatePrivacySettings: (settings: Partial<FriendsContextType['privacySettings']>) => Promise<void>;
   
   // Utils
-  loading: boolean;
-  error: string | null;
+  blockUser: (userId: string) => Promise<void>;
+  unblockUser: (userId: string) => Promise<void>;
+  
+  // Current User
   currentUserId: string;
+  
+  // Optional new methods for compatibility
+  refreshFriends?: () => Promise<void>;
+  refreshSuggestions?: () => Promise<void>;
 }
 
 const FriendsContext = createContext<FriendsContextType | undefined>(undefined);
 
-// Mock data generator for demo purposes
-const generateMockFriends = (): Friend[] => {
-  return [
-    {
-      id: 'friend1',
-      username: 'adventurer123',
-      displayName: 'Sarah Adventures',
-      avatar: '🏔️',
-      friendsSince: new Date('2024-01-15'),
-      status: 'accepted',
-      lastActive: new Date(),
-    },
-    {
-      id: 'friend2',
-      username: 'trailblazer',
-      displayName: 'Mike Trails',
-      avatar: '🥾',
-      friendsSince: new Date('2024-02-20'),
-      status: 'accepted',
-      lastActive: new Date(Date.now() - 3600000),
-    },
-    {
-      id: 'friend3',
-      username: 'naturelover',
-      displayName: 'Emma Nature',
-      avatar: '🌲',
-      friendsSince: new Date('2024-03-10'),
-      status: 'accepted',
-      lastActive: new Date(Date.now() - 86400000),
-    },
-  ];
-};
-
-const generateMockFeed = (friends: Friend[]): FeedItem[] => {
-  const now = new Date();
-  return [
-    {
-      id: 'feed1',
-      type: 'activity',
-      timestamp: new Date(now.getTime() - 3600000),
-      data: {
-        id: 'act1',
-        type: 'hike',
-        name: 'Morning Trail Run',
-        startTime: new Date(now.getTime() - 7200000),
-        endTime: new Date(now.getTime() - 3600000),
-        duration: 3600,
-        distance: 5000,
-        route: [
-          { latitude: 47.7231, longitude: -122.1309, timestamp: now.getTime() - 7200000 },
-          { latitude: 47.7241, longitude: -122.1319, timestamp: now.getTime() - 6600000 },
-          { latitude: 47.7251, longitude: -122.1329, timestamp: now.getTime() - 6000000 },
-        ],
-        averageSpeed: 5,
-        maxSpeed: 8,
-        isManualEntry: false,
-        sharedBy: friends[0] || {
-          id: 'friend1',
-          username: 'adventurer123',
-          displayName: 'Sarah Adventures',
-          avatar: '🏔️',
-          friendsSince: new Date(),
-          status: 'accepted' as const
-        },
-        sharedAt: new Date(now.getTime() - 3600000),
-        likes: ['friend2', 'friend3'],
-        comments: [
-          {
-            id: 'c1',
-            userId: 'friend2',
-            userName: 'Mike Trails',
-            text: 'Great pace! 💪',
-            timestamp: new Date(now.getTime() - 1800000),
-          },
-        ],
-        privacySettings: {
-          includeRoute: true,
-          includeExactLocation: false,
-        }
-      } as SharedActivity,
-    },
-    {
-      id: 'feed2',
-      type: 'location',
-      timestamp: new Date(now.getTime() - 86400000),
-      data: {
-        id: 'loc1',
-        name: 'Hidden Waterfall',
-        location: { latitude: 47.7231, longitude: -122.1309 },
-        timestamp: new Date(now.getTime() - 86400000),
-        category: 'viewpoint',
-        description: 'Amazing hidden gem with crystal clear water!',
-        photos: [],
-        sharedBy: friends[1] || {
-          id: 'friend2',
-          username: 'trailblazer',
-          displayName: 'Mike Trails',
-          avatar: '🥾',
-          friendsSince: new Date(),
-          status: 'accepted' as const
-        },
-        sharedAt: new Date(now.getTime() - 86400000),
-        likes: ['friend1', 'currentUser'],
-        comments: [],
-      } as SharedLocation,
-    },
-    {
-      id: 'feed3',
-      type: 'achievement',
-      timestamp: new Date(now.getTime() - 172800000),
-      data: {
-        id: 'ach1',
-        achievementId: 'week_streak',
-        achievementName: 'Week Warrior',
-        achievementIcon: 'flame',
-        sharedBy: friends[2] || {
-          id: 'friend3',
-          username: 'naturelover',
-          displayName: 'Emma Nature',
-          avatar: '🌲',
-          friendsSince: new Date(),
-          status: 'accepted' as const
-        },
-        sharedAt: new Date(now.getTime() - 172800000),
-        likes: ['friend1', 'friend2', 'currentUser'],
-        comments: [
-          {
-            id: 'c2',
-            userId: 'friend1',
-            userName: 'Sarah Adventures',
-            text: 'Congrats on the streak! 🔥',
-            timestamp: new Date(now.getTime() - 172000000),
-          },
-        ],
-      } as AchievementShare,
-    },
-  ];
-};
-
 export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth(); // Get user from AuthContext
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
-  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]); // incoming
+  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]); // outgoing
+  const [suggestions, setSuggestions] = useState<FriendSuggestion[]>([]);
+  const [feed, setFeed] = useState<FeedPost[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const [privacySettings, setPrivacySettings] = useState({
     shareActivitiesWithFriends: true,
     shareLocationsWithFriends: true,
@@ -273,209 +175,480 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     defaultActivityPrivacy: 'general_area' as 'stats_only' | 'general_area' | 'full_route',
     autoShareActivities: false,
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const currentUserId = 'currentUser'; // In production, this would come from auth
 
-  // Load friends data on mount
+  // Update currentUserId when user changes from AuthContext
   useEffect(() => {
-    loadFriendsData();
-  }, []);
+    if (user) {
+      console.log('FriendsContext: User changed to:', user.id);
+      setCurrentUserId(user.id);
+    } else {
+      console.log('FriendsContext: User logged out, clearing data');
+      setCurrentUserId('');
+      // Clear all data when user logs out
+      setFriends([]);
+      setFriendRequests([]);
+      setPendingRequests([]);
+      setSuggestions([]);
+      setFeed([]);
+      setError(null);
+    }
+  }, [user]);
+
+  // Load data when currentUserId changes
+  useEffect(() => {
+    if (currentUserId && currentUserId !== '') {
+      console.log('FriendsContext: Loading data for user:', currentUserId);
+      loadFriendsData();
+      loadFeed();
+    }
+  }, [currentUserId]);
 
   const loadFriendsData = async () => {
+    if (!currentUserId || currentUserId === '') {
+      console.log('No user ID, skipping friends data load');
+      return;
+    }
+    
     try {
       setLoading(true);
+      console.log('Loading friends data for user:', currentUserId);
       
-      // Load friends
-      const friendsJson = await AsyncStorage.getItem('friends');
-      if (friendsJson) {
-        setFriends(JSON.parse(friendsJson));
-      } else {
-        // Initialize with mock data for demo
-        const mockFriends = generateMockFriends();
-        setFriends(mockFriends);
-        await AsyncStorage.setItem('friends', JSON.stringify(mockFriends));
+      // Clear previous data first
+      setFriends([]);
+      setFriendRequests([]);
+      setPendingRequests([]);
+      setSuggestions([]);
+      
+      // Load accepted friends
+      const { data: friendships, error: friendsError } = await supabase
+        .from('friendships')
+        .select(`
+          *,
+          friend:profiles!friendships_friend_id_fkey(
+            id,
+            username,
+            display_name,
+            avatar,
+            last_active
+          )
+        `)
+        .eq('user_id', currentUserId)
+        .eq('status', 'accepted');
+
+      if (friendsError) {
+        console.error('Error loading friends:', friendsError);
+        throw friendsError;
       }
       
-      // Load friend requests
-      const requestsJson = await AsyncStorage.getItem('friendRequests');
-      if (requestsJson) {
-        setFriendRequests(JSON.parse(requestsJson));
+      console.log('Loaded friendships:', friendships?.length || 0);
+      
+      if (friendships && friendships.length > 0) {
+        const transformedFriends = friendships
+          .filter(f => f.friend)
+          .map(f => ({
+            id: f.friend.id,
+            username: f.friend.username,
+            displayName: f.friend.display_name, // Transform to old name
+            avatar: f.friend.avatar,
+            friendsSince: new Date(f.accepted_at || f.requested_at),
+            status: 'accepted' as const,
+            lastActive: f.friend.last_active ? new Date(f.friend.last_active) : undefined, // Transform to old name
+          }));
+        setFriends(transformedFriends);
+      }
+
+      // Load incoming friend requests
+      const { data: requests, error: requestsError } = await supabase
+        .from('friend_requests')
+        .select(`
+          *,
+          from_user:profiles!friend_requests_from_user_id_fkey(
+            id,
+            username,
+            display_name,
+            avatar
+          )
+        `)
+        .eq('to_user_id', currentUserId);
+
+      if (requestsError) {
+        console.error('Error loading requests:', requestsError);
+        throw requestsError;
       }
       
-      // Load privacy settings
-      const privacyJson = await AsyncStorage.getItem('friendsPrivacy');
-      if (privacyJson) {
-        setPrivacySettings(JSON.parse(privacyJson));
+      console.log('Loaded incoming friend requests:', requests?.length || 0);
+      
+      if (requests && requests.length > 0) {
+        const transformedRequests = requests
+          .filter(r => r.from_user)
+          .map(r => ({
+            id: r.id,
+            from_user_id: r.from_user_id,
+            to_user_id: r.to_user_id,
+            message: r.message,
+            sent_at: r.sent_at,
+            from_user: {
+              id: r.from_user.id,
+              username: r.from_user.username,
+              displayName: r.from_user.display_name, // Transform to old name
+              avatar: r.from_user.avatar,
+              friendsSince: new Date(),
+              status: 'pending' as const,
+            },
+            from: {
+              id: r.from_user.id,
+              username: r.from_user.username,
+              displayName: r.from_user.display_name,
+              avatar: r.from_user.avatar,
+              friendsSince: new Date(),
+              status: 'pending' as const,
+            },
+            to: r.to_user_id,
+            sentAt: new Date(r.sent_at),
+          }));
+        setFriendRequests(transformedRequests);
+        console.log('Set friend requests:', transformedRequests.map(r => r.from.username));
+      }
+
+      // Load sent friend requests (pendingRequests in old naming)
+      const { data: sent, error: sentError } = await supabase
+        .from('friend_requests')
+        .select(`
+          *,
+          to_user:profiles!friend_requests_to_user_id_fkey(
+            id,
+            username,
+            display_name
+          )
+        `)
+        .eq('from_user_id', currentUserId);
+
+      if (sentError) {
+        console.error('Error loading sent requests:', sentError);
+        throw sentError;
       }
       
-      // Load feed
-      await refreshFeed();
+      console.log('Loaded sent requests:', sent?.length || 0);
       
+      if (sent && sent.length > 0) {
+        const transformedSent = sent.map(s => ({
+          id: s.id,
+          from_user_id: s.from_user_id,
+          to_user_id: s.to_user_id,
+          message: s.message,
+          sent_at: s.sent_at,
+          to: s.to_user?.username || s.to_user_id,
+          sentAt: new Date(s.sent_at),
+        }));
+        setPendingRequests(transformedSent);
+        console.log('Set pending requests to:', transformedSent.map(r => r.to));
+      }
+
+      // Load suggestions
+      await loadSuggestions();
+
     } catch (err) {
       console.error('Error loading friends data:', err);
-      setError('Failed to load friends data');
+      setError('Failed to load friends');
     } finally {
       setLoading(false);
     }
   };
 
-  const saveFriends = async (updatedFriends: Friend[]) => {
+  const loadSuggestions = async () => {
+    if (!currentUserId) return;
+
     try {
-      await AsyncStorage.setItem('friends', JSON.stringify(updatedFriends));
+      // Get some active users as suggestions (simplified version)
+      const { data: activeUsers } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar')
+        .neq('id', currentUserId)
+        .order('last_active', { ascending: false })
+        .limit(10);
+
+      if (activeUsers) {
+        const friendIds = friends.map(f => f.id);
+        const requestUserIds = [
+          ...friendRequests.map(r => r.from_user_id),
+          ...pendingRequests.map(r => r.to_user_id),
+        ];
+
+        const filtered = activeUsers.filter(u => 
+          !friendIds.includes(u.id) && !requestUserIds.includes(u.id)
+        );
+
+        const suggestionsList: FriendSuggestion[] = filtered.map(u => ({
+          id: u.id,
+          username: u.username,
+          displayName: u.display_name, // Transform to old name
+          avatar: u.avatar,
+          mutualFriendsCount: 0,
+          suggestionReason: 'Active on ExplorAble',
+        }));
+
+        setSuggestions(suggestionsList);
+      }
     } catch (err) {
-      console.error('Error saving friends:', err);
+      console.error('Error loading suggestions:', err);
     }
   };
 
-  const saveFeed = async (updatedFeed: FeedItem[]) => {
-    try {
-      await AsyncStorage.setItem('friendsFeed', JSON.stringify(updatedFeed));
-    } catch (err) {
-      console.error('Error saving feed:', err);
+  const loadFeed = async () => {
+    if (!currentUserId || currentUserId === '') {
+      return;
     }
+    
+    try {
+      // TODO: Load feed from Supabase
+      // For now, keep empty
+      setFeed([]);
+    } catch (err) {
+      console.error('Error loading feed:', err);
+    }
+  };
+
+  const refreshFeed = async () => {
+    await loadFeed();
+  };
+
+  const refreshFriends = async () => {
+    await loadFriendsData();
+  };
+
+  const refreshSuggestions = async () => {
+    await loadSuggestions();
   };
 
   const sendFriendRequest = async (username: string, message?: string) => {
+    if (!currentUserId || currentUserId === '') {
+      Alert.alert('Error', 'Please log in to send friend requests');
+      return;
+    }
+
     try {
-      // In production, this would make an API call
-      // For now, we'll create a mock request
-      const newRequest: FriendRequest = {
-        id: Date.now().toString(),
-        from: {
-          id: currentUserId,
-          username: 'currentUser',
-          displayName: 'You',
-          friendsSince: new Date(),
-          status: 'pending',
-        },
-        to: username,
-        sentAt: new Date(),
-        message,
-      };
+      console.log('Sending friend request from:', currentUserId, 'to username:', username);
       
-      const updatedPending = [...pendingRequests, newRequest];
-      setPendingRequests(updatedPending);
-      await AsyncStorage.setItem('pendingRequests', JSON.stringify(updatedPending));
+      const cleanUsername = username.toLowerCase().trim();
       
-      Alert.alert('Success', `Friend request sent to ${username}`);
-    } catch (err) {
+      const { data: targetUser, error: userError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name')
+        .eq('username', cleanUsername)
+        .single();
+
+      console.log('User search result:', targetUser, 'Error:', userError);
+
+      if (userError || !targetUser) {
+        const { data: alternativeSearch } = await supabase
+          .from('profiles')
+          .select('id, username, display_name')
+          .ilike('username', `${cleanUsername}%`)
+          .limit(5);
+        
+        if (alternativeSearch && alternativeSearch.length > 0) {
+          const userList = alternativeSearch.map(u => u.username).join('\n');
+          Alert.alert(
+            'User not found',
+            `Did you mean one of these?\n${userList}`,
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert('Error', `User "${username}" not found`);
+        }
+        return;
+      }
+
+      // Check if already friends
+      const { data: existingFriendship } = await supabase
+        .from('friendships')
+        .select('id')
+        .or(`and(user_id.eq.${currentUserId},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${currentUserId})`)
+        .single();
+
+      if (existingFriendship) {
+        Alert.alert('Error', 'You are already friends with this user');
+        return;
+      }
+
+      // Check for existing request (in either direction)
+      const { data: existingRequest } = await supabase
+        .from('friend_requests')
+        .select('id')
+        .or(`and(from_user_id.eq.${currentUserId},to_user_id.eq.${targetUser.id}),and(from_user_id.eq.${targetUser.id},to_user_id.eq.${currentUserId})`)
+        .single();
+
+      if (existingRequest) {
+        Alert.alert('Error', 'A friend request already exists between you and this user');
+        return;
+      }
+
+      // Send the request
+      const { error: requestError } = await supabase
+        .from('friend_requests')
+        .insert({
+          from_user_id: currentUserId,
+          to_user_id: targetUser.id,
+          message,
+          sent_at: new Date().toISOString(),
+        });
+
+      if (requestError) throw requestError;
+
+      Alert.alert('Success', `Friend request sent to ${targetUser.display_name} (@${targetUser.username})`);
+      await loadFriendsData();
+
+    } catch (err: any) {
       console.error('Error sending friend request:', err);
-      setError('Failed to send friend request');
+      Alert.alert('Error', err.message || 'Failed to send friend request');
     }
   };
 
   const acceptFriendRequest = async (requestId: string) => {
+    if (!currentUserId) return;
+
     try {
       const request = friendRequests.find(r => r.id === requestId);
       if (!request) return;
-      
-      // Add to friends
-      const newFriend: Friend = {
-        ...request.from,
-        status: 'accepted',
-        friendsSince: new Date(),
-      };
-      
-      const updatedFriends = [...friends, newFriend];
-      setFriends(updatedFriends);
-      await saveFriends(updatedFriends);
-      
-      // Remove from requests
-      const updatedRequests = friendRequests.filter(r => r.id !== requestId);
-      setFriendRequests(updatedRequests);
-      await AsyncStorage.setItem('friendRequests', JSON.stringify(updatedRequests));
-      
-      Alert.alert('Success', `You are now friends with ${newFriend.displayName}`);
-    } catch (err) {
+
+      const { error: friendshipError } = await supabase
+        .from('friendships')
+        .insert([
+          {
+            user_id: currentUserId,
+            friend_id: request.from_user_id,
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+          },
+          {
+            user_id: request.from_user_id,
+            friend_id: currentUserId,
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+          },
+        ]);
+
+      if (friendshipError) throw friendshipError;
+
+      const { error: deleteError } = await supabase
+        .from('friend_requests')
+        .delete()
+        .eq('id', requestId);
+
+      if (deleteError) throw deleteError;
+
+      Alert.alert('Success', 'Friend request accepted');
+      await loadFriendsData();
+
+    } catch (err: any) {
       console.error('Error accepting friend request:', err);
-      setError('Failed to accept friend request');
+      Alert.alert('Error', 'Failed to accept friend request');
     }
   };
 
   const declineFriendRequest = async (requestId: string) => {
     try {
-      const updatedRequests = friendRequests.filter(r => r.id !== requestId);
-      setFriendRequests(updatedRequests);
-      await AsyncStorage.setItem('friendRequests', JSON.stringify(updatedRequests));
-    } catch (err) {
+      const { error } = await supabase
+        .from('friend_requests')
+        .delete()
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      await loadFriendsData();
+
+    } catch (err: any) {
       console.error('Error declining friend request:', err);
-      setError('Failed to decline friend request');
+      Alert.alert('Error', 'Failed to decline friend request');
+    }
+  };
+
+  const cancelFriendRequest = async (requestId: string) => {
+    try {
+      const { error } = await supabase
+        .from('friend_requests')
+        .delete()
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Friend request cancelled');
+      await loadFriendsData();
+
+    } catch (err: any) {
+      console.error('Error cancelling friend request:', err);
+      Alert.alert('Error', 'Failed to cancel friend request');
     }
   };
 
   const removeFriend = async (friendId: string) => {
+    if (!currentUserId) return;
+
     try {
-      const updatedFriends = friends.filter(f => f.id !== friendId);
-      setFriends(updatedFriends);
-      await saveFriends(updatedFriends);
-      
+      const { error } = await supabase
+        .from('friendships')
+        .delete()
+        .or(`and(user_id.eq.${currentUserId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${currentUserId})`);
+
+      if (error) throw error;
+
       Alert.alert('Success', 'Friend removed');
-    } catch (err) {
+      await loadFriendsData();
+
+    } catch (err: any) {
       console.error('Error removing friend:', err);
-      setError('Failed to remove friend');
+      Alert.alert('Error', 'Failed to remove friend');
     }
   };
 
-  const blockUser = async (userId: string) => {
+  const searchUsers = async (query: string): Promise<Friend[]> => {
     try {
-      const friend = friends.find(f => f.id === userId);
-      if (friend) {
-        friend.status = 'blocked';
-        const updatedFriends = [...friends];
-        setFriends(updatedFriends);
-        await saveFriends(updatedFriends);
-      }
-    } catch (err) {
-      console.error('Error blocking user:', err);
-      setError('Failed to block user');
-    }
-  };
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+        .limit(10);
 
-  const unblockUser = async (userId: string) => {
-    try {
-      const friend = friends.find(f => f.id === userId);
-      if (friend) {
-        friend.status = 'accepted';
-        const updatedFriends = [...friends];
-        setFriends(updatedFriends);
-        await saveFriends(updatedFriends);
-      }
+      if (error) throw error;
+      
+      return (data || []).map(user => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name, // Transform to old name
+        avatar: user.avatar,
+        friendsSince: new Date(),
+        status: 'pending' as const,
+        lastActive: user.last_active ? new Date(user.last_active) : undefined, // Transform to old name
+      }));
+
     } catch (err) {
-      console.error('Error unblocking user:', err);
-      setError('Failed to unblock user');
+      console.error('Error searching users:', err);
+      return [];
     }
   };
 
   const shareActivity = async (activityId: string, friendIds?: string[], options?: any) => {
     try {
       console.log('Sharing activity:', activityId, 'to friends:', friendIds, 'with options:', options);
-      
-      // In production, this would post to a server
       Alert.alert('Success', 'Activity shared with friends!');
     } catch (err) {
       console.error('Error sharing activity:', err);
-      setError('Failed to share activity');
     }
   };
 
   const shareLocation = async (locationId: string, friendIds?: string[]) => {
     try {
-      // In production, this would post to a server
       Alert.alert('Success', 'Location shared with friends!');
     } catch (err) {
       console.error('Error sharing location:', err);
-      setError('Failed to share location');
     }
   };
 
   const shareAchievement = async (achievementId: string, achievementName: string, achievementIcon: string) => {
     try {
-      // In production, this would post to a server
       Alert.alert('Success', 'Achievement shared with friends!');
     } catch (err) {
       console.error('Error sharing achievement:', err);
-      setError('Failed to share achievement');
     }
   };
 
@@ -483,80 +656,52 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       console.log('Adding activity to feed:', activity.name, 'with options:', options);
       
-      // Create a shared activity for the feed
-      const sharedActivity: SharedActivity = {
-        ...activity,
-        sharedBy: {
-          id: currentUserId,
-          username: 'currentUser',
-          displayName: 'You',
-          avatar: '🏃',
-          friendsSince: new Date(),
-          status: 'accepted',
-        },
-        sharedAt: new Date(),
-        likes: [],
-        comments: [],
-        privacySettings: {
-          includeRoute: options.includeRoute || false,
-          includeExactLocation: options.includeExactLocation || false,
-        },
-      };
-
-      const newFeedItem: FeedItem = {
-        id: `feed_${activity.id}_${Date.now()}`,
+      const newPost: FeedPost = {
+        id: `post-${Date.now()}`,
         type: 'activity',
         timestamp: new Date(),
-        data: sharedActivity,
+        data: {
+          ...activity,
+          sharedBy: {
+            id: currentUserId,
+            username: 'you',
+            displayName: 'You',
+            avatar: '👤',
+            friendsSince: new Date(),
+            status: 'accepted',
+          },
+          sharedAt: new Date(),
+          likes: [],
+          comments: [],
+        },
       };
-
-      const updatedFeed = [newFeedItem, ...feed];
-      setFeed(updatedFeed);
-      await saveFeed(updatedFeed);
       
+      setFeed(prev => [newPost, ...prev]);
       console.log('Activity added to feed successfully');
+      
     } catch (err) {
       console.error('Error adding activity to feed:', err);
-      setError('Failed to add activity to feed');
-    }
-  };
-
-  const refreshFeed = async () => {
-    try {
-      setLoading(true);
-      
-      // Try to load existing feed first
-      const feedJson = await AsyncStorage.getItem('friendsFeed');
-      if (feedJson) {
-        const storedFeed = JSON.parse(feedJson);
-        setFeed(storedFeed);
-      } else {
-        // Generate mock feed if none exists
-        const mockFeed = generateMockFeed(friends.length > 0 ? friends : generateMockFriends());
-        setFeed(mockFeed);
-        await saveFeed(mockFeed);
-      }
-    } catch (err) {
-      console.error('Error refreshing feed:', err);
-      setError('Failed to refresh feed');
-    } finally {
-      setLoading(false);
     }
   };
 
   const likeItem = async (itemId: string) => {
     try {
-      const updatedFeed = feed.map(item => {
-        if (item.id === itemId) {
-          const data = item.data as any;
-          if (!data.likes.includes(currentUserId)) {
-            data.likes.push(currentUserId);
-          }
+      setFeed(prev => prev.map(post => {
+        if (post.id === itemId) {
+          const likes = post.data.likes.includes(currentUserId)
+            ? post.data.likes.filter(id => id !== currentUserId)
+            : [...post.data.likes, currentUserId];
+          
+          return {
+            ...post,
+            data: {
+              ...post.data,
+              likes,
+            },
+          };
         }
-        return item;
-      });
-      setFeed(updatedFeed);
-      await saveFeed(updatedFeed);
+        return post;
+      }));
     } catch (err) {
       console.error('Error liking item:', err);
     }
@@ -564,15 +709,18 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const unlikeItem = async (itemId: string) => {
     try {
-      const updatedFeed = feed.map(item => {
-        if (item.id === itemId) {
-          const data = item.data as any;
-          data.likes = data.likes.filter((id: string) => id !== currentUserId);
+      setFeed(prev => prev.map(post => {
+        if (post.id === itemId) {
+          return {
+            ...post,
+            data: {
+              ...post.data,
+              likes: post.data.likes.filter(id => id !== currentUserId),
+            },
+          };
         }
-        return item;
-      });
-      setFeed(updatedFeed);
-      await saveFeed(updatedFeed);
+        return post;
+      }));
     } catch (err) {
       console.error('Error unliking item:', err);
     }
@@ -580,115 +728,147 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const addComment = async (itemId: string, text: string) => {
     try {
-      const newComment: Comment = {
-        id: Date.now().toString(),
+      const newComment: FeedComment = {
+        id: `comment-${Date.now()}`,
         userId: currentUserId,
         userName: 'You',
         text,
         timestamp: new Date(),
       };
-      
-      const updatedFeed = feed.map(item => {
-        if (item.id === itemId) {
-          const data = item.data as any;
-          data.comments.push(newComment);
+
+      setFeed(prev => prev.map(post => {
+        if (post.id === itemId) {
+          return {
+            ...post,
+            data: {
+              ...post.data,
+              comments: [...post.data.comments, newComment],
+            },
+          };
         }
-        return item;
-      });
-      setFeed(updatedFeed);
-      await saveFeed(updatedFeed);
-    } catch (err) {
-      console.error('Error adding comment:', err);
+        return post;
+      }));
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      throw error;
     }
   };
 
   const deleteComment = async (itemId: string, commentId: string) => {
     try {
-      const updatedFeed = feed.map(item => {
-        if (item.id === itemId) {
-          const data = item.data as any;
-          data.comments = data.comments.filter((c: Comment) => c.id !== commentId);
+      setFeed(prev => prev.map(post => {
+        if (post.id === itemId) {
+          return {
+            ...post,
+            data: {
+              ...post.data,
+              comments: post.data.comments.filter(c => c.id !== commentId),
+            },
+          };
         }
-        return item;
-      });
-      setFeed(updatedFeed);
-      await saveFeed(updatedFeed);
+        return post;
+      }));
     } catch (err) {
       console.error('Error deleting comment:', err);
     }
   };
 
-  const searchUsers = async (query: string): Promise<Friend[]> => {
+  const blockUser = async (userId: string) => {
     try {
-      // In production, this would search a user database
-      // For demo, return mock results
-      if (query.toLowerCase().includes('john')) {
-        return [{
-          id: 'search1',
-          username: 'johndoe',
-          displayName: 'John Doe',
-          avatar: '👤',
-          friendsSince: new Date(),
-          status: 'pending',
-        }];
-      }
-      return [];
+      if (!currentUserId) return;
+
+      const { error } = await supabase
+        .from('friendships')
+        .update({ status: 'blocked' })
+        .eq('user_id', currentUserId)
+        .eq('friend_id', userId);
+
+      if (error) throw error;
+      
+      await loadFriendsData();
+      Alert.alert('Success', 'User blocked');
     } catch (err) {
-      console.error('Error searching users:', err);
-      return [];
+      console.error('Error blocking user:', err);
+      Alert.alert('Error', 'Failed to block user');
     }
   };
 
-  const getFriendActivities = (friendId: string): SharedActivity[] => {
-    return feed
-      .filter(item => item.type === 'activity' && (item.data as SharedActivity).sharedBy.id === friendId)
-      .map(item => item.data as SharedActivity);
+  const unblockUser = async (userId: string) => {
+    try {
+      if (!currentUserId) return;
+
+      const { error } = await supabase
+        .from('friendships')
+        .update({ status: 'accepted' })
+        .eq('user_id', currentUserId)
+        .eq('friend_id', userId);
+
+      if (error) throw error;
+      
+      await loadFriendsData();
+      Alert.alert('Success', 'User unblocked');
+    } catch (err) {
+      console.error('Error unblocking user:', err);
+      Alert.alert('Error', 'Failed to unblock user');
+    }
   };
 
-  const getFriendLocations = (friendId: string): SharedLocation[] => {
-    return feed
-      .filter(item => item.type === 'location' && (item.data as SharedLocation).sharedBy.id === friendId)
-      .map(item => item.data as SharedLocation);
-  };
-
-  const updatePrivacySettings = async (settings: Partial<FriendsContextType['privacySettings']>) => {
+  const updatePrivacySettings = async (settings: Partial<typeof privacySettings>) => {
     try {
       const updatedSettings = { ...privacySettings, ...settings };
       setPrivacySettings(updatedSettings);
       await AsyncStorage.setItem('friendsPrivacy', JSON.stringify(updatedSettings));
     } catch (err) {
       console.error('Error updating privacy settings:', err);
-      setError('Failed to update privacy settings');
     }
   };
 
+  const getFriendActivities = (friendId: string) => {
+    return feed
+      .filter(post => post.type === 'activity' && post.data.sharedBy.id === friendId)
+      .map(post => post.data);
+  };
+
+  const getFriendLocations = (friendId: string) => {
+    return feed
+      .filter(post => post.type === 'location' && post.data.sharedBy.id === friendId)
+      .map(post => post.data);
+  };
+
   const value: FriendsContextType = {
+    // State
     friends,
-    friendRequests,
-    pendingRequests,
+    friendRequests, // incoming
+    pendingRequests, // outgoing (old name kept)
+    suggestions,
+    feed,
+    loading,
+    error,
+    
+    // Methods
     sendFriendRequest,
     acceptFriendRequest,
     declineFriendRequest,
+    cancelFriendRequest,
     removeFriend,
     blockUser,
     unblockUser,
+    searchUsers,
+    refreshFeed,
+    refreshFriends,
+    refreshSuggestions,
     shareActivity,
     shareLocation,
     shareAchievement,
-    feed,
-    refreshFeed,
     addActivityToFeed,
-    likeItem,
-    unlikeItem,
+    likeItem, // old name kept
+    unlikeItem, // old name kept
     addComment,
     deleteComment,
-    searchUsers,
     getFriendActivities,
     getFriendLocations,
     privacySettings,
     updatePrivacySettings,
-    loading,
-    error,
     currentUserId,
   };
 

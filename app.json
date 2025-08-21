@@ -19,7 +19,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourdomain.explorable",
+      "bundleIdentifier": "com.yourcompany.explorable",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "explorAble needs access to your location to track your activities and save your favorite spots.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "explorAble needs access to your location to track your activities in the background.",
@@ -27,12 +27,13 @@
         "NSPhotoLibraryUsageDescription": "explorAble needs access to your photo library to add photos to your saved locations."
       }
     },
+    "scheme": "explorable",
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#2d5a3d"
       },
-      "package": "com.yourdomain.explorable",
+      "package": "com.yourcompany.explorable",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

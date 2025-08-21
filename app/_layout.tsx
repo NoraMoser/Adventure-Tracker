@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { theme } from '../constants/theme';
 import { ActivityProvider } from '../contexts/ActivityContext';
+import { AuthProvider } from '../contexts/AuthContext';
 import { FriendsProvider } from '../contexts/FriendsContext';
 import { LocationProvider } from '../contexts/LocationContext';
 import { SettingsProvider } from '../contexts/SettingsContext';
@@ -48,6 +49,7 @@ export default function RootLayout() {
   }
 
   return (
+    <AuthProvider>
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <SettingsProvider>
         <LocationProvider>
@@ -55,7 +57,7 @@ export default function RootLayout() {
             <WishlistProvider>
               <FriendsProvider>
                 <SafeAreaProvider>
-                  <StatusBar style="light" backgroundColor={theme.colors.forest} />
+                  <StatusBar style="light"/>
                   <Stack
                     screenOptions={{
                       headerStyle: {
@@ -202,5 +204,6 @@ export default function RootLayout() {
         </LocationProvider>
       </SettingsProvider>
     </View>
+    </AuthProvider>
   );
 }
