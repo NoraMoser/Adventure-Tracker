@@ -20,6 +20,7 @@ import { Activity } from "../../contexts/ActivityContext";
 import { Friend, useFriends } from "../../contexts/FriendsContext";
 import { SavedSpot, useLocation } from "../../contexts/LocationContext";
 import { useSettings } from "../../contexts/SettingsContext";
+import { supabase } from '../../lib/supabase';
 import { FriendDataService } from "../../services/friendDataService";
 
 const { width, height } = Dimensions.get("window");
@@ -244,36 +245,50 @@ export default function FriendProfileScreen() {
     }
   }, [friend?.id]);
 
-  const loadFriendData = async () => {
-    if (!friend) return;
+  // Add this debug version of loadFriendData to your [id].tsx file
+// Replace the existing loadFriendData function with this:
+
+const loadFriendData = async () => {
+  if (!friend) return;
+  
+  setLoadingData(true);
+  try {
+    console.log('=== DEBUG: Loading data for friend ===');
+    console.log('Friend ID:', friend.id);
+    console.log('Friend username:', friend.username);
+    console.log('Friend object:', friend);
     
-    setLoadingData(true);
-    try {
-      console.log('Loading data for friend:', friend.id);
-      
-      // Load activities, locations, and stats in parallel
-      const [activities, locations, stats] = await Promise.all([
-        FriendDataService.loadFriendActivities(friend.id),
-        FriendDataService.loadFriendLocations(friend.id),
-        FriendDataService.loadFriendStats(friend.id),
-      ]);
-      
-      setFriendActivities(activities);
-      setFriendLocations(locations);
-      setFriendStats(stats);
-      
-      console.log('Friend data loaded:', {
-        activities: activities.length,
-        locations: locations.length,
-        stats
-      });
-    } catch (error) {
-      console.error('Error loading friend data:', error);
-      Alert.alert('Error', 'Failed to load friend data');
-    } finally {
-      setLoadingData(false);
-    }
-  };
+    // First, let's check if we can access the data directly
+    const { data: directActivities, error: directError } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('user_id', friend.id);
+    
+    console.log('Direct activities query result:', directActivities);
+    console.log('Direct activities error:', directError);
+    
+    // Now use the service
+    const [activities, locations, stats] = await Promise.all([
+      FriendDataService.loadFriendActivities(friend.id),
+      FriendDataService.loadFriendLocations(friend.id),
+      FriendDataService.loadFriendStats(friend.id),
+    ]);
+    
+    console.log('Service loaded activities:', activities);
+    console.log('Service loaded locations:', locations);
+    console.log('Service loaded stats:', stats);
+    
+    setFriendActivities(activities);
+    setFriendLocations(locations);
+    setFriendStats(stats);
+    
+  } catch (error) {
+    console.error('Error loading friend data:', error);
+    Alert.alert('Error', 'Failed to load friend data');
+  } finally {
+    setLoadingData(false);
+  }
+};
 
   // Calculate mutual spots
   const mutualSpots = savedSpots.filter((mySpot) =>

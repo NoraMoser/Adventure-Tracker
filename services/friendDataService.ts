@@ -83,7 +83,7 @@ export class FriendDataService {
         description: spot.description,
         category: spot.category,
         rating: spot.rating,
-        reviews: spot.reviews || [],
+        // reviews: spot.reviews || [], // Removed - column doesn't exist
       }));
 
       console.log(`Loaded ${locations.length} locations for friend ${friendId}`);

@@ -47,10 +47,12 @@ export interface FeedComment {
   timestamp: Date;
 }
 
+// Update the FeedPost interface in FriendsContext.tsx to make timestamp required
+
 export interface FeedPost {
   id: string;
   type: 'activity' | 'location' | 'achievement';
-  timestamp?: Date;
+  timestamp: Date; // Changed from optional (timestamp?) to required
   data: {
     // Activity data
     id?: string;
@@ -202,6 +204,13 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
       loadFeed();
     }
   }, [currentUserId]);
+
+  useEffect(() => {
+  if (friends.length > 0) {
+    console.log('Friends list changed, reloading feed');
+    loadFeed();
+  }
+}, [friends.length]); 
 
   const loadFriendsData = async () => {
     if (!currentUserId || currentUserId === '') {
@@ -394,19 +403,150 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const loadFeed = async () => {
-    if (!currentUserId || currentUserId === '') {
+  // Add this loadFeed function to FriendsContext.tsx to replace the existing one
+
+// Complete loadFeed function with type fixes for FriendsContext.tsx
+
+const loadFeed = async () => {
+  if (!currentUserId || currentUserId === '') {
+    return;
+  }
+  
+  try {
+    console.log('Loading feed for user:', currentUserId);
+    
+    // Get all friend IDs
+    const friendIds = friends.map(f => f.id);
+    
+    if (friendIds.length === 0) {
+      console.log('No friends, feed will be empty');
+      setFeed([]);
       return;
     }
     
-    try {
-      // TODO: Load feed from Supabase
-      // For now, keep empty
-      setFeed([]);
-    } catch (err) {
-      console.error('Error loading feed:', err);
+    // Load activities from friends
+    const { data: friendActivities, error: activitiesError } = await supabase
+      .from('activities')
+      .select(`
+        *,
+        user:profiles!activities_user_id_fkey(
+          id,
+          username,
+          display_name,
+          avatar
+        )
+      `)
+      .in('user_id', friendIds)
+      .order('start_time', { ascending: false })
+      .limit(50);
+    
+    if (activitiesError) {
+      console.error('Error loading friend activities:', activitiesError);
     }
-  };
+    
+    // Load locations from friends
+    const { data: friendLocations, error: locationsError } = await supabase
+      .from('locations')
+      .select(`
+        *,
+        user:profiles!locations_user_id_fkey(
+          id,
+          username,
+          display_name,
+          avatar
+        )
+      `)
+      .in('user_id', friendIds)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    
+    if (locationsError) {
+      console.error('Error loading friend locations:', locationsError);
+    }
+    
+    // Transform activities into feed posts
+    const activityPosts: FeedPost[] = (friendActivities || [])
+      .filter(activity => activity.user) // Only include activities with user data
+      .map(activity => ({
+        id: `activity-${activity.id}`,
+        type: 'activity' as const,
+        timestamp: new Date(activity.start_time), // Make sure timestamp is always set
+        data: {
+          id: activity.id,
+          name: activity.name,
+          type: activity.type,
+          distance: activity.distance || 0,
+          duration: activity.duration || 0,
+          averageSpeed: activity.average_speed || 0,
+          maxSpeed: activity.max_speed || 0,
+          elevationGain: activity.elevation_gain || 0,
+          startTime: new Date(activity.start_time),
+          notes: activity.notes,
+          route: activity.route || [],
+          sharedBy: {
+            id: activity.user.id,
+            username: activity.user.username,
+            displayName: activity.user.display_name || activity.user.username,
+            avatar: activity.user.avatar,
+            friendsSince: new Date(),
+            status: 'accepted' as const,
+          },
+          sharedAt: new Date(activity.created_at || activity.start_time),
+          likes: [],
+          comments: [],
+        },
+      }));
+    
+    // Transform locations into feed posts
+    const locationPosts: FeedPost[] = (friendLocations || [])
+      .filter(location => location.user) // Only include locations with user data
+      .map(location => ({
+        id: `location-${location.id}`,
+        type: 'location' as const,
+        timestamp: new Date(location.created_at), // Make sure timestamp is always set
+        data: {
+          id: location.id,
+          name: location.name,
+          location: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
+          description: location.description,
+          photos: location.photos || [],
+          category: location.category,
+          sharedBy: {
+            id: location.user.id,
+            username: location.user.username,
+            displayName: location.user.display_name || location.user.username,
+            avatar: location.user.avatar,
+            friendsSince: new Date(),
+            status: 'accepted' as const,
+          },
+          sharedAt: new Date(location.created_at),
+          likes: [],
+          comments: [],
+        },
+      }));
+    
+    // Combine and sort all posts by timestamp
+    // Filter out any posts without timestamps (shouldn't happen now)
+    const allPosts = [...activityPosts, ...locationPosts]
+      .filter(post => post.timestamp) // Safety check
+      .sort((a, b) => {
+        // TypeScript now knows both timestamps exist due to filter
+        const timeA = a.timestamp ? a.timestamp.getTime() : 0;
+        const timeB = b.timestamp ? b.timestamp.getTime() : 0;
+        return timeB - timeA;
+      })
+      .slice(0, 50); // Limit to 50 most recent items
+    
+    console.log(`Loaded ${allPosts.length} feed items (${activityPosts.length} activities, ${locationPosts.length} locations)`);
+    
+    setFeed(allPosts);
+  } catch (err) {
+    console.error('Error loading feed:', err);
+  }
+};
 
   const refreshFeed = async () => {
     await loadFeed();
