@@ -31,7 +31,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2d5a3d"
+        "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
       "versionCode": 1,
