@@ -1,8 +1,9 @@
-// contexts/LocationContext.tsx - Fixed version without reviews column
+// contexts/LocationContext.tsx - With Supabase Storage for photos
 import * as Location from 'expo-location';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { CategoryType } from '../constants/categories';
 import { supabase } from '../lib/supabase';
+import { PhotoService } from '../services/photoService';
 import { useAuth } from './AuthContext';
 
 interface LocationCoords {
@@ -46,6 +47,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
+  // Initialize photo storage on mount
+  useEffect(() => {
+    PhotoService.initializeStorage();
+  }, []);
+
   // Load saved spots from Supabase when user changes
   useEffect(() => {
     if (user) {
@@ -55,11 +61,10 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [user]);
 
-  // Subscribe to real-time changes (optional but cool!)
+  // Subscribe to real-time changes
   useEffect(() => {
     if (!user) return;
 
-    // Subscribe to changes in locations table
     const subscription = supabase
       .channel('locations_changes')
       .on(
@@ -72,7 +77,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         },
         (payload) => {
           console.log('Location change received:', payload);
-          // Reload spots when changes occur
           loadSavedSpots();
         }
       )
@@ -131,14 +135,12 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       setLoading(true);
       setError(null);
 
-      // Request permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setError('Permission to access location was denied');
         return;
       }
 
-      // Get current location
       const currentLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
@@ -162,6 +164,19 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     try {
+      // Upload photos to Supabase Storage first
+      let photoUrls: string[] = [];
+      if (spot.photos && spot.photos.length > 0) {
+        console.log('Uploading photos to storage...');
+        photoUrls = await PhotoService.uploadPhotos(
+          spot.photos,
+          'location-photos',
+          user.id
+        );
+        console.log('Photos uploaded:', photoUrls);
+      }
+
+      // Save location with photo URLs (not base64)
       const { data, error: insertError } = await supabase
         .from('locations')
         .insert({
@@ -172,8 +187,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           description: spot.description || null,
           category: spot.category || 'other',
           rating: spot.rating || null,
-          photos: spot.photos || [],
-          // removed reviews field
+          photos: photoUrls, // Save URLs, not base64
         })
         .select()
         .single();
@@ -195,7 +209,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           rating: data.rating,
         };
         
-        // Update local state
         setSavedSpots(prev => [newSpot, ...prev]);
         return newSpot;
       }
@@ -287,6 +300,26 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       setLoading(true);
       setError(null);
 
+      // Handle photo updates if needed
+      let photoUrls = updatedSpot.photos || [];
+      
+      // Check if any photos are base64 (new photos) and upload them
+      const newPhotos: string[] = [];
+      const existingUrls: string[] = [];
+      
+      for (const photo of photoUrls) {
+        if (photo.startsWith('data:') || (!photo.startsWith('http') && photo.length > 0)) {
+          // This is a new photo (base64 or local URI), upload it
+          const url = await PhotoService.uploadPhoto(photo, 'location-photos', user.id);
+          if (url) newPhotos.push(url);
+        } else {
+          // This is an existing URL
+          existingUrls.push(photo);
+        }
+      }
+      
+      photoUrls = [...existingUrls, ...newPhotos];
+
       const { error: updateError } = await supabase
         .from('locations')
         .update({
@@ -296,8 +329,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           description: updatedSpot.description || null,
           category: updatedSpot.category || 'other',
           rating: updatedSpot.rating || null,
-          photos: updatedSpot.photos || [],
-          // removed reviews field
+          photos: photoUrls,
           updated_at: new Date().toISOString(),
         })
         .eq('id', spotId)
@@ -305,9 +337,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       if (updateError) throw updateError;
 
-      // Update local state
       setSavedSpots(prev =>
-        prev.map(spot => (spot.id === spotId ? updatedSpot : spot))
+        prev.map(spot => (spot.id === spotId ? { ...updatedSpot, photos: photoUrls } : spot))
       );
 
       console.log('Spot updated successfully');
@@ -329,14 +360,19 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       setLoading(true);
       setError(null);
 
-      // Find the spot
       const spot = savedSpots.find(s => s.id === spotId);
       if (!spot) {
         setError('Spot not found');
         return;
       }
 
-      const updatedPhotos = [...(spot.photos || []), photoUri];
+      // Upload the new photo to storage
+      const photoUrl = await PhotoService.uploadPhoto(photoUri, 'location-photos', user.id);
+      if (!photoUrl) {
+        throw new Error('Failed to upload photo');
+      }
+
+      const updatedPhotos = [...(spot.photos || []), photoUrl];
 
       const { error: updateError } = await supabase
         .from('locations')
@@ -349,7 +385,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       if (updateError) throw updateError;
 
-      // Update local state
       setSavedSpots(prev =>
         prev.map(s => {
           if (s.id === spotId) {
@@ -386,7 +421,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       if (deleteError) throw deleteError;
 
-      // Update local state
       setSavedSpots(prev => prev.filter(spot => spot.id !== spotId));
 
       console.log('Spot deleted successfully');
@@ -418,7 +452,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   );
 };
 
-// Custom hook to use the location context
 export const useLocation = () => {
   const context = useContext(LocationContext);
   if (context === undefined) {
