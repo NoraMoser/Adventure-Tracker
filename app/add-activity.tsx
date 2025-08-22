@@ -1,10 +1,12 @@
-// add-activity.tsx - Updated with Settings Integration
+// add-activity.tsx - Updated with Route Drawing on Map
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     Alert,
+    Dimensions,
+    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -13,9 +15,13 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { theme } from '../constants/theme';
 import { ActivityType, useActivity } from '../contexts/ActivityContext';
-import { useSettings } from '../contexts/SettingsContext'; // ADD THIS
+import { useLocation } from '../contexts/LocationContext';
+import { useSettings } from '../contexts/SettingsContext';
+
+const { width, height } = Dimensions.get('window');
 
 const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
   { type: 'bike', label: 'Bike', icon: 'bicycle' },
@@ -29,8 +35,10 @@ const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
 
 export default function AddActivityScreen() {
   const { addManualActivity } = useActivity();
-  const { settings, formatDistance, getDistanceUnit } = useSettings(); // ADD THIS
+  const { settings, formatDistance, getDistanceUnit } = useSettings();
+  const { location: currentLocation } = useLocation();
   const router = useRouter();
+  const webViewRef = useRef<WebView>(null);
 
   // Use default activity type from settings
   const [activityType, setActivityType] = useState<ActivityType>(
@@ -43,9 +51,12 @@ export default function AddActivityScreen() {
   const [duration, setDuration] = useState({ hours: '0', minutes: '0' });
   const [distance, setDistance] = useState('');
   const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>(
-    settings.units === 'imperial' ? 'mi' : 'km' // Use user's preference!
+    settings.units === 'imperial' ? 'mi' : 'km'
   );
   const [notes, setNotes] = useState('');
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [drawnRoute, setDrawnRoute] = useState<any[]>([]);
+  const [routeDistance, setRouteDistance] = useState(0);
 
   const handleSave = async () => {
     // Validation
@@ -63,13 +74,13 @@ export default function AddActivityScreen() {
       return;
     }
 
-    // Convert distance to meters
-    let distanceInMeters = 0;
-    if (distance) {
+    // Use route distance if available, otherwise use manual distance
+    let distanceInMeters = routeDistance; // Route distance is already in meters
+    if (!distanceInMeters && distance) {
       const distanceValue = parseFloat(distance);
       distanceInMeters = distanceUnit === 'km' 
         ? distanceValue * 1000 
-        : distanceValue * 1609.34; // miles to meters
+        : distanceValue * 1609.34;
     }
 
     // Calculate average speed
@@ -85,9 +96,9 @@ export default function AddActivityScreen() {
       endTime: new Date(date.getTime() + durationInSeconds * 1000),
       duration: durationInSeconds,
       distance: distanceInMeters,
-      route: [], // No GPS route for manual entries
+      route: drawnRoute, // Include the drawn route
       averageSpeed: avgSpeed,
-      maxSpeed: avgSpeed, // Use avg as max for manual entries
+      maxSpeed: avgSpeed,
       notes: notes.trim(),
       isManualEntry: true,
     };
@@ -119,6 +130,363 @@ export default function AddActivityScreen() {
       minute: '2-digit',
       hour12: true,
     });
+  };
+
+  const handleMapMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      
+      if (data.type === 'routeUpdated') {
+        setDrawnRoute(data.route);
+        setRouteDistance(data.distance);
+        
+        // Update the distance field with the calculated distance
+        if (data.distance > 0) {
+          const displayDistance = distanceUnit === 'km' 
+            ? (data.distance / 1000).toFixed(2)
+            : (data.distance / 1609.34).toFixed(2);
+          setDistance(displayDistance);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing map message:', error);
+    }
+  };
+
+  const generateMapHTML = () => {
+    const centerLat = currentLocation?.latitude || 47.6062;
+    const centerLng = currentLocation?.longitude || -122.3321;
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+        <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+        <style>
+          body { margin: 0; padding: 0; }
+          #map { height: 100vh; width: 100vw; }
+          .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 14px;
+          }
+          .info-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #1e3a5f;
+          }
+          .info-distance {
+            color: #2d5a3d;
+            font-size: 16px;
+            font-weight: bold;
+          }
+          .leaflet-draw-toolbar a {
+            background-color: white !important;
+          }
+          .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.95);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 14px;
+            color: #1e3a5f;
+            font-weight: 500;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <div class="info-panel">
+          <div class="info-title">Route Distance</div>
+          <div class="info-distance" id="distance">0.00 ${distanceUnit}</div>
+        </div>
+        <div class="instructions" id="instructions">
+          Click points on the map to draw your route
+        </div>
+        <script>
+          // Initialize map
+          var map = L.map('map', {
+            tap: true,
+            zoomControl: true,
+            doubleClickZoom: false  // Prevent double click zoom
+          }).setView([${centerLat}, ${centerLng}], 13);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+          }).addTo(map);
+
+          // Variables for route drawing
+          var routePoints = [];
+          var routeLine = null;
+          var markers = [];
+          var totalDistance = 0;
+
+          // Function to calculate distance between two points
+          function calculateDistance(lat1, lon1, lat2, lon2) {
+            var R = 6371000; // Earth's radius in meters
+            var φ1 = lat1 * Math.PI / 180;
+            var φ2 = lat2 * Math.PI / 180;
+            var Δφ = (lat2 - lat1) * Math.PI / 180;
+            var Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            var a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance in meters
+          }
+
+          // Function to add a point to the route
+          function addRoutePoint(lat, lng) {
+            // Add point to array
+            routePoints.push([lat, lng]);
+
+            // Create and add marker
+            var color = routePoints.length === 1 ? '#2d5a3d' : '#cc5500';
+            var markerIcon = L.divIcon({
+              className: 'custom-div-icon',
+              html: '<div style="background-color: ' + color + '; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+              iconSize: [12, 12],
+              iconAnchor: [6, 6]
+            });
+
+            var marker = L.marker([lat, lng], { 
+              icon: markerIcon,
+              interactive: false
+            }).addTo(map);
+            markers.push(marker);
+
+            // Update route line
+            if (routePoints.length >= 2) {
+              // Remove old line if exists
+              if (routeLine) {
+                map.removeLayer(routeLine);
+                routeLine = null;
+              }
+
+              // Create new line
+              routeLine = L.polyline(routePoints, {
+                color: '#2d5a3d',
+                weight: 4,
+                opacity: 0.8
+              }).addTo(map);
+            }
+
+            // Calculate and update distance
+            updateDistance();
+
+            // Update instructions
+            if (routePoints.length === 1) {
+              document.getElementById('instructions').innerText = 'Continue clicking to draw your route';
+            } else {
+              document.getElementById('instructions').innerText = 'Keep adding points or tap Done to finish';
+            }
+          }
+
+          // Function to update distance calculation
+          function updateDistance() {
+            totalDistance = 0;
+            
+            if (routePoints.length >= 2) {
+              for (var i = 1; i < routePoints.length; i++) {
+                totalDistance += calculateDistance(
+                  routePoints[i-1][0], routePoints[i-1][1],
+                  routePoints[i][0], routePoints[i][1]
+                );
+              }
+            }
+
+            // Update display
+            var displayDistance = totalDistance;
+            var unit = '${distanceUnit}';
+            if (unit === 'km') {
+              displayDistance = (totalDistance / 1000).toFixed(2);
+            } else {
+              displayDistance = (totalDistance / 1609.34).toFixed(2);
+            }
+            document.getElementById('distance').innerText = displayDistance + ' ' + unit;
+
+            // Send data back to React Native
+            if (routePoints.length > 0) {
+              var routeData = routePoints.map(function(point) {
+                return {
+                  latitude: point[0],
+                  longitude: point[1],
+                  timestamp: Date.now()
+                };
+              });
+
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'routeUpdated',
+                route: routeData,
+                distance: totalDistance
+              }));
+            }
+          }
+
+          // Handle map clicks - simplified
+          map.on('click', function(e) {
+            e.originalEvent.preventDefault();
+            e.originalEvent.stopPropagation();
+            
+            addRoutePoint(e.latlng.lat, e.latlng.lng);
+          });
+
+          // Add clear button
+          var clearControl = L.Control.extend({
+            options: {
+              position: 'topleft'
+            },
+            onAdd: function(map) {
+              var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+              var button = L.DomUtil.create('a', '', container);
+              button.innerHTML = '🗑️ Clear';
+              button.href = '#';
+              button.style.width = '80px';
+              button.style.textAlign = 'center';
+              button.style.fontSize = '14px';
+              button.style.padding = '5px';
+              
+              L.DomEvent.on(button, 'click', function(e) {
+                L.DomEvent.preventDefault(e);
+                L.DomEvent.stopPropagation(e);
+                
+                // Clear everything
+                routePoints = [];
+                markers.forEach(function(marker) {
+                  map.removeLayer(marker);
+                });
+                markers = [];
+                if (routeLine) {
+                  map.removeLayer(routeLine);
+                  routeLine = null;
+                }
+                totalDistance = 0;
+                document.getElementById('distance').innerText = '0.00 ${distanceUnit}';
+                document.getElementById('instructions').innerText = 'Click points on the map to draw your route';
+                
+                // Send empty route back
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'routeUpdated',
+                  route: [],
+                  distance: 0
+                }));
+                
+                return false;
+              });
+              
+              return container;
+            }
+          });
+          
+          map.addControl(new clearControl());
+
+          // Add undo button
+          var undoControl = L.Control.extend({
+            options: {
+              position: 'topleft'
+            },
+            onAdd: function(map) {
+              var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+              var button = L.DomUtil.create('a', '', container);
+              button.innerHTML = '↩️ Undo';
+              button.href = '#';
+              button.style.width = '80px';
+              button.style.textAlign = 'center';
+              button.style.fontSize = '14px';
+              button.style.padding = '5px';
+              
+              L.DomEvent.on(button, 'click', function(e) {
+                L.DomEvent.preventDefault(e);
+                L.DomEvent.stopPropagation(e);
+                
+                if (routePoints.length > 0) {
+                  // Remove last point
+                  routePoints.pop();
+                  
+                  // Remove last marker
+                  if (markers.length > 0) {
+                    var lastMarker = markers.pop();
+                    map.removeLayer(lastMarker);
+                  }
+                  
+                  // Redraw route
+                  if (routeLine) {
+                    map.removeLayer(routeLine);
+                    routeLine = null;
+                  }
+                  
+                  if (routePoints.length >= 2) {
+                    routeLine = L.polyline(routePoints, {
+                      color: '#2d5a3d',
+                      weight: 4,
+                      opacity: 0.8
+                    }).addTo(map);
+                  }
+                  
+                  // Update distance
+                  updateDistance();
+                  
+                  // Update instructions
+                  if (routePoints.length === 0) {
+                    document.getElementById('instructions').innerText = 'Click points on the map to draw your route';
+                  }
+                }
+                
+                return false;
+              });
+              
+              return container;
+            }
+          });
+          
+          map.addControl(new undoControl());
+
+          // Load existing route if any
+          var existingRoute = ${JSON.stringify(drawnRoute)};
+          if (existingRoute && existingRoute.length > 0) {
+            existingRoute.forEach(function(point, index) {
+              routePoints.push([point.latitude, point.longitude]);
+              
+              var markerIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: '<div style="background-color: ' + (index === 0 ? '#2d5a3d' : '#cc5500') + '; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
+              });
+              
+              var marker = L.marker([point.latitude, point.longitude], { icon: markerIcon }).addTo(map);
+              markers.push(marker);
+            });
+            
+            updateRoute();
+            
+            if (routePoints.length > 0) {
+              var group = new L.featureGroup(markers);
+              map.fitBounds(group.getBounds().pad(0.1));
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `;
   };
 
   return (
@@ -253,10 +621,27 @@ export default function AddActivityScreen() {
         </View>
       </View>
 
-      {/* Distance - Now respects user's unit preference! */}
+      {/* Route Drawing Button */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Route (Optional)</Text>
+        <TouchableOpacity
+          style={styles.drawRouteButton}
+          onPress={() => setShowMapModal(true)}
+        >
+          <Ionicons name="map" size={20} color={theme.colors.forest} />
+          <Text style={styles.drawRouteText}>
+            {drawnRoute.length > 0 
+              ? `Route drawn (${drawnRoute.length} points)`
+              : 'Draw route on map'}
+          </Text>
+          <Ionicons name="chevron-forward" size={20} color={theme.colors.forest} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Distance */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>
-          Distance (Optional) - Using {getDistanceUnit()}
+          Distance {routeDistance > 0 ? '(from route)' : '(Optional)'}
         </Text>
         <View style={styles.distanceContainer}>
           <TextInput
@@ -265,6 +650,7 @@ export default function AddActivityScreen() {
             onChangeText={setDistance}
             keyboardType="decimal-pad"
             placeholder="0.0"
+            editable={!routeDistance} // Disable if route distance is calculated
           />
           <View style={styles.unitToggle}>
             <TouchableOpacity
@@ -311,6 +697,33 @@ export default function AddActivityScreen() {
       <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
         <Text style={styles.cancelButtonText}>Cancel</Text>
       </TouchableOpacity>
+
+      {/* Map Modal for Drawing Route */}
+      <Modal
+        visible={showMapModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <View style={styles.mapModalContainer}>
+          <View style={styles.mapModalHeader}>
+            <Text style={styles.mapModalTitle}>Draw Your Route</Text>
+            <TouchableOpacity
+              style={styles.mapModalClose}
+              onPress={() => setShowMapModal(false)}
+            >
+              <Text style={styles.mapModalCloseText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <WebView
+            ref={webViewRef}
+            style={styles.mapWebView}
+            source={{ html: generateMapHTML() }}
+            onMessage={handleMapMessage}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+          />
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -431,6 +844,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
   },
+  drawRouteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.white,
+    borderWidth: 2,
+    borderColor: theme.colors.forest,
+    borderRadius: 8,
+    padding: 14,
+  },
+  drawRouteText: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.forest,
+    marginLeft: 10,
+    fontWeight: '500',
+  },
   distanceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -489,5 +919,38 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: theme.colors.burntOrange,
     fontSize: 16,
+  },
+  mapModalContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.white,
+  },
+  mapModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    backgroundColor: theme.colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  mapModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  mapModalClose: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: theme.colors.forest,
+    borderRadius: 16,
+  },
+  mapModalCloseText: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  mapWebView: {
+    flex: 1,
   },
 });
