@@ -1,4 +1,4 @@
-// track-activity.tsx - Updated with Settings Integration
+// track-activity.tsx - Complete file with all improvements
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -15,7 +15,7 @@ import {
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { ActivityType, useActivity } from "../contexts/ActivityContext";
-import { useSettings } from "../contexts/SettingsContext"; // ADD THIS
+import { useSettings } from "../contexts/SettingsContext";
 
 const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
   { type: "bike", label: "Bike", icon: "bicycle" },
@@ -45,8 +45,8 @@ export default function TrackActivityScreen() {
   } = useActivity();
 
   const router = useRouter();
-  const { formatDistance, formatSpeed, settings } = useSettings(); // ADD THIS
-  
+  const { formatDistance, formatSpeed, settings } = useSettings();
+
   // Use default activity type from settings
   const [selectedActivity, setSelectedActivity] = useState<ActivityType>(
     settings.defaultActivityType || "bike"
@@ -197,11 +197,16 @@ export default function TrackActivityScreen() {
   };
 
   const handleStop = () => {
+    // Pause tracking while showing save dialog
+    if (!isPaused) {
+      pauseTracking();
+    }
     setShowSaveDialog(true);
   };
 
   const handleSaveActivity = async () => {
     const name = activityName.trim() || `${selectedActivity} activity`;
+    // Stop tracking (it's already paused)
     await stopTracking(name, activityNotes);
     setActivityName("");
     setActivityNotes("");
@@ -216,12 +221,21 @@ export default function TrackActivityScreen() {
       "Discard Activity?",
       "Are you sure you want to discard this activity?",
       [
-        { text: "Keep Recording", style: "cancel" },
+        {
+          text: "Keep Recording",
+          style: "cancel",
+          onPress: () => {
+            // Resume tracking if user wants to continue
+            resumeTracking();
+            setShowSaveDialog(false);
+          },
+        },
         {
           text: "Discard",
           style: "destructive",
           onPress: async () => {
             await stopTracking("", "");
+            setShowSaveDialog(false);
             router.back();
           },
         },
@@ -241,12 +255,10 @@ export default function TrackActivityScreen() {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // REMOVED old formatDistance and formatSpeed - now using from useSettings()
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={theme.colors.forest} />
         <Text style={styles.loadingText}>Starting activity tracking...</Text>
       </View>
     );
@@ -258,9 +270,11 @@ export default function TrackActivityScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Choose Activity Type</Text>
           <Text style={styles.subtitle}>
-            Default: {settings.defaultActivityType ? 
-              settings.defaultActivityType.charAt(0).toUpperCase() + settings.defaultActivityType.slice(1) : 
-              'None'}
+            Default:{" "}
+            {settings.defaultActivityType
+              ? settings.defaultActivityType.charAt(0).toUpperCase() +
+                settings.defaultActivityType.slice(1)
+              : "None"}
           </Text>
         </View>
 
@@ -278,7 +292,11 @@ export default function TrackActivityScreen() {
               <Ionicons
                 name={activity.icon as any}
                 size={32}
-                color={selectedActivity === activity.type ? "white" : "#007AFF"}
+                color={
+                  selectedActivity === activity.type
+                    ? theme.colors.white
+                    : theme.colors.forest
+                }
               />
               <Text
                 style={[
@@ -314,6 +332,24 @@ export default function TrackActivityScreen() {
       <View style={styles.container}>
         <View style={styles.saveDialog}>
           <Text style={styles.saveTitle}>Save Activity</Text>
+          
+          {/* Activity Type Indicator */}
+          <View style={styles.activityTypeIndicator}>
+            <Ionicons 
+              name={activityTypes.find(a => a.type === selectedActivity)?.icon as any} 
+              size={24} 
+              color={theme.colors.forest} 
+            />
+            <Text style={styles.activityTypeText}>
+              {selectedActivity.charAt(0).toUpperCase() + selectedActivity.slice(1)} Activity
+            </Text>
+          </View>
+
+          {/* Paused Indicator */}
+          <View style={styles.pausedIndicator}>
+            <Ionicons name="pause-circle" size={20} color={theme.colors.burntOrange} />
+            <Text style={styles.pausedIndicatorText}>Activity Paused</Text>
+          </View>
 
           <Text style={styles.label}>Activity Name</Text>
           <TextInput
@@ -321,7 +357,7 @@ export default function TrackActivityScreen() {
             value={activityName}
             onChangeText={setActivityName}
             placeholder={`${selectedActivity} activity`}
-            placeholderTextColor="#999"
+            placeholderTextColor={theme.colors.lightGray}
           />
 
           <Text style={styles.label}>Notes (Optional)</Text>
@@ -330,9 +366,10 @@ export default function TrackActivityScreen() {
             value={activityNotes}
             onChangeText={setActivityNotes}
             placeholder="How was it? Any notes..."
-            placeholderTextColor="#999"
+            placeholderTextColor={theme.colors.lightGray}
             multiline
             numberOfLines={4}
+            textAlignVertical="top"
           />
 
           <View style={styles.summaryCard}>
@@ -354,22 +391,38 @@ export default function TrackActivityScreen() {
               <Text style={styles.summaryValue}>
                 {formatSpeed(
                   currentDistance > 0
-                    ? (currentDistance / 1000) / (currentDuration / 3600)
+                    ? currentDistance / 1000 / (currentDuration / 3600)
                     : 0
                 )}
               </Text>
             </View>
           </View>
 
+          {/* Save Button */}
           <TouchableOpacity
             style={styles.saveButton}
             onPress={handleSaveActivity}
           >
+            <Ionicons name="save" size={20} color={theme.colors.white} />
             <Text style={styles.saveButtonText}>Save Activity</Text>
           </TouchableOpacity>
 
+          {/* Continue Recording Button */}
+          <TouchableOpacity 
+            style={styles.continueButton} 
+            onPress={() => {
+              resumeTracking();
+              setShowSaveDialog(false);
+            }}
+          >
+            <Ionicons name="arrow-back" size={20} color={theme.colors.forest} />
+            <Text style={styles.continueButtonText}>Continue Recording</Text>
+          </TouchableOpacity>
+
+          {/* Discard Button */}
           <TouchableOpacity style={styles.discardButton} onPress={handleCancel}>
-            <Text style={styles.discardButtonText}>Discard</Text>
+            <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
+            <Text style={styles.discardButtonText}>Discard Activity</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -379,7 +432,7 @@ export default function TrackActivityScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.trackingContainer}>
-        {/* Stats Cards at Top - Now using formatters! */}
+        {/* Stats Cards at Top */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Distance</Text>
@@ -445,18 +498,18 @@ export default function TrackActivityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: theme.colors.offWhite,
   },
   header: {
     padding: 20,
-    backgroundColor: "white",
+    backgroundColor: theme.colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
+    borderBottomColor: theme.colors.borderGray,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#333",
+    color: theme.colors.navy,
     textAlign: "center",
   },
   subtitle: {
@@ -474,7 +527,7 @@ const styles = StyleSheet.create({
   activityCard: {
     width: "30%",
     aspectRatio: 1,
-    backgroundColor: "white",
+    backgroundColor: theme.colors.white,
     borderRadius: 12,
     padding: 15,
     margin: 5,
@@ -490,11 +543,11 @@ const styles = StyleSheet.create({
   activityLabel: {
     marginTop: 8,
     fontSize: 14,
-    color: "#333",
+    color: theme.colors.navy,
     fontWeight: "600",
   },
   activityLabelSelected: {
-    color: "white",
+    color: theme.colors.white,
   },
   startButton: {
     backgroundColor: theme.colors.forest,
@@ -506,7 +559,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   startButtonText: {
-    color: "white",
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: "bold",
     marginLeft: 10,
@@ -556,7 +609,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   pausedText: {
-    color: "white",
+    color: theme.colors.white,
     fontSize: 14,
     fontWeight: "bold",
     letterSpacing: 1,
@@ -610,7 +663,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   controlButtonText: {
-    color: "white",
+    color: theme.colors.white,
     fontSize: 12,
     marginTop: 4,
     fontWeight: "600",
@@ -621,30 +674,58 @@ const styles = StyleSheet.create({
   saveTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#333",
+    color: theme.colors.navy,
     marginBottom: 20,
+  },
+  activityTypeIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  activityTypeText: {
+    fontSize: 16,
+    color: theme.colors.forest,
+    marginLeft: 8,
+    fontWeight: "500",
+  },
+  pausedIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.burntOrange + "20",
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  pausedIndicatorText: {
+    color: theme.colors.burntOrange,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "600",
   },
   label: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: theme.colors.navy,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: "white",
+    backgroundColor: theme.colors.white,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: theme.colors.borderGray,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
     marginBottom: 20,
+    color: theme.colors.navy,
   },
   textArea: {
     height: 100,
     textAlignVertical: "top",
   },
   summaryCard: {
-    backgroundColor: "#f8f8f8",
+    backgroundColor: theme.colors.offWhite,
     padding: 15,
     borderRadius: 8,
     marginBottom: 20,
@@ -653,7 +734,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 10,
-    color: "#333",
+    color: theme.colors.navy,
   },
   summaryRow: {
     flexDirection: "row",
@@ -662,79 +743,67 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: "#666",
+    color: theme.colors.gray,
   },
   summaryValue: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#333",
+    color: theme.colors.navy,
   },
   saveButton: {
     backgroundColor: theme.colors.forest,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
     borderRadius: 8,
-    alignItems: "center",
     marginBottom: 10,
   },
   saveButtonText: {
-    color: "white",
+    color: theme.colors.white,
     fontSize: 18,
     fontWeight: "bold",
+    marginLeft: 8,
+  },
+  continueButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    borderWidth: 2,
+    borderColor: theme.colors.forest,
+    borderRadius: 8,
+    marginBottom: 10,
+    backgroundColor: theme.colors.white,
+  },
+  continueButtonText: {
+    color: theme.colors.forest,
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
   },
   discardButton: {
-    padding: 16,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
   },
   discardButtonText: {
     color: theme.colors.burntOrange,
     fontSize: 16,
+    fontWeight: "500",
+    marginLeft: 8,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: theme.colors.offWhite,
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: "#666",
-  },
-  viewMapButton: {
-    backgroundColor: "#007AFF",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 15,
-  },
-  viewMapButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  mapToggleButton: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    backgroundColor: "#007AFF",
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 10,
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  mapToggleText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 5,
+    color: theme.colors.gray,
   },
   manualButton: {
     flexDirection: "row",

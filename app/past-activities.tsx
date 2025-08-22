@@ -1,7 +1,7 @@
 // past-activities.tsx - Updated with Social Sharing Features
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -14,59 +14,64 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { WebView } from 'react-native-webview';
-import { theme } from '../constants/theme';
-import { ActivityType, useActivity } from '../contexts/ActivityContext';
-import { useFriends } from '../contexts/FriendsContext';
-import { useSettings } from '../contexts/SettingsContext';
-import { ShareService } from '../services/shareService';
+} from "react-native";
+import { WebView } from "react-native-webview";
+import { theme } from "../constants/theme";
+import { ActivityType, useActivity } from "../contexts/ActivityContext";
+import { useFriends } from "../contexts/FriendsContext";
+import { useSettings } from "../contexts/SettingsContext";
+import { ShareService } from "../services/shareService";
 
 const activityIcons: Record<ActivityType, string> = {
-  bike: 'bicycle',
-  run: 'walk',
-  walk: 'footsteps',
-  hike: 'trail-sign',
-  paddleboard: 'boat',
-  climb: 'trending-up',
-  other: 'fitness',
+  bike: "bicycle",
+  run: "walk",
+  walk: "footsteps",
+  hike: "trail-sign",
+  paddleboard: "boat",
+  climb: "trending-up",
+  other: "fitness",
 };
 
 // Share with Friends Modal Component
-const ShareWithFriendsModal = ({ 
-  visible, 
-  onClose, 
+const ShareWithFriendsModal = ({
+  visible,
+  onClose,
   activity,
-  onShare 
-}: { 
-  visible: boolean; 
-  onClose: () => void; 
+  onShare,
+}: {
+  visible: boolean;
+  onClose: () => void;
   activity: any;
   onShare: (selectedFriends: string[], message?: string) => void;
 }) => {
   const { friends } = useFriends();
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
-  const [shareMessage, setShareMessage] = useState('');
+  const [shareMessage, setShareMessage] = useState("");
   const [shareToAll, setShareToAll] = useState(false);
-  
+
   const toggleFriend = (friendId: string) => {
     if (selectedFriends.includes(friendId)) {
-      setSelectedFriends(selectedFriends.filter(id => id !== friendId));
+      setSelectedFriends(selectedFriends.filter((id) => id !== friendId));
     } else {
       setSelectedFriends([...selectedFriends, friendId]);
     }
   };
-  
+
   const handleShare = () => {
-    const friendsToShare = shareToAll ? friends.map(f => f.id) : selectedFriends;
+    const friendsToShare = shareToAll
+      ? friends.map((f) => f.id)
+      : selectedFriends;
     if (friendsToShare.length === 0) {
-      Alert.alert('Select Friends', 'Please select at least one friend to share with');
+      Alert.alert(
+        "Select Friends",
+        "Please select at least one friend to share with"
+      );
       return;
     }
     onShare(friendsToShare, shareMessage);
     onClose();
   };
-  
+
   return (
     <Modal
       visible={visible}
@@ -82,19 +87,21 @@ const ShareWithFriendsModal = ({
               <Ionicons name="close" size={24} color={theme.colors.gray} />
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.activityPreview}>
             <Text style={styles.previewTitle}>{activity?.name}</Text>
             <View style={styles.previewStats}>
               <Text style={styles.previewStat}>
-                <Ionicons name="navigate" size={14} /> {(activity?.distance / 1000).toFixed(2)} km
+                <Ionicons name="navigate" size={14} />{" "}
+                {(activity?.distance / 1000).toFixed(2)} km
               </Text>
               <Text style={styles.previewStat}>
-                <Ionicons name="time" size={14} /> {Math.round(activity?.duration / 60)} min
+                <Ionicons name="time" size={14} />{" "}
+                {Math.round(activity?.duration / 60)} min
               </Text>
             </View>
           </View>
-          
+
           <TextInput
             style={styles.shareMessageInput}
             placeholder="Add a message (optional)..."
@@ -104,42 +111,59 @@ const ShareWithFriendsModal = ({
             numberOfLines={3}
             placeholderTextColor={theme.colors.lightGray}
           />
-          
+
           <View style={styles.shareToAllContainer}>
             <Text style={styles.shareToAllText}>Share with all friends</Text>
             <Switch
               value={shareToAll}
               onValueChange={setShareToAll}
-              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-              thumbColor={shareToAll ? theme.colors.white : theme.colors.lightGray}
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                shareToAll ? theme.colors.white : theme.colors.lightGray
+              }
             />
           </View>
-          
+
           {!shareToAll && (
             <ScrollView style={styles.friendsList}>
               <Text style={styles.friendsListTitle}>Select Friends:</Text>
-              {friends.filter(f => f.status === 'accepted').map(friend => (
-                <TouchableOpacity
-                  key={friend.id}
-                  style={styles.friendItem}
-                  onPress={() => toggleFriend(friend.id)}
-                >
-                  <View style={styles.friendInfo}>
-                    <View style={styles.friendAvatar}>
-                      <Text>{friend.avatar || '👤'}</Text>
+              {friends
+                .filter((f) => f.status === "accepted")
+                .map((friend) => (
+                  <TouchableOpacity
+                    key={friend.id}
+                    style={styles.friendItem}
+                    onPress={() => toggleFriend(friend.id)}
+                  >
+                    <View style={styles.friendInfo}>
+                      <View style={styles.friendAvatar}>
+                        <Text>{friend.avatar || "👤"}</Text>
+                      </View>
+                      <Text style={styles.friendName}>
+                        {friend.displayName}
+                      </Text>
                     </View>
-                    <Text style={styles.friendName}>{friend.displayName}</Text>
-                  </View>
-                  <Ionicons
-                    name={selectedFriends.includes(friend.id) ? 'checkbox' : 'square-outline'}
-                    size={24}
-                    color={selectedFriends.includes(friend.id) ? theme.colors.forest : theme.colors.gray}
-                  />
-                </TouchableOpacity>
-              ))}
+                    <Ionicons
+                      name={
+                        selectedFriends.includes(friend.id)
+                          ? "checkbox"
+                          : "square-outline"
+                      }
+                      size={24}
+                      color={
+                        selectedFriends.includes(friend.id)
+                          ? theme.colors.forest
+                          : theme.colors.gray
+                      }
+                    />
+                  </TouchableOpacity>
+                ))}
             </ScrollView>
           )}
-          
+
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -160,16 +184,20 @@ export default function PastActivitiesScreen() {
   const { shareActivity, friends, privacySettings } = useFriends();
   const { formatDistance, formatSpeed } = useSettings();
   const router = useRouter();
-  
+
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showMap, setShowMap] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<ActivityType | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedType, setSelectedType] = useState<ActivityType | "all">("all");
   const [showFilters, setShowFilters] = useState(false);
-  const [sortBy, setSortBy] = useState<'recent' | 'distance' | 'duration'>('recent');
+  const [sortBy, setSortBy] = useState<"recent" | "distance" | "duration">(
+    "recent"
+  );
   const [showShareModal, setShowShareModal] = useState(false);
   const [activityToShare, setActivityToShare] = useState<any>(null);
-  const [autoShareEnabled, setAutoShareEnabled] = useState(privacySettings.shareActivitiesWithFriends);
+  const [autoShareEnabled, setAutoShareEnabled] = useState(
+    privacySettings.shareActivitiesWithFriends
+  );
 
   // Filter and sort activities
   const filteredActivities = useMemo(() => {
@@ -177,27 +205,31 @@ export default function PastActivitiesScreen() {
 
     // Filter by search query
     if (searchQuery) {
-      filtered = filtered.filter(activity => 
-        activity.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (activity.notes && activity.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+      filtered = filtered.filter(
+        (activity) =>
+          activity.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (activity.notes &&
+            activity.notes.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
 
     // Filter by activity type
-    if (selectedType !== 'all') {
-      filtered = filtered.filter(activity => activity.type === selectedType);
+    if (selectedType !== "all") {
+      filtered = filtered.filter((activity) => activity.type === selectedType);
     }
 
     // Sort activities
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
-        case 'distance':
+        case "distance":
           return b.distance - a.distance;
-        case 'duration':
+        case "duration":
           return b.duration - a.duration;
-        case 'recent':
+        case "recent":
         default:
-          return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+          return (
+            new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+          );
       }
     });
 
@@ -206,13 +238,13 @@ export default function PastActivitiesScreen() {
 
   const formatDuration = (seconds: number) => {
     if (!seconds || seconds === 0) {
-      return '0 min';
+      return "0 min";
     }
-    
+
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     } else if (minutes > 0) {
@@ -224,31 +256,31 @@ export default function PastActivitiesScreen() {
 
   const formatDate = (date: string | Date) => {
     const d = new Date(date);
-    return d.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
   };
 
   const formatTime = (date: string | Date) => {
     const d = new Date(date);
-    return d.toLocaleTimeString('en-US', { 
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
+    return d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     });
   };
 
   const handleDeleteActivity = (id: string, name: string) => {
     Alert.alert(
-      'Delete Activity',
+      "Delete Activity",
       `Are you sure you want to delete "${name}"?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: () => deleteActivity(id),
         },
       ]
@@ -268,19 +300,19 @@ export default function PastActivitiesScreen() {
         await ShareService.shareActivity(activity);
       }
     } catch (error) {
-      console.error('Error sharing activity:', error);
-      Alert.alert('Error', 'Failed to share activity');
+      console.error("Error sharing activity:", error);
+      Alert.alert("Error", "Failed to share activity");
     }
   };
 
   const handleShareWithFriends = (activity: any) => {
-    if (friends.filter(f => f.status === 'accepted').length === 0) {
+    if (friends.filter((f) => f.status === "accepted").length === 0) {
       Alert.alert(
-        'No Friends Yet',
-        'Add some friends to share your activities with them!',
+        "No Friends Yet",
+        "Add some friends to share your activities with them!",
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Find Friends', onPress: () => router.push('/friends') }
+          { text: "Cancel", style: "cancel" },
+          { text: "Find Friends", onPress: () => router.push("/friends") },
         ]
       );
       return;
@@ -289,68 +321,85 @@ export default function PastActivitiesScreen() {
     setShowShareModal(true);
   };
 
-  const handleShareToFriends = async (selectedFriends: string[], message?: string) => {
+  const handleShareToFriends = async (
+    selectedFriends: string[],
+    message?: string
+  ) => {
     try {
       await shareActivity(activityToShare.id, selectedFriends);
-      Alert.alert('Success', 'Activity shared with friends!');
+      Alert.alert("Success", "Activity shared with friends!");
       setShowShareModal(false);
       setActivityToShare(null);
     } catch (error) {
-      Alert.alert('Error', 'Failed to share activity with friends');
+      Alert.alert("Error", "Failed to share activity with friends");
     }
   };
 
   const handleCopyActivity = async (activity: any) => {
     try {
       await ShareService.copyActivityToClipboard(activity);
-      Alert.alert('Copied!', 'Activity details copied to clipboard');
+      Alert.alert("Copied!", "Activity details copied to clipboard");
     } catch (error) {
-      console.error('Error copying activity:', error);
-      Alert.alert('Error', 'Failed to copy activity');
+      console.error("Error copying activity:", error);
+      Alert.alert("Error", "Failed to copy activity");
     }
   };
 
   const handleShareSummary = async () => {
     try {
-      const totalDistance = filteredActivities.reduce((sum, act) => sum + act.distance, 0);
-      const totalDuration = filteredActivities.reduce((sum, act) => sum + act.duration, 0);
-      
+      const totalDistance = filteredActivities.reduce(
+        (sum, act) => sum + act.distance,
+        0
+      );
+      const totalDuration = filteredActivities.reduce(
+        (sum, act) => sum + act.duration,
+        0
+      );
+
       let message = `🏃 My explorAble Adventure Summary\n\n`;
       message += `📊 Total Stats:\n`;
       message += `• ${filteredActivities.length} activities completed\n`;
       message += `• ${formatDistance(totalDistance)} total distance\n`;
       message += `• ${formatDuration(totalDuration)} total time\n\n`;
-      
+
       message += `🎯 Recent Activities:\n`;
       filteredActivities.slice(0, 5).forEach((activity, index) => {
         const emoji = ShareService.getActivityEmoji(activity.type);
-        message += `${index + 1}. ${emoji} ${activity.name} - ${formatDistance(activity.distance)}\n`;
+        message += `${index + 1}. ${emoji} ${activity.name} - ${formatDistance(
+          activity.distance
+        )}\n`;
       });
-      
+
       if (filteredActivities.length > 5) {
-        message += `\n... and ${filteredActivities.length - 5} more activities!\n`;
+        message += `\n... and ${
+          filteredActivities.length - 5
+        } more activities!\n`;
       }
-      
+
       message += `\nShared from explorAble 🌲`;
-      
+
       await Share.share({
         message,
-        title: 'My Adventure Summary',
+        title: "My Adventure Summary",
       });
     } catch (error) {
-      console.error('Error sharing summary:', error);
+      console.error("Error sharing summary:", error);
     }
   };
 
   const generateActivityMapHTML = () => {
-    if (!selectedActivity || !selectedActivity.route || selectedActivity.route.length === 0) {
-      return '<html><body><p>No route data available</p></body></html>';
+    if (
+      !selectedActivity ||
+      !selectedActivity.route ||
+      selectedActivity.route.length === 0
+    ) {
+      return "<html><body><p>No route data available</p></body></html>";
     }
 
     const route = selectedActivity.route;
-    const routeCoords = route.map((point: any) => 
-      `[${point.latitude}, ${point.longitude}]`
-    ).join(',');
+    const routeCoords = route
+      .map((point: any) => `[${point.latitude}, ${point.longitude}]`)
+      .join(",");
 
     return `
       <!DOCTYPE html>
@@ -398,7 +447,9 @@ export default function PastActivitiesScreen() {
             }).addTo(map);
 
             var startIcon = L.divIcon({
-              html: '<div style="background-color: ${theme.colors.forest}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+              html: '<div style="background-color: ${
+                theme.colors.forest
+              }; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
               iconSize: [24, 24],
               className: 'custom-div-icon'
             });
@@ -407,7 +458,9 @@ export default function PastActivitiesScreen() {
               .bindPopup('Start');
 
             var endIcon = L.divIcon({
-              html: '<div style="background-color: ${theme.colors.burntOrange}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+              html: '<div style="background-color: ${
+                theme.colors.burntOrange
+              }; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
               iconSize: [24, 24],
               className: 'custom-div-icon'
             });
@@ -424,17 +477,21 @@ export default function PastActivitiesScreen() {
   };
 
   const renderActivityItem = ({ item }: { item: any }) => {
-    const iconName = (activityIcons as any)[item.type] || 'fitness';
-    
+    const iconName = (activityIcons as any)[item.type] || "fitness";
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.activityCard}
         onPress={() => handleViewMap(item)}
         activeOpacity={0.7}
       >
         <View style={styles.activityHeader}>
           <View style={styles.activityIcon}>
-            <Ionicons name={iconName as any} size={24} color={theme.colors.forest} />
+            <Ionicons
+              name={iconName as any}
+              size={24}
+              color={theme.colors.forest}
+            />
           </View>
           <View style={styles.activityInfo}>
             <Text style={styles.activityName}>{item.name}</Text>
@@ -452,20 +509,28 @@ export default function PastActivitiesScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Distance</Text>
-            <Text style={styles.statValue}>{formatDistance(item.distance)}</Text>
+            <Text style={styles.statValue}>
+              {formatDistance(item.distance)}
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Duration</Text>
-            <Text style={styles.statValue}>{formatDuration(item.duration)}</Text>
+            <Text style={styles.statValue}>
+              {formatDuration(item.duration)}
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Avg Speed</Text>
-            <Text style={styles.statValue}>{formatSpeed(item.averageSpeed)}</Text>
+            <Text style={styles.statValue}>
+              {formatSpeed(item.averageSpeed)}
+            </Text>
           </View>
         </View>
 
         {item.notes && (
-          <Text style={styles.notes} numberOfLines={2}>{item.notes}</Text>
+          <Text style={styles.notes} numberOfLines={2}>
+            {item.notes}
+          </Text>
         )}
 
         <View style={styles.activityActions}>
@@ -473,38 +538,47 @@ export default function PastActivitiesScreen() {
             style={[styles.actionButton, styles.shareButton]}
             onPress={() => handleShareActivity(item)}
           >
-            <Ionicons name="share-social-outline" size={20} color={theme.colors.forest} />
-            <Text style={styles.actionButtonText}>Share</Text>
+            <Ionicons
+              name="share-social-outline"
+              size={22}
+              color={theme.colors.forest}
+            />
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.actionButton, styles.friendsButton]}
             onPress={() => handleShareWithFriends(item)}
           >
-            <Ionicons name="people-outline" size={20} color={theme.colors.navy} />
-            <Text style={[styles.actionButtonText, { color: theme.colors.navy }]}>Friends</Text>
+            <Ionicons
+              name="people-outline"
+              size={22}
+              color={theme.colors.navy}
+            />
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.mapButton]}
             onPress={() => handleViewMap(item)}
           >
-            <Ionicons name="map-outline" size={20} color={theme.colors.gray} />
-            <Text style={[styles.actionButtonText, { color: theme.colors.gray }]}>Map</Text>
+            <Ionicons name="map-outline" size={22} color={theme.colors.gray} />
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.actionButton, styles.copyButton]}
             onPress={() => handleCopyActivity(item)}
           >
-            <Ionicons name="copy-outline" size={20} color={theme.colors.gray} />
+            <Ionicons name="copy-outline" size={22} color={theme.colors.gray} />
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.actionButton, styles.deleteButton]}
             onPress={() => handleDeleteActivity(item.id, item.name)}
           >
-            <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
+            <Ionicons
+              name="trash-outline"
+              size={22}
+              color={theme.colors.burntOrange}
+            />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -534,18 +608,28 @@ export default function PastActivitiesScreen() {
     );
   }
 
-  const totalDistance = filteredActivities.reduce((sum, act) => sum + act.distance, 0);
-  const totalDuration = filteredActivities.reduce((sum, act) => sum + act.duration, 0);
+  const totalDistance = filteredActivities.reduce(
+    (sum, act) => sum + act.distance,
+    0
+  );
+  const totalDuration = filteredActivities.reduce(
+    (sum, act) => sum + act.duration,
+    0
+  );
   const totalActivities = filteredActivities.length;
 
   if (activities.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="fitness-outline" size={80} color={theme.colors.lightGray} />
+        <Ionicons
+          name="fitness-outline"
+          size={80}
+          color={theme.colors.lightGray}
+        />
         <Text style={styles.emptyText}>No activities yet</Text>
         <TouchableOpacity
           style={styles.startButton}
-          onPress={() => router.push('/track-activity')}
+          onPress={() => router.push("/track-activity")}
         >
           <Text style={styles.startButtonText}>Start Your First Activity</Text>
         </TouchableOpacity>
@@ -556,7 +640,7 @@ export default function PastActivitiesScreen() {
   return (
     <View style={styles.container}>
       {/* Auto-share Toggle Bar */}
-      {friends.filter(f => f.status === 'accepted').length > 0 && (
+      {friends.filter((f) => f.status === "accepted").length > 0 && (
         <View style={styles.autoShareBar}>
           <View style={styles.autoShareContent}>
             <Ionicons name="people" size={20} color={theme.colors.forest} />
@@ -568,8 +652,13 @@ export default function PastActivitiesScreen() {
               setAutoShareEnabled(value);
               // Update privacy settings
             }}
-            trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-            thumbColor={autoShareEnabled ? theme.colors.white : theme.colors.lightGray}
+            trackColor={{
+              false: theme.colors.borderGray,
+              true: theme.colors.forest,
+            }}
+            thumbColor={
+              autoShareEnabled ? theme.colors.white : theme.colors.lightGray
+            }
           />
         </View>
       )}
@@ -585,21 +674,32 @@ export default function PastActivitiesScreen() {
             onChangeText={setSearchQuery}
             placeholderTextColor={theme.colors.lightGray}
           />
-          {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={theme.colors.gray} />
+          {searchQuery !== "" && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={theme.colors.gray}
+              />
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.filterButton}
           onPress={() => setShowFilters(!showFilters)}
         >
-          <Ionicons 
-            name="filter" 
-            size={20} 
-            color={selectedType !== 'all' || sortBy !== 'recent' ? theme.colors.forest : theme.colors.gray} 
+          <Ionicons
+            name="filter"
+            size={20}
+            color={
+              selectedType !== "all" || sortBy !== "recent"
+                ? theme.colors.burntOrange
+                : theme.colors.gray
+            } // ← ORANGE when filters active
           />
+          {(selectedType !== "all" || sortBy !== "recent") && (
+            <View style={styles.filterIndicatorDot} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -607,27 +707,51 @@ export default function PastActivitiesScreen() {
       {showFilters && (
         <View style={styles.filterContainer}>
           <Text style={styles.filterTitle}>Activity Type</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+          >
             <TouchableOpacity
-              style={[styles.filterChip, selectedType === 'all' && styles.filterChipActive]}
-              onPress={() => setSelectedType('all')}
+              style={[
+                styles.filterChip,
+                selectedType === "all" && styles.filterChipActive,
+              ]}
+              onPress={() => setSelectedType("all")}
             >
-              <Text style={[styles.filterChipText, selectedType === 'all' && styles.filterChipTextActive]}>
+              <Text
+                style={[
+                  styles.filterChipText,
+                  selectedType === "all" && styles.filterChipTextActive,
+                ]}
+              >
                 All
               </Text>
             </TouchableOpacity>
             {Object.entries(activityIcons).map(([type, icon]) => (
               <TouchableOpacity
                 key={type}
-                style={[styles.filterChip, selectedType === type && styles.filterChipActive]}
+                style={[
+                  styles.filterChip,
+                  selectedType === type && styles.filterChipActive,
+                ]}
                 onPress={() => setSelectedType(type as ActivityType)}
               >
-                <Ionicons 
-                  name={icon as any} 
-                  size={16} 
-                  color={selectedType === type ? theme.colors.white : theme.colors.gray} 
+                <Ionicons
+                  name={icon as any}
+                  size={16}
+                  color={
+                    selectedType === type
+                      ? theme.colors.white
+                      : theme.colors.gray
+                  }
                 />
-                <Text style={[styles.filterChipText, selectedType === type && styles.filterChipTextActive]}>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selectedType === type && styles.filterChipTextActive,
+                  ]}
+                >
                   {type.charAt(0).toUpperCase() + type.slice(1)}
                 </Text>
               </TouchableOpacity>
@@ -637,26 +761,50 @@ export default function PastActivitiesScreen() {
           <Text style={styles.filterTitle}>Sort By</Text>
           <View style={styles.sortOptions}>
             <TouchableOpacity
-              style={[styles.sortChip, sortBy === 'recent' && styles.sortChipActive]}
-              onPress={() => setSortBy('recent')}
+              style={[
+                styles.sortChip,
+                sortBy === "recent" && styles.sortChipActive,
+              ]}
+              onPress={() => setSortBy("recent")}
             >
-              <Text style={[styles.sortChipText, sortBy === 'recent' && styles.sortChipTextActive]}>
+              <Text
+                style={[
+                  styles.sortChipText,
+                  sortBy === "recent" && styles.sortChipTextActive,
+                ]}
+              >
                 Most Recent
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.sortChip, sortBy === 'distance' && styles.sortChipActive]}
-              onPress={() => setSortBy('distance')}
+              style={[
+                styles.sortChip,
+                sortBy === "distance" && styles.sortChipActive,
+              ]}
+              onPress={() => setSortBy("distance")}
             >
-              <Text style={[styles.sortChipText, sortBy === 'distance' && styles.sortChipTextActive]}>
+              <Text
+                style={[
+                  styles.sortChipText,
+                  sortBy === "distance" && styles.sortChipTextActive,
+                ]}
+              >
                 Distance
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.sortChip, sortBy === 'duration' && styles.sortChipActive]}
-              onPress={() => setSortBy('duration')}
+              style={[
+                styles.sortChip,
+                sortBy === "duration" && styles.sortChipActive,
+              ]}
+              onPress={() => setSortBy("duration")}
             >
-              <Text style={[styles.sortChipText, sortBy === 'duration' && styles.sortChipTextActive]}>
+              <Text
+                style={[
+                  styles.sortChipText,
+                  sortBy === "duration" && styles.sortChipTextActive,
+                ]}
+              >
                 Duration
               </Text>
             </TouchableOpacity>
@@ -669,15 +817,19 @@ export default function PastActivitiesScreen() {
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{totalActivities}</Text>
           <Text style={styles.summaryLabel}>
-            {selectedType === 'all' ? 'Activities' : selectedType}
+            {selectedType === "all" ? "Activities" : selectedType}
           </Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{formatDistance(totalDistance)}</Text>
+          <Text style={styles.summaryValue}>
+            {formatDistance(totalDistance)}
+          </Text>
           <Text style={styles.summaryLabel}>Total Distance</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{formatDuration(totalDuration)}</Text>
+          <Text style={styles.summaryValue}>
+            {formatDuration(totalDuration)}
+          </Text>
           <Text style={styles.summaryLabel}>Total Time</Text>
         </View>
       </View>
@@ -688,8 +840,14 @@ export default function PastActivitiesScreen() {
             style={styles.shareAllButton}
             onPress={handleShareSummary}
           >
-            <Ionicons name="share-outline" size={20} color={theme.colors.forest} />
-            <Text style={styles.shareAllButtonText}>Share Activity Summary</Text>
+            <Ionicons
+              name="share-outline"
+              size={20}
+              color={theme.colors.forest}
+            />
+            <Text style={styles.shareAllButtonText}>
+              Share Activity Summary
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -698,23 +856,29 @@ export default function PastActivitiesScreen() {
         <FlatList
           data={filteredActivities}
           renderItem={renderActivityItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
         />
       ) : (
         <View style={styles.noResultsContainer}>
-          <Ionicons name="search-outline" size={60} color={theme.colors.lightGray} />
+          <Ionicons
+            name="search-outline"
+            size={60}
+            color={theme.colors.lightGray}
+          />
           <Text style={styles.noResultsText}>No activities found</Text>
-          {searchQuery !== '' && (
-            <Text style={styles.noResultsSubtext}>Try adjusting your search</Text>
+          {searchQuery !== "" && (
+            <Text style={styles.noResultsSubtext}>
+              Try adjusting your search
+            </Text>
           )}
         </View>
       )}
 
       <TouchableOpacity
         style={styles.floatingAddButton}
-        onPress={() => router.push('/track-activity')}
+        onPress={() => router.push("/track-activity")}
       >
         <Ionicons name="add" size={30} color={theme.colors.white} />
       </TouchableOpacity>
@@ -736,29 +900,29 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   autoShareBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.colors.forest + '10',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "10",
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.forest + '20',
+    borderBottomColor: theme.colors.forest + "20",
   },
   autoShareContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   autoShareText: {
     marginLeft: 8,
     fontSize: 14,
     color: theme.colors.forest,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
     backgroundColor: theme.colors.offWhite,
   },
@@ -777,27 +941,26 @@ const styles = StyleSheet.create({
   startButtonText: {
     color: theme.colors.white,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   summaryContainer: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.white,
+    flexDirection: "row",
+    backgroundColor: theme.colors.forest, // ← Make it stand out with forest green
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
+    borderBottomWidth: 0,
   },
   summaryItem: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   summaryValue: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.navy,
+    fontWeight: "bold",
+    color: theme.colors.white, // ← White on green
   },
   summaryLabel: {
     fontSize: 12,
-    color: theme.colors.gray,
+    color: theme.colors.white + "CC", // ← Slightly transparent white
     marginTop: 4,
   },
   shareAllContainer: {
@@ -806,10 +969,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   shareAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.forest + '10',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.forest + "10",
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
@@ -818,7 +981,7 @@ const styles = StyleSheet.create({
   shareAllButtonText: {
     color: theme.colors.forest,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   listContainer: {
@@ -830,24 +993,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     marginBottom: 15,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   activityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 15,
   },
   activityIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.colors.forest + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: theme.colors.forest + "15",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   activityInfo: {
@@ -855,7 +1018,7 @@ const styles = StyleSheet.create({
   },
   activityName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   activityDate: {
@@ -863,8 +1026,17 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     marginTop: 2,
   },
+  filterIndicatorDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.burntOrange,
+  },
   manualBadge: {
-    backgroundColor: theme.colors.burntOrange + '20',
+    backgroundColor: theme.colors.burntOrange + "20",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -874,18 +1046,18 @@ const styles = StyleSheet.create({
   manualBadgeText: {
     fontSize: 11,
     color: theme.colors.burntOrange,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     paddingVertical: 15,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: theme.colors.borderGray,
   },
   statItem: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   statLabel: {
     fontSize: 12,
@@ -894,58 +1066,46 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   notes: {
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 10,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   activityActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 15,
     paddingTop: 15,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
   },
   actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: "center",
+    justifyContent: "center",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: theme.colors.offWhite,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
   },
   shareButton: {
-    backgroundColor: theme.colors.forest + '10',
-    flex: 0.3,
-    marginRight: 8,
-    justifyContent: 'center',
+    backgroundColor: theme.colors.forest + "10",
   },
   friendsButton: {
-    backgroundColor: theme.colors.navy + '10',
-    flex: 0.3,
-    marginRight: 8,
-    justifyContent: 'center',
+    backgroundColor: theme.colors.navy + "10",
+  },
+  mapButton: {
+    backgroundColor: theme.colors.gray + "10",
   },
   copyButton: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 10,
-    marginLeft: 8,
+    backgroundColor: "transparent",
   },
   deleteButton: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 10,
-  },
-  actionButtonText: {
-    color: theme.colors.forest,
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: 6,
+    backgroundColor: "transparent",
   },
   mapHeader: {
     backgroundColor: theme.colors.white,
@@ -954,46 +1114,45 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.borderGray,
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   backButtonText: {
     color: theme.colors.forest,
     fontSize: 16,
     marginLeft: 8,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   map: {
     flex: 1,
   },
   floatingAddButton: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 30,
     right: 20,
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: theme.colors.forest,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
+    backgroundColor: theme.colors.burntOrange, // ← CHANGE from forest to orange
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
   },
   searchContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 15,
-    backgroundColor: theme.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
+    backgroundColor: theme.colors.navy, // ← Dark header
+    borderBottomWidth: 0, // Remove border since color contrast is enough
   },
   searchBar: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.offWhite,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.white, // ← White on dark looks clean
     borderRadius: 8,
     paddingHorizontal: 12,
     marginRight: 10,
@@ -1008,21 +1167,21 @@ const styles = StyleSheet.create({
   filterButton: {
     width: 44,
     height: 44,
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: theme.colors.white, // ← Match search bar
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   filterContainer: {
-    backgroundColor: theme.colors.white,
+    backgroundColor: theme.colors.navy + "F5", // ← Slightly lighter than header
     paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
+    borderBottomColor: theme.colors.navy,
   },
   filterTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.gray,
+    fontWeight: "600",
+    color: theme.colors.white, // ← White text on dark background
     marginLeft: 15,
     marginBottom: 10,
   },
@@ -1031,8 +1190,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: theme.colors.offWhite,
@@ -1051,7 +1210,7 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
   },
   sortOptions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 15,
   },
   sortChip: {
@@ -1073,8 +1232,8 @@ const styles = StyleSheet.create({
   },
   noResultsContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 40,
   },
   noResultsText: {
@@ -1090,27 +1249,27 @@ const styles = StyleSheet.create({
   // Share Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   shareModalContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%',
+    maxHeight: "80%",
     paddingBottom: 30,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   activityPreview: {
@@ -1121,12 +1280,12 @@ const styles = StyleSheet.create({
   },
   previewTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 8,
   },
   previewStats: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 15,
   },
   previewStat: {
@@ -1142,12 +1301,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.navy,
     minHeight: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   shareToAllContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginHorizontal: 20,
     marginBottom: 15,
     padding: 15,
@@ -1157,7 +1316,7 @@ const styles = StyleSheet.create({
   shareToAllText: {
     fontSize: 16,
     color: theme.colors.navy,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   friendsList: {
     maxHeight: 200,
@@ -1166,29 +1325,29 @@ const styles = StyleSheet.create({
   },
   friendsListTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.gray,
     marginBottom: 10,
   },
   friendItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   friendInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   friendAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 10,
   },
   friendName: {
@@ -1196,7 +1355,7 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
   },
   modalActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 20,
     gap: 10,
   },
@@ -1204,18 +1363,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
   },
   cancelButtonText: {
     fontSize: 16,
     color: theme.colors.gray,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   shareButtonText: {
     fontSize: 16,
-    color: 'white',
-    fontWeight: '600',
+    color: "white",
+    fontWeight: "600",
     marginLeft: 8,
   },
 });

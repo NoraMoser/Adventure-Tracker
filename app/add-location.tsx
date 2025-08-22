@@ -5,8 +5,9 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
     Alert,
+    Animated,
     Image,
-    KeyboardAvoidingView,
+    Keyboard,
     Platform,
     ScrollView,
     StyleSheet,
@@ -26,6 +27,8 @@ export default function AddLocationScreen() {
   const webViewRef = useRef<WebView>(null);
   const locationNameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardOffset] = useState(new Animated.Value(0));
 
   const [selectedLocation, setSelectedLocation] = useState<{
     latitude: number;
@@ -38,6 +41,7 @@ export default function AddLocationScreen() {
   const [showForm, setShowForm] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>("other");
+  const [mapReady, setMapReady] = useState(false);
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
@@ -72,6 +76,18 @@ export default function AddLocationScreen() {
         const js = `
           if (typeof map !== 'undefined') {
             map.setView([${location.coords.latitude}, ${location.coords.longitude}], 13);
+            
+            // Add a blue dot for current location
+            if (window.currentLocationMarker) {
+              map.removeLayer(window.currentLocationMarker);
+            }
+            window.currentLocationMarker = L.circleMarker([${location.coords.latitude}, ${location.coords.longitude}], {
+              color: '#007AFF',
+              fillColor: '#007AFF',
+              fillOpacity: 0.3,
+              radius: 8,
+              weight: 2
+            }).addTo(map);
           }
         `;
         webViewRef.current?.injectJavaScript(js);
@@ -94,7 +110,7 @@ export default function AddLocationScreen() {
         // Update map and place marker
         const js = `
           if (typeof map !== 'undefined') {
-            // Clear existing marker
+            // Clear existing marker (but not current location marker)
             if (window.currentMarker) {
               map.removeLayer(window.currentMarker);
             }
@@ -105,7 +121,7 @@ export default function AddLocationScreen() {
             // Add marker
             window.currentMarker = L.marker([${latitude}, ${longitude}])
               .addTo(map)
-              .bindPopup('${searchQuery}')
+              .bindPopup('${searchQuery.replace(/'/g, "\\'")}')
               .openPopup();
               
             // Send location back
@@ -123,7 +139,7 @@ export default function AddLocationScreen() {
       } else {
         Alert.alert(
           "Not Found",
-          "Could not find that location. Try a different search."
+          "Could not find that location. Try tapping on the map instead."
         );
       }
     } catch (error) {
@@ -183,6 +199,9 @@ export default function AddLocationScreen() {
   };
 
   const handleSaveLocation = async () => {
+    console.log("Save button pressed!"); // Debug log
+    Keyboard.dismiss();
+    
     if (!locationName.trim()) {
       Alert.alert("Error", "Please enter a name for this location");
       return;
@@ -192,6 +211,8 @@ export default function AddLocationScreen() {
       Alert.alert("Error", "Please select a location on the map");
       return;
     }
+
+    console.log("Saving location:", locationName, selectedLocation); // Debug log
 
     try {
       // Save the location with the selected coordinates, photos, and category
@@ -210,13 +231,22 @@ export default function AddLocationScreen() {
       setSelectedLocation(null);
       setShowForm(false);
       setSelectedCategory("other");
+      keyboardOffset.setValue(0);
+
+      // Clear the marker from the map
+      const js = `
+        if (window.currentMarker) {
+          map.removeLayer(window.currentMarker);
+          window.currentMarker = null;
+        }
+      `;
+      webViewRef.current?.injectJavaScript(js);
 
       // Navigate back after showing success
       Alert.alert("Success", "Location saved successfully!", [
         {
           text: "OK",
           onPress: () => {
-            // Navigate to saved spots or back depending on where we came from
             if (router.canGoBack()) {
               router.back();
             } else {
@@ -226,14 +256,17 @@ export default function AddLocationScreen() {
         },
       ]);
     } catch (err) {
+      console.error("Error saving location:", err); // Debug log
       Alert.alert("Error", "Failed to save location");
     }
   };
 
   const handleCancelForm = () => {
+    Keyboard.dismiss();
     setShowForm(false);
     setLocationName("");
     setLocationDescription("");
+    keyboardOffset.setValue(0);
     // Keep the marker on the map but hide the form
   };
 
@@ -249,21 +282,48 @@ export default function AddLocationScreen() {
           body { margin: 0; padding: 0; }
           #map { height: 100vh; width: 100vw; }
           .custom-popup { font-size: 14px; }
+          .info-box {
+            background: rgba(255,255,255,0.95);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            border: 2px solid #2d5a3d;
+          }
+          .leaflet-container {
+            cursor: crosshair !important;
+          }
         </style>
       </head>
       <body>
         <div id="map"></div>
         <script>
           // Initialize map
-          var map = L.map('map').setView([${defaultCenter.latitude}, ${defaultCenter.longitude}], 13);
+          var map = L.map('map', {
+            tap: true,
+            touchZoom: true,
+            doubleClickZoom: false  // Disable double-click zoom to make tapping easier
+          }).setView([${defaultCenter.latitude}, ${defaultCenter.longitude}], 13);
           
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 19
           }).addTo(map);
 
-          // Store current marker reference
+          // Store marker references
           window.currentMarker = null;
+          window.currentLocationMarker = null;
+
+          // Custom icon for selected locations
+          var selectedIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+          });
 
           // Handle map clicks
           map.on('click', function(e) {
@@ -272,11 +332,14 @@ export default function AddLocationScreen() {
               map.removeLayer(window.currentMarker);
             }
             
-            // Add new marker
-            window.currentMarker = L.marker([e.latlng.lat, e.latlng.lng])
+            // Add new marker with custom icon
+            window.currentMarker = L.marker([e.latlng.lat, e.latlng.lng], { icon: selectedIcon })
               .addTo(map)
-              .bindPopup('Selected location')
+              .bindPopup('Tap here to save this location')
               .openPopup();
+            
+            // Animate marker
+            window.currentMarker._icon.style.animation = 'bounce 0.5s';
             
             // Send location back to React Native
             window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -286,23 +349,26 @@ export default function AddLocationScreen() {
             }));
           });
 
-          // Add instructions overlay
-          var info = L.control();
+          // Add instructions overlay with better styling
+          var info = L.control({ position: 'topright' });
           info.onAdd = function (map) {
-            this._div = L.DomUtil.create('div', 'info');
-            this._div.style.background = 'rgba(255,255,255,0.9)';
-            this._div.style.padding = '10px';
-            this._div.style.borderRadius = '8px';
-            this._div.style.fontSize = '14px';
-            this._div.innerHTML = '<b>Tap on the map to select a location</b>';
+            this._div = L.DomUtil.create('div', 'info-box');
+            this._div.innerHTML = '📍 Tap anywhere on the map to select a location';
             return this._div;
           };
           info.addTo(map);
 
-          // Remove instructions after first click
-          map.once('click', function() {
-            info.remove();
-          });
+          // Add bounce animation
+          var style = document.createElement('style');
+          style.innerHTML = '@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }';
+          document.head.appendChild(style);
+
+          // Signal that map is ready
+          setTimeout(function() {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'mapReady'
+            }));
+          }, 500);
         </script>
       </body>
       </html>
@@ -312,6 +378,12 @@ export default function AddLocationScreen() {
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
+      
+      if (data.type === "mapReady") {
+        setMapReady(true);
+        return;
+      }
+      
       if (data.type === "locationSelected") {
         setSelectedLocation({
           latitude: data.latitude,
@@ -325,17 +397,25 @@ export default function AddLocationScreen() {
   };
 
   const handleLocationNameChange = (text: string) => {
-    console.log("Location name changing to:", text); // Debug log
+    console.log("Location name changing to:", text);
     setLocationName(text);
   };
 
   const handleDescriptionChange = (text: string) => {
-    console.log("Description changing to:", text); // Debug log
+    console.log("Description changing to:", text);
     setLocationDescription(text);
   };
 
   return (
     <View style={styles.container}>
+      {/* Header with instructions */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Add a Location</Text>
+        <Text style={styles.headerSubtitle}>
+          Search for a place or tap anywhere on the map
+        </Text>
+      </View>
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
@@ -389,21 +469,43 @@ export default function AddLocationScreen() {
         >
           <Ionicons name="locate" size={24} color={theme.colors.navy} />
         </TouchableOpacity>
+
+        {/* Selected Location Indicator */}
+        {selectedLocation && !showForm && (
+          <View style={styles.selectedIndicator}>
+            <Text style={styles.selectedIndicatorText}>
+              📍 Location selected - Tap to change
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* Location Form */}
+      {/* Location Form with Keyboard Animation */}
       {showForm && selectedLocation && (
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.formContainer}
-          keyboardVerticalOffset={0}
+        <Animated.View 
+          style={[
+            styles.formContainer,
+            {
+              transform: [{
+                translateY: keyboardOffset
+              }]
+            }
+          ]}
         >
           <ScrollView 
+            ref={scrollViewRef}
             style={styles.form} 
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={styles.formContent}
+            scrollEnabled={true}
           >
-            <Text style={styles.formTitle}>Save This Location</Text>
+            <View style={styles.formHeader}>
+              <Text style={styles.formTitle}>Save This Location</Text>
+              <TouchableOpacity onPress={handleCancelForm} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.coordinatesDisplay}>
               <Ionicons name="pin" size={20} color={theme.colors.burntOrange} />
@@ -419,7 +521,7 @@ export default function AddLocationScreen() {
               style={styles.input}
               value={locationName}
               onChangeText={handleLocationNameChange}
-              placeholder="e.g., Best Coffee Shop"
+              placeholder="e.g., Hidden Beach, Mom's House, Best Coffee Shop"
               placeholderTextColor={theme.colors.lightGray}
               editable={true}
               keyboardType="default"
@@ -427,6 +529,30 @@ export default function AddLocationScreen() {
               autoCorrect={false}
               returnKeyType="next"
               onSubmitEditing={() => descriptionInputRef.current?.focus()}
+              onFocus={() => {
+                // Animate form up when name input is focused
+                Animated.timing(keyboardOffset, {
+                  toValue: -100,  // Reduced from -200
+                  duration: 250,
+                  useNativeDriver: true,
+                }).start();
+                
+                // Scroll to top
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+                }, 100);
+            }}
+              onBlur={() => {
+                // Don't reset immediately - check if another input is focused
+                setTimeout(() => {
+                  // Reset position when done with all inputs
+                  Animated.timing(keyboardOffset, {
+                    toValue: 0,
+                    duration: 250,
+                    useNativeDriver: true,
+                  }).start();
+                }, 100);
+              }}
             />
 
             <Text style={styles.label}>Description (Optional)</Text>
@@ -435,7 +561,7 @@ export default function AddLocationScreen() {
               style={[styles.input, styles.textArea]}
               value={locationDescription}
               onChangeText={handleDescriptionChange}
-              placeholder="What makes this place special?"
+              placeholder="What makes this place special? Any tips for visiting?"
               placeholderTextColor={theme.colors.lightGray}
               editable={true}
               multiline={true}
@@ -444,6 +570,19 @@ export default function AddLocationScreen() {
               keyboardType="default"
               autoCapitalize="sentences"
               autoCorrect={true}
+              onFocus={() => {
+                // Move form up even more for description
+                Animated.timing(keyboardOffset, {
+                  toValue: -150,  // Reduced from -300
+                  duration: 250,
+                  useNativeDriver: true,
+                }).start();
+                
+                // Scroll to show description field
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({ y: 80, animated: true });
+                }, 100);
+              }}
             />
 
             {/* Photo Section */}
@@ -505,8 +644,11 @@ export default function AddLocationScreen() {
                 <Text style={styles.saveButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
+            
+            {/* Extra padding at bottom for keyboard */}
+            <View style={{ height: 150 }} />
           </ScrollView>
-        </KeyboardAvoidingView>
+        </Animated.View>
       )}
     </View>
   );
@@ -516,6 +658,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
+  },
+  header: {
+    backgroundColor: theme.colors.white,
+    padding: 15,
+    paddingTop: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: theme.colors.navy,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: theme.colors.gray,
   },
   searchContainer: {
     flexDirection: "row",
@@ -573,6 +732,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  selectedIndicator: {
+    position: "absolute",
+    top: 10,
+    left: 20,
+    right: 20,
+    backgroundColor: theme.colors.forest,
+    padding: 10,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  selectedIndicatorText: {
+    color: theme.colors.white,
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   formContainer: {
     position: "absolute",
     bottom: 0,
@@ -581,7 +760,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: "60%",
+    height: "85%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -589,13 +768,25 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   form: {
+    flex: 1,
     padding: 20,
+  },
+  formContent: {
+    paddingBottom: 200,
+  },
+  formHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
   },
   formTitle: {
     fontSize: 20,
     fontWeight: "bold",
     color: theme.colors.navy,
-    marginBottom: 15,
+  },
+  closeButton: {
+    padding: 4,
   },
   coordinatesDisplay: {
     flexDirection: "row",

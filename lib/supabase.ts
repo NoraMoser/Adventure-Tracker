@@ -1,9 +1,10 @@
 // lib/supabase.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || 'https://cmglwzchvfkysotbbvab.supabase.co';
+const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtZ2x3emNodmZreXNvdGJidmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU2NDQwODYsImV4cCI6MjA3MTIyMDA4Nn0.UxFZeEWReK8cM8wMf6AzESH8JGJKcUUyPjzcSi0sp_U';
 
 // Create Supabase client with AsyncStorage for auth persistence
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

@@ -738,6 +738,13 @@ export default function SavedSpotsScreen() {
       >
         <Ionicons name="add" size={28} color="white" />
       </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/add-location')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="add" size={28} color={theme.colors.white} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -747,6 +754,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.offWhite,
   },
+  fab: {
+  position: 'absolute',
+  bottom: 20,
+  right: 20,
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  backgroundColor: theme.colors.forest,
+  justifyContent: 'center',
+  alignItems: 'center',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 5,
+  elevation: 8,
+  zIndex: 1000,
+},
   header: {
     backgroundColor: theme.colors.white,
     paddingHorizontal: 15,
@@ -974,22 +998,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.forest,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
 });
 
