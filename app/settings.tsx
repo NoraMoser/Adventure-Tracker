@@ -25,7 +25,10 @@ import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
+import { supabase } from "../lib/supabase";
 import { ExportService } from "../services/exportService";
+
+import * as Updates from 'expo-updates';
 
 // Export Modal Component
 const ExportModal = ({
@@ -460,31 +463,70 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to sign out? Your local data will be preserved.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Out",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await signOut();
-              // Navigate to login screen
-              router.replace("/auth/login");
-            } catch (error) {
-              console.error("Logout error:", error);
-              Alert.alert("Error", "Failed to sign out. Please try again.");
+  Alert.alert(
+    "Sign Out",
+    "Are you sure you want to sign out? Your local data will be preserved.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            // Sign out from Supabase
+            await signOut();
+            
+            // For APK/production builds, we need a different approach
+            if (!__DEV__) {
+              // Method 1: Force reload the app (most reliable for APK)
+              if (Updates.reloadAsync) {
+                await Updates.reloadAsync();
+              } else {
+                // Method 2: Use window.location if available (web)
+                if (typeof window !== 'undefined' && window.location) {
+                  window.location.href = '/';
+                }
+              }
+            } else {
+              // Development build - normal navigation works
+              router.replace('/auth/login');
             }
-          },
+            
+          } catch (error) {
+            console.error("Logout error:", error);
+            
+            // Fallback: Try direct Supabase signout and reload
+            try {
+              const { error: supabaseError } = await supabase.auth.signOut();
+              console.log('Direct supabase signout:', supabaseError);
+              
+              // Clear AsyncStorage
+              await AsyncStorage.multiRemove([
+                'isAuthenticated',
+                'userId',
+                'userProfile',
+                'supabase.auth.token'
+              ]);
+              
+              // Force reload for APK
+              if (!__DEV__ && Updates.reloadAsync) {
+                await Updates.reloadAsync();
+              }
+            } catch (fallbackError) {
+              console.error('Fallback error:', fallbackError);
+            }
+            
+            Alert.alert(
+              "Sign Out",
+              "You've been signed out. Please restart the app if needed.",
+              [{ text: "OK" }]
+            );
+          }
         },
-      ]
-    );
-  };
-  // In your settings.tsx file, replace the settingSections array with this:
-
-  // Replace your settingSections array with this fixed version:
+      },
+    ]
+  );
+};
 
   const settingSections = [
     {
