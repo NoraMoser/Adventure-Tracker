@@ -150,13 +150,13 @@ export default function AddLocationScreen() {
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhotos([...photos, result.assets[0].uri]);
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
     }
   };
 
@@ -172,13 +172,14 @@ export default function AddLocationScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsMultipleSelection: true,
+      allowsEditing: false,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhotos([...photos, result.assets[0].uri]);
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
     }
   };
 
@@ -717,7 +718,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: Platform.OS === 'android' ? "70%" : "75%",  // Less height on Android
+    maxHeight: Platform.OS === "android" ? "70%" : "75%", // Less height on Android
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -730,7 +731,7 @@ const styles = StyleSheet.create({
   formContent: {
     padding: 20,
     // More padding at bottom for Android to ensure scroll
-    paddingBottom: Platform.OS === 'android' ? 200 : 100,
+    paddingBottom: Platform.OS === "android" ? 200 : 100,
   },
   formHeader: {
     flexDirection: "row",
@@ -778,10 +779,10 @@ const styles = StyleSheet.create({
     minHeight: 45,
   },
   textArea: {
-    height: 100,  // Increased height
+    height: 100, // Increased height
     textAlignVertical: "top",
     paddingTop: 12,
-    minHeight: 100,  // Ensure minimum height
+    minHeight: 100, // Ensure minimum height
   },
 
   formButtons: {
