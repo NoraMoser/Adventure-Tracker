@@ -52,25 +52,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   useEffect(() => {
-    console.log('🔍 AuthContext: Starting initialization...');
+    console.log("🔍 AuthContext: Starting initialization...");
     checkAuthStatus();
   }, []);
 
   const checkAuthStatus = async () => {
-    console.log('🔍 AuthContext: Checking auth status...');
+    console.log("🔍 AuthContext: Checking auth status...");
     try {
       // Set a timeout to prevent infinite loading
       const timeoutId = setTimeout(() => {
-        console.log('🔍 AuthContext: Timeout - forcing loading to false');
+        console.log("🔍 AuthContext: Timeout - forcing loading to false");
         setLoading(false);
       }, 5000); // 5 second timeout
 
       // Check if user chose offline mode
       const offlineMode = await AsyncStorage.getItem("offlineMode");
-      console.log('🔍 AuthContext: Offline mode check:', offlineMode);
-      
+      console.log("🔍 AuthContext: Offline mode check:", offlineMode);
+
       if (offlineMode === "true") {
-        console.log('🔍 AuthContext: Setting offline mode');
+        console.log("🔍 AuthContext: Setting offline mode");
         setIsOfflineMode(true);
         clearTimeout(timeoutId);
         setLoading(false);
@@ -78,43 +78,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Check for existing session
-      console.log('🔍 AuthContext: Getting session from Supabase...');
+      console.log("🔍 AuthContext: Getting session from Supabase...");
       const {
         data: { session },
-        error: sessionError
+        error: sessionError,
       } = await supabase.auth.getSession();
 
       if (sessionError) {
-        console.error('🔍 AuthContext: Session error:', sessionError);
+        console.error("🔍 AuthContext: Session error:", sessionError);
         clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
 
-      console.log('🔍 AuthContext: Session result:', session ? 'Found session' : 'No session');
+      console.log(
+        "🔍 AuthContext: Session result:",
+        session ? "Found session" : "No session"
+      );
 
       if (session) {
         setSession(session);
         setUser(session.user);
-        console.log('🔍 AuthContext: Loading profile for user:', session.user.id);
-        
+        console.log(
+          "🔍 AuthContext: Loading profile for user:",
+          session.user.id
+        );
+
         // Don't await profile loading - do it in background
-        loadProfile(session.user.id).catch(err => {
-          console.error('🔍 AuthContext: Profile load error (non-blocking):', err);
+        loadProfile(session.user.id).catch((err) => {
+          console.error(
+            "🔍 AuthContext: Profile load error (non-blocking):",
+            err
+          );
         });
 
         // Update last active in background
-        updateLastActive(session.user.id).catch(err => {
-          console.error('🔍 AuthContext: Last active update error (non-blocking):', err);
+        updateLastActive(session.user.id).catch((err) => {
+          console.error(
+            "🔍 AuthContext: Last active update error (non-blocking):",
+            err
+          );
         });
 
         // DON'T auto-sync on every login - this causes duplicates
         // Only sync if explicitly requested or after certain actions
-        console.log('🔍 AuthContext: Skipping auto-sync to prevent duplicates');
+        console.log("🔍 AuthContext: Skipping auto-sync to prevent duplicates");
       }
-      
+
       clearTimeout(timeoutId);
-      console.log('🔍 AuthContext: Auth check complete, setting loading to false');
+      console.log(
+        "🔍 AuthContext: Auth check complete, setting loading to false"
+      );
       setLoading(false);
     } catch (error) {
       console.error("🔍 AuthContext: Critical auth check error:", error);
@@ -124,11 +138,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Listen for auth changes
   useEffect(() => {
-    console.log('🔍 AuthContext: Setting up auth state listener...');
+    console.log("🔍 AuthContext: Setting up auth state listener...");
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('🔍 AuthContext: Auth state changed:', _event);
+      console.log("🔍 AuthContext: Auth state changed:", _event);
       setSession(session);
       setUser(session?.user ?? null);
 
@@ -145,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadProfile = async (userId: string) => {
     try {
-      console.log('🔍 AuthContext: Loading profile for:', userId);
+      console.log("🔍 AuthContext: Loading profile for:", userId);
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -157,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      console.log('🔍 AuthContext: Profile loaded successfully');
+      console.log("🔍 AuthContext: Profile loaded successfully");
       setProfile(data);
 
       // Save profile to local storage for offline access
@@ -169,29 +183,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
         .single();
-      
+
       if (error) throw error;
-      
+
       if (data) {
         setProfile(data);
         // Also update local storage
         await AsyncStorage.setItem("userProfile", JSON.stringify(data));
       }
     } catch (error) {
-      console.error('Error refreshing profile:', error);
+      console.error("Error refreshing profile:", error);
     }
   };
 
   const updateLastActive = async (userId: string) => {
     try {
-      console.log('🔍 AuthContext: Updating last active for:', userId);
+      console.log("🔍 AuthContext: Updating last active for:", userId);
       await supabase
         .from("profiles")
         .update({ last_active: new Date().toISOString() })
@@ -342,8 +356,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // DON'T auto-sync on sign in - let user manually sync if needed
       // This prevents duplicate locations being created
-      console.log('Skipping auto-sync on sign in to prevent duplicates');
-      
+      console.log("Skipping auto-sync on sign in to prevent duplicates");
+
       // Optional: Show a message to user about syncing
       // Alert.alert('Signed In', 'You can manually sync your data from Settings if needed.');
     } catch (error: any) {
@@ -358,22 +372,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
 
+      // Try to sign out from Supabase
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
 
-      // Clear local auth state
+      // Ignore "session missing" errors - that means we're already signed out
+      if (error && !error.message.includes("session")) {
+        console.error("Supabase signOut error:", error);
+        // Don't throw for session errors, continue with local cleanup
+      }
+
+      // Clear local auth state regardless of Supabase result
       await AsyncStorage.multiRemove([
         "isAuthenticated",
         "userId",
         "userProfile",
         "lastSyncTime",
+        "offlineMode",
       ]);
 
+      // Reset state
       setUser(null);
       setProfile(null);
       setSession(null);
+      setIsOfflineMode(false);
+
+      console.log("Sign out completed, local state cleared");
     } catch (error: any) {
-      Alert.alert("Sign Out Error", error.message);
+      console.error("Sign out error:", error);
+      // Still clear local state even if there's an error
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+
+      // Don't show alert here, let the settings screen handle it
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -465,12 +497,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOfflineMode,
   };
 
-  console.log('🔍 AuthContext: Current state:', {
+  console.log("🔍 AuthContext: Current state:", {
     hasUser: !!user,
     hasProfile: !!profile,
     hasSession: !!session,
     loading,
-    isOfflineMode
+    isOfflineMode,
   });
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

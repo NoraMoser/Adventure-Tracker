@@ -28,7 +28,7 @@ import { useWishlist } from "../contexts/WishlistContext";
 import { supabase } from "../lib/supabase";
 import { ExportService } from "../services/exportService";
 
-import * as Updates from 'expo-updates';
+import * as Updates from "expo-updates";
 
 // Export Modal Component
 const ExportModal = ({
@@ -463,70 +463,108 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-  Alert.alert(
-    "Sign Out",
-    "Are you sure you want to sign out? Your local data will be preserved.",
-    [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            // Sign out from Supabase
-            await signOut();
-            
-            // For APK/production builds, we need a different approach
-            if (!__DEV__) {
-              // Method 1: Force reload the app (most reliable for APK)
-              if (Updates.reloadAsync) {
-                await Updates.reloadAsync();
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out? Your local data will be preserved.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Check if there's actually a session to sign out from
+              const {
+                data: { session },
+              } = await supabase.auth.getSession();
+
+              if (session) {
+                // There's a session, sign out normally
+                await signOut();
               } else {
-                // Method 2: Use window.location if available (web)
-                if (typeof window !== 'undefined' && window.location) {
-                  window.location.href = '/';
+                // No session but user thinks they're logged in - clear local state
+                console.log("No session found, clearing local state");
+
+                // Clear all auth-related storage
+                await AsyncStorage.multiRemove([
+                  "isAuthenticated",
+                  "userId",
+                  "userProfile",
+                  "offlineMode",
+                  "lastSyncTime",
+                ]);
+
+                // Reset the auth context state manually
+                // The signOut might fail due to no session, but we still need to clear local state
+                try {
+                  await signOut();
+                } catch (e) {
+                  console.log("SignOut error (expected if no session):", e);
                 }
               }
-            } else {
-              // Development build - normal navigation works
-              router.replace('/auth/login');
-            }
-            
-          } catch (error) {
-            console.error("Logout error:", error);
-            
-            // Fallback: Try direct Supabase signout and reload
-            try {
-              const { error: supabaseError } = await supabase.auth.signOut();
-              console.log('Direct supabase signout:', supabaseError);
-              
-              // Clear AsyncStorage
-              await AsyncStorage.multiRemove([
-                'isAuthenticated',
-                'userId',
-                'userProfile',
-                'supabase.auth.token'
-              ]);
-              
-              // Force reload for APK
-              if (!__DEV__ && Updates.reloadAsync) {
-                await Updates.reloadAsync();
+
+              // Handle navigation based on environment
+              if (!__DEV__) {
+                // Production APK - reload the app
+                if (Updates && Updates.reloadAsync) {
+                  console.log("Reloading app...");
+                  await Updates.reloadAsync();
+                } else {
+                  // No expo-updates, ask user to restart
+                  Alert.alert(
+                    "Signed Out Successfully",
+                    "Please close and reopen the app to return to the login screen.",
+                    [{ text: "OK" }]
+                  );
+                }
+              } else {
+                // Development - navigate normally
+                router.replace("/auth/login");
               }
-            } catch (fallbackError) {
-              console.error('Fallback error:', fallbackError);
+            } catch (error: any) {
+              console.error("Logout error:", error);
+
+              // If error is about missing session, that's actually OK - we're already logged out
+              if (
+                error?.message?.includes("session") ||
+                error?.message?.includes("Session")
+              ) {
+                console.log("Session already cleared, proceeding with logout");
+
+                // Clear local storage anyway
+                await AsyncStorage.multiRemove([
+                  "isAuthenticated",
+                  "userId",
+                  "userProfile",
+                  "offlineMode",
+                ]);
+
+                // Reload or navigate
+                if (!__DEV__ && Updates && Updates.reloadAsync) {
+                  await Updates.reloadAsync();
+                } else if (!__DEV__) {
+                  Alert.alert(
+                    "Signed Out",
+                    "Please restart the app to complete sign out.",
+                    [{ text: "OK" }]
+                  );
+                } else {
+                  router.replace("/auth/login");
+                }
+              } else {
+                // Some other error
+                Alert.alert(
+                  "Sign Out Issue",
+                  "There was an issue signing out. Please try restarting the app.",
+                  [{ text: "OK" }]
+                );
+              }
             }
-            
-            Alert.alert(
-              "Sign Out",
-              "You've been signed out. Please restart the app if needed.",
-              [{ text: "OK" }]
-            );
-          }
+          },
         },
-      },
-    ]
-  );
-};
+      ]
+    );
+  };
 
   const settingSections = [
     {
