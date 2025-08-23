@@ -1,4 +1,4 @@
-// save-location.tsx - Fixed version with always-editable location name
+// save-location.tsx - Complete fixed version with better keyboard handling
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -8,7 +8,10 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +33,7 @@ export default function SaveLocationScreen() {
   const [locationDescription, setLocationDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('other');
+  const [isSaving, setIsSaving] = useState(false);
   
   // Smart location state
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -114,7 +118,6 @@ export default function SaveLocationScreen() {
     } else if (name.includes('shop') || name.includes('store') || name.includes('mall')) {
       setSelectedCategory('shopping');
     }
-    // If no match, keeps the current category (defaults to 'other')
   };
 
   const handleSelectSuggestion = (suggestion: PlaceSuggestion) => {
@@ -129,11 +132,6 @@ export default function SaveLocationScreen() {
     
     // Auto-categorize
     autoSelectCategory(suggestion);
-    
-    // Focus the input so user can edit if needed
-    setTimeout(() => {
-      locationNameInputRef.current?.focus();
-    }, 100);
   };
 
   const handleManualEntry = () => {
@@ -192,6 +190,10 @@ export default function SaveLocationScreen() {
   };
 
   const handleSaveLocation = async () => {
+    if (isSaving) return; // Prevent double-tap
+    
+    Keyboard.dismiss();
+    
     if (!locationName.trim()) {
       Alert.alert('Error', 'Please enter a name for this location');
       return;
@@ -202,9 +204,16 @@ export default function SaveLocationScreen() {
       return;
     }
 
+    setIsSaving(true);
+
     try {
-      // Save location with photos and category
-      await saveCurrentLocation(locationName.trim(), locationDescription.trim(), photos, selectedCategory);
+      // Pass photos directly - LocationContext will handle upload
+      await saveCurrentLocation(
+        locationName.trim(), 
+        locationDescription.trim(), 
+        photos, // Pass local URIs - context will upload them
+        selectedCategory
+      );
       
       // Clear form and navigate back
       setLocationName('');
@@ -223,7 +232,10 @@ export default function SaveLocationScreen() {
         ]
       );
     } catch (err) {
-      Alert.alert('Error', 'Failed to save location');
+      console.error('Error saving location:', err);
+      Alert.alert('Error', 'Failed to save location. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -234,12 +246,7 @@ export default function SaveLocationScreen() {
     setSuggestions([]);
   };
 
-  const handleLocationNameChange = (text: string) => {
-    console.log('Location name changing to:', text);
-    setLocationName(text);
-  };
-
-  if (loading) {
+  if (loading && !location) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={theme.colors.forest} />
@@ -249,265 +256,296 @@ export default function SaveLocationScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Location Display Section */}
-      <View style={styles.locationCard}>
-        {location ? (
-          <View style={styles.locationInfo}>
-            <View style={styles.locationHeader}>
-              <Ionicons name="location" size={24} color="#34C759" />
-              <Text style={styles.locationTitle}>Location Captured!</Text>
-            </View>
-            
-            {/* Smart Suggestions */}
-            {loadingSuggestions ? (
-              <View style={styles.suggestionsLoading}>
-                <ActivityIndicator size="small" color={theme.colors.forest} />
-                <Text style={styles.suggestionsLoadingText}>Finding nearby places...</Text>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Location Display Section */}
+        <View style={styles.locationCard}>
+          {location ? (
+            <View style={styles.locationInfo}>
+              <View style={styles.locationHeader}>
+                <Ionicons name="location" size={24} color="#34C759" />
+                <Text style={styles.locationTitle}>Location Captured!</Text>
               </View>
-            ) : suggestions.length > 0 ? (
-              <View style={styles.suggestionsContainer}>
-                <Text style={styles.suggestionsTitle}>Detected nearby places:</Text>
-                
-                {selectedSuggestion && (
-                  <View style={styles.selectedSuggestion}>
+              
+              {/* Smart Suggestions */}
+              {loadingSuggestions ? (
+                <View style={styles.suggestionsLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.forest} />
+                  <Text style={styles.suggestionsLoadingText}>Finding nearby places...</Text>
+                </View>
+              ) : suggestions.length > 0 ? (
+                <View style={styles.suggestionsContainer}>
+                  <Text style={styles.suggestionsTitle}>Detected nearby places:</Text>
+                  
+                  {selectedSuggestion && (
+                    <View style={styles.selectedSuggestion}>
+                      <Ionicons 
+                        name={selectedSuggestion.type === 'business' ? 'business' : 'pin'} 
+                        size={20} 
+                        color={theme.colors.forest} 
+                      />
+                      <View style={styles.selectedSuggestionText}>
+                        <Text style={styles.selectedSuggestionName}>{selectedSuggestion.name}</Text>
+                        {selectedSuggestion.address && (
+                          <Text style={styles.selectedSuggestionAddress}>{selectedSuggestion.address}</Text>
+                        )}
+                      </View>
+                      <TouchableOpacity onPress={() => setShowSuggestions(true)}>
+                        <Ionicons name="chevron-down" size={20} color={theme.colors.gray} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  
+                  <TouchableOpacity 
+                    style={styles.changeSuggestionButton}
+                    onPress={() => setShowSuggestions(true)}
+                  >
+                    <Text style={styles.changeSuggestionText}>Choose different place</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.manualEntryButton}
+                    onPress={handleManualEntry}
+                  >
+                    <Ionicons name="create-outline" size={16} color={theme.colors.burntOrange} />
+                    <Text style={styles.manualEntryText}>Clear and enter manually</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              
+              <View style={styles.coordinatesBox}>
+                <View style={styles.coordRow}>
+                  <Text style={styles.coordLabel}>Latitude:</Text>
+                  <Text style={styles.coordValue}>{location.latitude.toFixed(6)}</Text>
+                </View>
+                <View style={styles.coordRow}>
+                  <Text style={styles.coordLabel}>Longitude:</Text>
+                  <Text style={styles.coordValue}>{location.longitude.toFixed(6)}</Text>
+                </View>
+              </View>
+              
+              <TouchableOpacity style={styles.updateLocationButton} onPress={handleGetLocation}>
+                <Ionicons name="refresh" size={18} color={theme.colors.forest} />
+                <Text style={styles.updateLocationText}>Update Location</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.noLocationContainer}>
+              <Ionicons name="location-outline" size={50} color="#999" />
+              <Text style={styles.noLocationText}>No location captured yet</Text>
+              <TouchableOpacity style={styles.getLocationButton} onPress={handleGetLocation}>
+                <Ionicons name="navigate" size={20} color="white" />
+                <Text style={styles.getLocationButtonText}>Get My Location</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Photo Section */}
+        <View style={styles.photoSection}>
+          <Text style={styles.sectionTitle}>Photos</Text>
+          <View style={styles.photoActions}>
+            <TouchableOpacity 
+              style={[styles.photoButton, isSaving && styles.disabledButton]} 
+              onPress={handleTakePhoto}
+              disabled={isSaving}
+            >
+              <Ionicons name="camera" size={24} color={theme.colors.forest} />
+              <Text style={styles.photoButtonText}>Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.photoButton, isSaving && styles.disabledButton]} 
+              onPress={handlePickImage}
+              disabled={isSaving}
+            >
+              <Ionicons name="images" size={24} color={theme.colors.forest} />
+              <Text style={styles.photoButtonText}>Choose Photo</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {photos.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoList}>
+              {photos.map((photo, index) => (
+                <View key={index} style={styles.photoContainer}>
+                  <Image source={{ uri: photo }} style={styles.photo} />
+                  <TouchableOpacity 
+                    style={styles.removePhotoButton} 
+                    onPress={() => handleRemovePhoto(index)}
+                    disabled={isSaving}
+                  >
+                    <Ionicons name="close-circle" size={24} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {/* Form Section */}
+        <View style={styles.formContainer}>
+          <Text style={styles.label}>Category</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            style={styles.categoryScroll}
+          >
+            {categoryList.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryChip,
+                  selectedCategory === category.id && { backgroundColor: category.color }
+                ]}
+                onPress={() => setSelectedCategory(category.id)}
+                disabled={isSaving}
+              >
+                <Ionicons 
+                  name={category.icon} 
+                  size={20} 
+                  color={selectedCategory === category.id ? 'white' : category.color} 
+                />
+                <Text 
+                  style={[
+                    styles.categoryChipText,
+                    selectedCategory === category.id && { color: 'white' }
+                  ]}
+                >
+                  {category.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <Text style={styles.label}>
+            Location Name *
+            {selectedSuggestion && (
+              <Text style={styles.labelHint}> (you can edit this)</Text>
+            )}
+          </Text>
+          <TextInput
+            ref={locationNameInputRef}
+            style={styles.input}
+            value={locationName}
+            onChangeText={setLocationName}
+            placeholder="e.g., Secret Beach Spot"
+            placeholderTextColor="#999"
+            editable={!isSaving}
+            keyboardType="default"
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="next"
+          />
+
+          <Text style={styles.label}>Description (Optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={locationDescription}
+            onChangeText={setLocationDescription}
+            placeholder="Add notes about this location..."
+            placeholderTextColor="#999"
+            editable={!isSaving}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
+
+          <TouchableOpacity
+            style={[styles.saveButton, (!location || isSaving) && styles.saveButtonDisabled]}
+            onPress={handleSaveLocation}
+            disabled={!location || isSaving}
+          >
+            {isSaving ? (
+              <>
+                <ActivityIndicator size="small" color="white" />
+                <Text style={styles.saveButtonText}>Saving...</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="save" size={20} color="white" />
+                <Text style={styles.saveButtonText}>Save Location</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Suggestions Modal */}
+        <Modal
+          visible={showSuggestions}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowSuggestions(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Choose Location</Text>
+                <TouchableOpacity onPress={() => setShowSuggestions(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.gray} />
+                </TouchableOpacity>
+              </View>
+              
+              <FlatList
+                data={suggestions}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.suggestionItem}
+                    onPress={() => handleSelectSuggestion(item)}
+                  >
                     <Ionicons 
-                      name={selectedSuggestion.type === 'business' ? 'business' : 'pin'} 
+                      name={
+                        item.type === 'business' ? 'business' :
+                        item.type === 'landmark' ? 'flag' :
+                        item.type === 'poi' ? 'pin' : 'location'
+                      } 
                       size={20} 
                       color={theme.colors.forest} 
                     />
-                    <View style={styles.selectedSuggestionText}>
-                      <Text style={styles.selectedSuggestionName}>{selectedSuggestion.name}</Text>
-                      {selectedSuggestion.address && (
-                        <Text style={styles.selectedSuggestionAddress}>{selectedSuggestion.address}</Text>
+                    <View style={styles.suggestionTextContainer}>
+                      <Text style={styles.suggestionName}>{item.name}</Text>
+                      {item.address && (
+                        <Text style={styles.suggestionAddress}>{item.address}</Text>
+                      )}
+                      {item.distance && (
+                        <Text style={styles.suggestionDistance}>
+                          {item.distance < 1000 
+                            ? `${item.distance.toFixed(0)}m away`
+                            : `${(item.distance / 1000).toFixed(1)}km away`
+                          }
+                        </Text>
                       )}
                     </View>
-                    <TouchableOpacity onPress={() => setShowSuggestions(true)}>
-                      <Ionicons name="chevron-down" size={20} color={theme.colors.gray} />
-                    </TouchableOpacity>
-                  </View>
+                    {selectedSuggestion?.id === item.id && (
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.forest} />
+                    )}
+                  </TouchableOpacity>
                 )}
-                
-                <TouchableOpacity 
-                  style={styles.changeSuggestionButton}
-                  onPress={() => setShowSuggestions(true)}
-                >
-                  <Text style={styles.changeSuggestionText}>Choose different place</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.manualEntryButton}
-                  onPress={handleManualEntry}
-                >
-                  <Ionicons name="create-outline" size={16} color={theme.colors.burntOrange} />
-                  <Text style={styles.manualEntryText}>Clear and enter manually</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            
-            <View style={styles.coordinatesBox}>
-              <View style={styles.coordRow}>
-                <Text style={styles.coordLabel}>Latitude:</Text>
-                <Text style={styles.coordValue}>{location.latitude.toFixed(6)}</Text>
-              </View>
-              <View style={styles.coordRow}>
-                <Text style={styles.coordLabel}>Longitude:</Text>
-                <Text style={styles.coordValue}>{location.longitude.toFixed(6)}</Text>
-              </View>
-            </View>
-            
-            <TouchableOpacity style={styles.updateLocationButton} onPress={handleGetLocation}>
-              <Ionicons name="refresh" size={18} color={theme.colors.forest} />
-              <Text style={styles.updateLocationText}>Update Location</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.noLocationContainer}>
-            <Ionicons name="location-outline" size={50} color="#999" />
-            <Text style={styles.noLocationText}>No location captured yet</Text>
-            <TouchableOpacity style={styles.getLocationButton} onPress={handleGetLocation}>
-              <Ionicons name="navigate" size={20} color="white" />
-              <Text style={styles.getLocationButtonText}>Get My Location</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Photo Section */}
-      <View style={styles.photoSection}>
-        <Text style={styles.sectionTitle}>Photos</Text>
-        <View style={styles.photoActions}>
-          <TouchableOpacity style={styles.photoButton} onPress={handleTakePhoto}>
-            <Ionicons name="camera" size={24} color={theme.colors.forest} />
-            <Text style={styles.photoButtonText}>Take Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.photoButton} onPress={handlePickImage}>
-            <Ionicons name="images" size={24} color={theme.colors.forest} />
-            <Text style={styles.photoButtonText}>Choose Photo</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {photos.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoList}>
-            {photos.map((photo, index) => (
-              <View key={index} style={styles.photoContainer}>
-                <Image source={{ uri: photo }} style={styles.photo} />
-                <TouchableOpacity 
-                  style={styles.removePhotoButton} 
-                  onPress={() => handleRemovePhoto(index)}
-                >
-                  <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-
-      {/* Form Section */}
-      <View style={styles.formContainer}>
-        <Text style={styles.label}>Category</Text>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          style={styles.categoryScroll}
-        >
-          {categoryList.map((category) => (
-            <TouchableOpacity
-              key={category.id}
-              style={[
-                styles.categoryChip,
-                selectedCategory === category.id && { backgroundColor: category.color }
-              ]}
-              onPress={() => setSelectedCategory(category.id)}
-            >
-              <Ionicons 
-                name={category.icon} 
-                size={20} 
-                color={selectedCategory === category.id ? 'white' : category.color} 
+                ListFooterComponent={
+                  <TouchableOpacity
+                    style={[styles.suggestionItem, styles.manualOption]}
+                    onPress={() => {
+                      setShowSuggestions(false);
+                      handleManualEntry();
+                    }}
+                  >
+                    <Ionicons name="create" size={20} color={theme.colors.burntOrange} />
+                    <Text style={styles.manualOptionText}>Clear and enter manually</Text>
+                  </TouchableOpacity>
+                }
               />
-              <Text 
-                style={[
-                  styles.categoryChipText,
-                  selectedCategory === category.id && { color: 'white' }
-                ]}
-              >
-                {category.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <Text style={styles.label}>
-          Location Name *
-          {selectedSuggestion && (
-            <Text style={styles.labelHint}> (you can edit this)</Text>
-          )}
-        </Text>
-        <TextInput
-          ref={locationNameInputRef}
-          style={styles.input}
-          value={locationName}
-          onChangeText={handleLocationNameChange}
-          placeholder="e.g., Secret Beach Spot"
-          placeholderTextColor="#999"
-          editable={true}  // Always editable
-          keyboardType="default"
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
-
-        <Text style={styles.label}>Description (Optional)</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={locationDescription}
-          onChangeText={setLocationDescription}
-          placeholder="Add notes about this location..."
-          placeholderTextColor="#999"
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
-
-        <TouchableOpacity
-          style={[styles.saveButton, !location && styles.saveButtonDisabled]}
-          onPress={handleSaveLocation}
-          disabled={!location}
-        >
-          <Ionicons name="save" size={20} color="white" />
-          <Text style={styles.saveButtonText}>Save Location</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Suggestions Modal */}
-      <Modal
-        visible={showSuggestions}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowSuggestions(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Choose Location</Text>
-              <TouchableOpacity onPress={() => setShowSuggestions(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.gray} />
-              </TouchableOpacity>
             </View>
-            
-            <FlatList
-              data={suggestions}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.suggestionItem}
-                  onPress={() => handleSelectSuggestion(item)}
-                >
-                  <Ionicons 
-                    name={
-                      item.type === 'business' ? 'business' :
-                      item.type === 'landmark' ? 'flag' :
-                      item.type === 'poi' ? 'pin' : 'location'
-                    } 
-                    size={20} 
-                    color={theme.colors.forest} 
-                  />
-                  <View style={styles.suggestionTextContainer}>
-                    <Text style={styles.suggestionName}>{item.name}</Text>
-                    {item.address && (
-                      <Text style={styles.suggestionAddress}>{item.address}</Text>
-                    )}
-                    {item.distance && (
-                      <Text style={styles.suggestionDistance}>
-                        {item.distance < 1000 
-                          ? `${item.distance.toFixed(0)}m away`
-                          : `${(item.distance / 1000).toFixed(1)}km away`
-                        }
-                      </Text>
-                    )}
-                  </View>
-                  {selectedSuggestion?.id === item.id && (
-                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.forest} />
-                  )}
-                </TouchableOpacity>
-              )}
-              ListFooterComponent={
-                <TouchableOpacity
-                  style={[styles.suggestionItem, styles.manualOption]}
-                  onPress={() => {
-                    setShowSuggestions(false);
-                    handleManualEntry();
-                  }}
-                >
-                  <Ionicons name="create" size={20} color={theme.colors.burntOrange} />
-                  <Text style={styles.manualOptionText}>Clear and enter manually</Text>
-                </TouchableOpacity>
-              }
-            />
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
+        </Modal>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -707,6 +745,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.forest,
   },
+  disabledButton: {
+    opacity: 0.5,
+  },
   photoButtonText: {
     color: theme.colors.forest,
     marginLeft: 8,
@@ -785,6 +826,7 @@ const styles = StyleSheet.create({
   },
   saveButtonDisabled: {
     backgroundColor: theme.colors.lightGray,
+    opacity: 0.7,
   },
   saveButtonText: {
     color: theme.colors.white,

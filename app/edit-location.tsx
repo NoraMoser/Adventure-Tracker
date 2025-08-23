@@ -16,7 +16,9 @@ import {
     View,
 } from 'react-native';
 import { categoryList, CategoryType } from '../constants/categories';
+import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from '../contexts/LocationContext';
+import { PhotoService } from '../services/photoService';
 
 // Theme colors
 const theme = {
@@ -35,6 +37,7 @@ const theme = {
 export default function EditLocationScreen() {
   const { spotId } = useLocalSearchParams();
   const { savedSpots, updateSpot, deleteSpot } = useLocation();
+  const { user } = useAuth();
   const router = useRouter();
   
   const [spot, setSpot] = useState<any>(null);
@@ -44,6 +47,7 @@ export default function EditLocationScreen() {
   const [category, setCategory] = useState<CategoryType>('other');
   const [loading, setLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     // Load the spot data
@@ -137,12 +141,48 @@ export default function EditLocationScreen() {
       return;
     }
 
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to edit locations');
+      return;
+    }
+
+    setIsSaving(true);
+
     try {
+      // Process photos - separate new local photos from existing URLs
+      const existingUrls: string[] = [];
+      const newLocalPhotos: string[] = [];
+      
+      for (const photo of photos) {
+        if (photo.startsWith('http')) {
+          // This is an existing URL from storage
+          existingUrls.push(photo);
+        } else if (photo.startsWith('file://') || photo.startsWith('data:')) {
+          // This is a new local photo that needs to be uploaded
+          newLocalPhotos.push(photo);
+        }
+      }
+
+      // Upload new photos if any
+      let newUploadedUrls: string[] = [];
+      if (newLocalPhotos.length > 0) {
+        console.log('Uploading new photos...');
+        newUploadedUrls = await PhotoService.uploadPhotos(
+          newLocalPhotos,
+          'location-photos',
+          user.id
+        );
+        console.log('New photos uploaded:', newUploadedUrls);
+      }
+
+      // Combine existing URLs with newly uploaded URLs
+      const finalPhotoUrls = [...existingUrls, ...newUploadedUrls];
+
       const updatedSpot = {
         ...spot,
         name: name.trim(),
         description: description.trim(),
-        photos,
+        photos: finalPhotoUrls,
         category,
       };
       
@@ -153,6 +193,8 @@ export default function EditLocationScreen() {
       ]);
     } catch (error) {
       Alert.alert('Error', 'Failed to update location');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -345,14 +387,23 @@ export default function EditLocationScreen() {
 
         {/* Action Buttons */}
         <TouchableOpacity 
-          style={[styles.saveButton, !hasChanges && styles.saveButtonDisabled]}
+          style={[styles.saveButton, (!hasChanges || isSaving) && styles.saveButtonDisabled]}
           onPress={handleSave}
-          disabled={!hasChanges}
+          disabled={!hasChanges || isSaving}
         >
-          <Ionicons name="save" size={20} color={theme.colors.white} />
-          <Text style={styles.saveButtonText}>
-            {hasChanges ? 'Save Changes' : 'No Changes'}
-          </Text>
+          {isSaving ? (
+            <>
+              <ActivityIndicator size="small" color={theme.colors.white} />
+              <Text style={styles.saveButtonText}>Saving...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="save" size={20} color={theme.colors.white} />
+              <Text style={styles.saveButtonText}>
+                {hasChanges ? 'Save Changes' : 'No Changes'}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>

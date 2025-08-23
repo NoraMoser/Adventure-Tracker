@@ -1,8 +1,8 @@
 // app/saved-spots.tsx
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     Animated,
@@ -18,25 +18,25 @@ import {
     TextInput,
     TouchableOpacity,
     View,
-} from 'react-native';
-import { WebView } from 'react-native-webview';
-import { categories, CategoryType } from '../constants/categories';
-import { theme } from '../constants/theme';
-import { SavedSpot, useLocation } from '../contexts/LocationContext';
-import { useSettings } from '../contexts/SettingsContext';
-import { useWishlist } from '../contexts/WishlistContext';
-import { ShareService } from '../services/shareService';
+} from "react-native";
+import { WebView } from "react-native-webview";
+import { categories, CategoryType } from "../constants/categories";
+import { theme } from "../constants/theme";
+import { SavedSpot, useLocation } from "../contexts/LocationContext";
+import { useSettings } from "../contexts/SettingsContext";
+import { useWishlist } from "../contexts/WishlistContext";
+import { ShareService } from "../services/shareService";
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
 // Filter modal component
-const FilterModal = ({ 
-  visible, 
-  onClose, 
+const FilterModal = ({
+  visible,
+  onClose,
   selectedCategories,
   onToggleCategory,
   onClearAll,
-  onSelectAll 
+  onSelectAll,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -45,8 +45,11 @@ const FilterModal = ({
   onClearAll: () => void;
   onSelectAll: () => void;
 }) => {
-  const categoryList = Object.entries(categories) as [CategoryType, typeof categories[CategoryType]][];
-  
+  const categoryList = Object.entries(categories) as [
+    CategoryType,
+    (typeof categories)[CategoryType]
+  ][];
+
   return (
     <Modal
       visible={visible}
@@ -62,16 +65,22 @@ const FilterModal = ({
               <Ionicons name="close" size={24} color={theme.colors.gray} />
             </TouchableOpacity>
           </View>
-          
+
           <View style={filterStyles.actions}>
-            <TouchableOpacity onPress={onSelectAll} style={filterStyles.actionButton}>
+            <TouchableOpacity
+              onPress={onSelectAll}
+              style={filterStyles.actionButton}
+            >
               <Text style={filterStyles.actionText}>Select All</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={onClearAll} style={filterStyles.actionButton}>
+            <TouchableOpacity
+              onPress={onClearAll}
+              style={filterStyles.actionButton}
+            >
               <Text style={filterStyles.actionText}>Clear All</Text>
             </TouchableOpacity>
           </View>
-          
+
           <ScrollView style={filterStyles.list}>
             {categoryList.map(([key, category]) => (
               <TouchableOpacity
@@ -80,18 +89,29 @@ const FilterModal = ({
                 onPress={() => onToggleCategory(key)}
               >
                 <View style={filterStyles.itemLeft}>
-                  <View style={[filterStyles.categoryDot, { backgroundColor: category.color }]} />
+                  <View
+                    style={[
+                      filterStyles.categoryDot,
+                      { backgroundColor: category.color },
+                    ]}
+                  />
                   <Text style={filterStyles.itemText}>{category.label}</Text>
                 </View>
-                <Ionicons 
-                  name={selectedCategories.has(key) ? "checkbox" : "square-outline"} 
-                  size={24} 
-                  color={selectedCategories.has(key) ? theme.colors.forest : theme.colors.gray} 
+                <Ionicons
+                  name={
+                    selectedCategories.has(key) ? "checkbox" : "square-outline"
+                  }
+                  size={24}
+                  color={
+                    selectedCategories.has(key)
+                      ? theme.colors.forest
+                      : theme.colors.gray
+                  }
                 />
               </TouchableOpacity>
             ))}
           </ScrollView>
-          
+
           <TouchableOpacity style={filterStyles.applyButton} onPress={onClose}>
             <Text style={filterStyles.applyButtonText}>Apply Filters</Text>
           </TouchableOpacity>
@@ -102,11 +122,11 @@ const FilterModal = ({
 };
 
 // Spot Detail Modal Component
-const SpotDetailModal = ({ 
-  visible, 
-  spot, 
-  onClose, 
-  onEdit, 
+const SpotDetailModal = ({
+  visible,
+  spot,
+  onClose,
+  onEdit,
   onDelete,
   onShare,
   onNavigate,
@@ -120,16 +140,18 @@ const SpotDetailModal = ({
   onNavigate: (spot: SavedSpot) => void;
 }) => {
   if (!spot) return null;
-  
+
   const category = categories[spot.category] || categories.other;
-  
+
   // Format coordinates manually since formatCoordinates doesn't exist in context
   const formatCoords = (lat: number, lng: number) => {
-    const latDir = lat >= 0 ? 'N' : 'S';
-    const lngDir = lng >= 0 ? 'E' : 'W';
-    return `${Math.abs(lat).toFixed(4)}°${latDir}, ${Math.abs(lng).toFixed(4)}°${lngDir}`;
+    const latDir = lat >= 0 ? "N" : "S";
+    const lngDir = lng >= 0 ? "E" : "W";
+    return `${Math.abs(lat).toFixed(4)}°${latDir}, ${Math.abs(lng).toFixed(
+      4
+    )}°${lngDir}`;
   };
-  
+
   return (
     <Modal
       visible={visible}
@@ -141,9 +163,21 @@ const SpotDetailModal = ({
         <View style={detailStyles.container}>
           <View style={detailStyles.header}>
             <View style={detailStyles.headerLeft}>
-              <View style={[detailStyles.categoryBadge, { backgroundColor: category.color + '20' }]}>
-                <View style={[detailStyles.categoryDot, { backgroundColor: category.color }]} />
-                <Text style={[detailStyles.categoryText, { color: category.color }]}>
+              <View
+                style={[
+                  detailStyles.categoryBadge,
+                  { backgroundColor: category.color + "20" },
+                ]}
+              >
+                <View
+                  style={[
+                    detailStyles.categoryDot,
+                    { backgroundColor: category.color },
+                  ]}
+                />
+                <Text
+                  style={[detailStyles.categoryText, { color: category.color }]}
+                >
                   {category.label}
                 </Text>
               </View>
@@ -152,10 +186,10 @@ const SpotDetailModal = ({
               <Ionicons name="close" size={24} color={theme.colors.gray} />
             </TouchableOpacity>
           </View>
-          
+
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={detailStyles.name}>{spot.name}</Text>
-            
+
             {spot.rating && spot.rating > 0 && (
               <View style={detailStyles.rating}>
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -168,62 +202,88 @@ const SpotDetailModal = ({
                 ))}
               </View>
             )}
-            
+
             {spot.description && (
               <Text style={detailStyles.description}>{spot.description}</Text>
             )}
-            
+
             <View style={detailStyles.infoSection}>
-              <Ionicons name="location" size={20} color={theme.colors.burntOrange} />
+              <Ionicons
+                name="location"
+                size={20}
+                color={theme.colors.burntOrange}
+              />
               <Text style={detailStyles.coordinates}>
                 {formatCoords(spot.location.latitude, spot.location.longitude)}
               </Text>
             </View>
-            
+
             {spot.photos && spot.photos.length > 0 && (
               <View style={detailStyles.photosSection}>
                 <Text style={detailStyles.sectionTitle}>Photos</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {spot.photos.map((photo, index) => (
-                    <Image key={index} source={{ uri: photo }} style={detailStyles.photo} />
+                    <Image
+                      key={index}
+                      source={{ uri: photo }}
+                      style={detailStyles.photo}
+                    />
                   ))}
                 </ScrollView>
               </View>
             )}
-            
+
             <View style={detailStyles.actions}>
-              <TouchableOpacity 
-                style={[detailStyles.actionButton, { backgroundColor: theme.colors.forest }]}
+              <TouchableOpacity
+                style={[
+                  detailStyles.actionButton,
+                  { backgroundColor: theme.colors.forest },
+                ]}
                 onPress={() => onNavigate(spot)}
               >
                 <Ionicons name="navigate" size={20} color="white" />
                 <Text style={detailStyles.actionButtonText}>Navigate</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[detailStyles.actionButton, { backgroundColor: theme.colors.navy }]}
+
+              <TouchableOpacity
+                style={[
+                  detailStyles.actionButton,
+                  { backgroundColor: theme.colors.navy },
+                ]}
                 onPress={() => onShare(spot)}
               >
                 <Ionicons name="share-social" size={20} color="white" />
                 <Text style={detailStyles.actionButtonText}>Share</Text>
               </TouchableOpacity>
             </View>
-            
+
             <View style={detailStyles.secondaryActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={detailStyles.secondaryButton}
                 onPress={() => onEdit(spot)}
               >
-                <Ionicons name="create-outline" size={20} color={theme.colors.navy} />
+                <Ionicons
+                  name="create-outline"
+                  size={20}
+                  color={theme.colors.navy}
+                />
                 <Text style={detailStyles.secondaryButtonText}>Edit</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[detailStyles.secondaryButton, { borderColor: '#FF4757' }]}
+
+              <TouchableOpacity
+                style={[
+                  detailStyles.secondaryButton,
+                  { borderColor: "#FF4757" },
+                ]}
                 onPress={() => onDelete(spot)}
               >
                 <Ionicons name="trash-outline" size={20} color="#FF4757" />
-                <Text style={[detailStyles.secondaryButtonText, { color: '#FF4757' }]}>
+                <Text
+                  style={[
+                    detailStyles.secondaryButtonText,
+                    { color: "#FF4757" },
+                  ]}
+                >
                   Delete
                 </Text>
               </TouchableOpacity>
@@ -285,14 +345,16 @@ const AnimatedListItem = ({
         },
       ]}
     >
-      <TouchableOpacity
-        onPress={() => onPress(item)}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.7}>
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <View style={styles.cardLeft}>
-              <View style={[styles.categoryIndicator, { backgroundColor: category.color }]} />
+              <View
+                style={[
+                  styles.categoryIndicator,
+                  { backgroundColor: category.color },
+                ]}
+              />
               <View style={styles.cardInfo}>
                 <Text style={styles.cardTitle} numberOfLines={1}>
                   {item.name}
@@ -346,7 +408,11 @@ const AnimatedListItem = ({
                 <Ionicons name="trash-outline" size={20} color="#FF4757" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionIcon}>
-                <Ionicons name="share-social-outline" size={20} color={theme.colors.navy} />
+                <Ionicons
+                  name="share-social-outline"
+                  size={20}
+                  color={theme.colors.navy}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -368,13 +434,13 @@ export default function SavedSpotsScreen() {
   const { savedSpots, deleteSpot, updateSpot, location } = useLocation();
   const { wishlistItems, addWishlistItem, removeWishlistItem } = useWishlist();
   const { getMapTileUrl } = useSettings();
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<Set<CategoryType>>(
-    new Set(Object.keys(categories) as CategoryType[])
-  );
-  const [sortBy, setSortBy] = useState<'date' | 'name' | 'rating'>('date');
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<
+    Set<CategoryType>
+  >(new Set(Object.keys(categories) as CategoryType[]));
+  const [sortBy, setSortBy] = useState<"date" | "name" | "rating">("date");
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedSpot, setSelectedSpot] = useState<SavedSpot | null>(null);
@@ -382,9 +448,11 @@ export default function SavedSpotsScreen() {
 
   // Filter and sort spots
   const filteredSpots = useMemo(() => {
-    let filtered = savedSpots.filter(spot => {
-      const matchesSearch = spot.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           (spot.description && spot.description.toLowerCase().includes(searchQuery.toLowerCase()));
+    let filtered = savedSpots.filter((spot) => {
+      const matchesSearch =
+        spot.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (spot.description &&
+          spot.description.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesCategory = selectedCategories.has(spot.category);
       return matchesSearch && matchesCategory;
     });
@@ -392,14 +460,16 @@ export default function SavedSpotsScreen() {
     // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'name':
+        case "name":
           return a.name.localeCompare(b.name);
-        case 'rating':
+        case "rating":
           return (b.rating || 0) - (a.rating || 0);
-        case 'date':
+        case "date":
         default:
           // Convert Date to number for comparison
-          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          return (
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
       }
     });
 
@@ -426,13 +496,13 @@ export default function SavedSpotsScreen() {
 
   const handleDeleteSpot = (spot: SavedSpot) => {
     Alert.alert(
-      'Delete Location',
+      "Delete Location",
       `Are you sure you want to delete "${spot.name}"?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             deleteSpot(spot.id);
@@ -451,19 +521,24 @@ export default function SavedSpotsScreen() {
 
   const handleToggleWishlist = (spot: SavedSpot) => {
     // Check if it's in wishlist using the correct property names from WishlistItem
-    const wishlistItem = wishlistItems.find(item => 
-      item.location && 
-      Math.abs(item.location.latitude - spot.location.latitude) < 0.0001 &&
-      Math.abs(item.location.longitude - spot.location.longitude) < 0.0001
+    const wishlistItem = wishlistItems.find(
+      (item) =>
+        item.location &&
+        Math.abs(item.location.latitude - spot.location.latitude) < 0.0001 &&
+        Math.abs(item.location.longitude - spot.location.longitude) < 0.0001
     );
-    
+
     if (wishlistItem) {
       removeWishlistItem(wishlistItem.id);
     } else {
       // Add to wishlist with the correct structure
       addWishlistItem({
         name: `Visit ${spot.name}`,
-        description: spot.description || `Check out this ${categories[spot.category].label.toLowerCase()} spot`,
+        description:
+          spot.description ||
+          `Check out this ${categories[
+            spot.category
+          ].label.toLowerCase()} spot`,
         location: spot.location,
         category: spot.category,
         priority: 2, // Default to "Want to See"
@@ -477,7 +552,7 @@ export default function SavedSpotsScreen() {
     try {
       await ShareService.shareLocation(spot);
     } catch (error) {
-      Alert.alert('Error', 'Failed to share location');
+      Alert.alert("Error", "Failed to share location");
     }
   };
 
@@ -489,7 +564,7 @@ export default function SavedSpotsScreen() {
         spot.name
       );
     } catch (error) {
-      Alert.alert('Error', 'Failed to open in maps');
+      Alert.alert("Error", "Failed to open in maps");
     }
   };
 
@@ -507,20 +582,39 @@ export default function SavedSpotsScreen() {
   const handleEditSpot = (spot: SavedSpot) => {
     setShowDetailModal(false);
     router.push({
-      pathname: '/edit-location',
-      params: { spotId: spot.id }
+      pathname: "/edit-location",
+      params: { spotId: spot.id },
     });
   };
 
   const generateMapHTML = () => {
-    const centerLat = location?.latitude || 47.6062;
-    const centerLng = location?.longitude || -122.3321;
     const tileUrl = getMapTileUrl();
 
-    const markers = filteredSpots.map(spot => {
-      const category = categories[spot.category] || categories.other;
-      return `
-        L.circleMarker([${spot.location.latitude}, ${spot.location.longitude}], {
+    // Calculate the center based on filtered spots or use current location
+    let centerLat = 47.6062; // Default Seattle
+    let centerLng = -122.3321;
+
+    // If we have filtered spots, calculate their center
+    if (filteredSpots.length > 0) {
+      const lats = filteredSpots.map((s) => s.location.latitude);
+      const lngs = filteredSpots.map((s) => s.location.longitude);
+      centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+      centerLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+    } else if (location) {
+      // Use current location if no spots
+      centerLat = location.latitude;
+      centerLng = location.longitude;
+    }
+
+    const markers = filteredSpots
+      .map((spot) => {
+        const category = categories[spot.category] || categories.other;
+        // Escape single quotes in spot name to prevent JS errors
+        const safeName = spot.name.replace(/'/g, "\\'");
+        return `
+        L.circleMarker([${spot.location.latitude}, ${
+          spot.location.longitude
+        }], {
           radius: 8,
           fillColor: '${category.color}',
           color: '#fff',
@@ -529,51 +623,73 @@ export default function SavedSpotsScreen() {
           fillOpacity: 0.8
         }).addTo(map).bindPopup(\`
           <div style="text-align: center;">
-            <b>${spot.name}</b><br>
+            <b>${safeName}</b><br>
             <small>${category.label}</small><br>
-            ${spot.rating ? `${'⭐'.repeat(spot.rating)}` : ''}
+            ${spot.rating ? `${"⭐".repeat(spot.rating)}` : ""}
           </div>
         \`);
       `;
-    }).join('\n');
+      })
+      .join("\n");
 
     return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <style>
-          body { margin: 0; padding: 0; }
-          #map { height: 100vh; width: 100vw; }
-        </style>
-      </head>
-      <body>
-        <div id="map"></div>
-        <script>
-          var map = L.map('map').setView([${centerLat}, ${centerLng}], 11);
-          L.tileLayer('${tileUrl}', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
-          }).addTo(map);
-          ${markers}
-          
-          // Fit bounds to show all markers
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        // Initialize map
+        var map = L.map('map').setView([${centerLat}, ${centerLng}], 13);
+        
+        // Add tile layer
+        L.tileLayer('${tileUrl}', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19
+        }).addTo(map);
+        
+        // Add all markers
+        ${markers}
+        
+        // Fit map to show all markers properly
+        setTimeout(function() {
           if (${filteredSpots.length} > 0) {
-            var group = new L.featureGroup([
-              ${filteredSpots.map(spot => 
-                `L.marker([${spot.location.latitude}, ${spot.location.longitude}])`
-              ).join(',')}
-            ]);
-            map.fitBounds(group.getBounds().pad(0.1));
+            // Get all marker coordinates
+            var coordinates = [
+              ${filteredSpots
+                .map(
+                  (spot) =>
+                    `[${spot.location.latitude}, ${spot.location.longitude}]`
+                )
+                .join(",")}
+            ];
+            
+            if (coordinates.length === 1) {
+              // Single marker - just center on it
+              map.setView(coordinates[0], 15);
+            } else {
+              // Multiple markers - fit bounds
+              var bounds = L.latLngBounds(coordinates);
+              map.fitBounds(bounds, {
+                padding: [80, 80],  // Padding in pixels
+                maxZoom: 14  // Don't zoom in too close
+              });
+            }
           }
-        </script>
-      </body>
-      </html>
-    `;
+        }, 100); // Small delay to ensure map is loaded
+      </script>
+    </body>
+    </html>
+  `;
   };
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -587,15 +703,19 @@ export default function SavedSpotsScreen() {
             onChangeText={setSearchQuery}
             placeholderTextColor={theme.colors.lightGray}
           />
-          {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={theme.colors.gray} />
+          {searchQuery !== "" && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={theme.colors.gray}
+              />
             </TouchableOpacity>
           )}
         </View>
 
         <View style={styles.controls}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setShowFilterModal(true)}
           >
@@ -603,31 +723,40 @@ export default function SavedSpotsScreen() {
             <Text style={styles.filterText}>Filter</Text>
             {selectedCategories.size < Object.keys(categories).length && (
               <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{selectedCategories.size}</Text>
+                <Text style={styles.filterBadgeText}>
+                  {selectedCategories.size}
+                </Text>
               </View>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.sortButton}
             onPress={() => {
-              const options = ['date', 'name', 'rating'] as const;
+              const options = ["date", "name", "rating"] as const;
               const currentIndex = options.indexOf(sortBy);
               setSortBy(options[(currentIndex + 1) % options.length]);
             }}
           >
-            <Ionicons name="swap-vertical" size={20} color={theme.colors.navy} />
+            <Ionicons
+              name="swap-vertical"
+              size={20}
+              color={theme.colors.navy}
+            />
             <Text style={styles.sortText}>{sortBy}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.viewButton, viewMode === 'map' && styles.viewButtonActive]}
-            onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
+          <TouchableOpacity
+            style={[
+              styles.viewButton,
+              viewMode === "map" && styles.viewButtonActive,
+            ]}
+            onPress={() => setViewMode(viewMode === "list" ? "map" : "list")}
           >
-            <Ionicons 
-              name={viewMode === 'list' ? 'map' : 'list'} 
-              size={20} 
-              color={viewMode === 'map' ? 'white' : theme.colors.burntOrange} 
+            <Ionicons
+              name={viewMode === "list" ? "map" : "list"}
+              size={20}
+              color={viewMode === "map" ? "white" : theme.colors.burntOrange}
             />
           </TouchableOpacity>
         </View>
@@ -636,26 +765,32 @@ export default function SavedSpotsScreen() {
       {/* Summary Stats */}
       <View style={styles.summary}>
         <Text style={styles.summaryText}>
-          {filteredSpots.length} {filteredSpots.length === 1 ? 'location' : 'locations'}
+          {filteredSpots.length}{" "}
+          {filteredSpots.length === 1 ? "location" : "locations"}
         </Text>
         {searchQuery && (
-          <Text style={styles.summarySubtext}>matching &quot;{searchQuery}&quot;</Text>
+          <Text style={styles.summarySubtext}>
+            matching &quot;{searchQuery}&quot;
+          </Text>
         )}
       </View>
 
       {/* Content */}
-      {viewMode === 'list' ? (
+      {viewMode === "list" ? (
         <FlatList
           data={filteredSpots}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => {
             // Check if it's in wishlist
-            const isInWishlist = wishlistItems.some(w => 
-              w.location && 
-              Math.abs(w.location.latitude - item.location.latitude) < 0.0001 &&
-              Math.abs(w.location.longitude - item.location.longitude) < 0.0001
+            const isInWishlist = wishlistItems.some(
+              (w) =>
+                w.location &&
+                Math.abs(w.location.latitude - item.location.latitude) <
+                  0.0001 &&
+                Math.abs(w.location.longitude - item.location.longitude) <
+                  0.0001
             );
-            
+
             return (
               <AnimatedListItem
                 item={item}
@@ -670,7 +805,7 @@ export default function SavedSpotsScreen() {
           }}
           contentContainerStyle={[
             styles.listContainer,
-            filteredSpots.length === 0 && styles.emptyContainer
+            filteredSpots.length === 0 && styles.emptyContainer,
           ]}
           refreshControl={
             <RefreshControl
@@ -682,16 +817,20 @@ export default function SavedSpotsScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Ionicons name="location-outline" size={80} color={theme.colors.lightGray} />
+              <Ionicons
+                name="location-outline"
+                size={80}
+                color={theme.colors.lightGray}
+              />
               <Text style={styles.emptyTitle}>No locations found</Text>
               <Text style={styles.emptyText}>
-                {searchQuery 
-                  ? 'Try adjusting your search or filters'
-                  : 'Start saving your favorite spots!'}
+                {searchQuery
+                  ? "Try adjusting your search or filters"
+                  : "Start saving your favorite spots!"}
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.addButton}
-                onPress={() => router.push('/save-location')}
+                onPress={() => router.push("/add-location")} // CORRECT - uses the map interface
               >
                 <Ionicons name="add" size={24} color="white" />
                 <Text style={styles.addButtonText}>Add Location</Text>
@@ -732,15 +871,9 @@ export default function SavedSpotsScreen() {
       />
 
       {/* FAB */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={() => router.push('/save-location')}
-      >
-        <Ionicons name="add" size={28} color="white" />
-      </TouchableOpacity>
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/add-location')}
+        onPress={() => router.push("/add-location")}
         activeOpacity={0.8}
       >
         <Ionicons name="add" size={28} color={theme.colors.white} />
@@ -755,22 +888,22 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   fab: {
-  position: 'absolute',
-  bottom: 20,
-  right: 20,
-  width: 60,
-  height: 60,
-  borderRadius: 30,
-  backgroundColor: theme.colors.forest,
-  justifyContent: 'center',
-  alignItems: 'center',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 5,
-  elevation: 8,
-  zIndex: 1000,
-},
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: theme.colors.forest,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+    zIndex: 1000,
+  },
   header: {
     backgroundColor: theme.colors.white,
     paddingHorizontal: 15,
@@ -779,8 +912,8 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.borderGray,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -794,44 +927,44 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
   },
   controls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: theme.colors.offWhite,
     borderRadius: 6,
-    position: 'relative',
+    position: "relative",
   },
   filterText: {
     marginLeft: 6,
     fontSize: 14,
     color: theme.colors.forest,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   filterBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: -4,
     right: -4,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
     width: 20,
     height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   filterBadgeText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: theme.colors.offWhite,
@@ -841,8 +974,8 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 14,
     color: theme.colors.navy,
-    fontWeight: '500',
-    textTransform: 'capitalize',
+    fontWeight: "500",
+    textTransform: "capitalize",
   },
   viewButton: {
     padding: 8,
@@ -862,7 +995,7 @@ const styles = StyleSheet.create({
   summaryText: {
     fontSize: 14,
     color: theme.colors.gray,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   summarySubtext: {
     fontSize: 12,
@@ -874,13 +1007,13 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   card: {
     backgroundColor: theme.colors.white,
     borderRadius: 12,
     marginBottom: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -890,14 +1023,14 @@ const styles = StyleSheet.create({
     padding: 15,
   },
   cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 8,
   },
   cardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   categoryIndicator: {
@@ -911,14 +1044,14 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 4,
   },
   cardCategory: {
     fontSize: 12,
     color: theme.colors.gray,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   wishlistButton: {
     padding: 4,
@@ -930,28 +1063,28 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   ratingContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   star: {
     marginRight: 2,
   },
   cardActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   actionIcon: {
     padding: 8,
   },
   photoIndicator: {
-    position: 'absolute',
+    position: "absolute",
     top: 15,
     right: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -963,12 +1096,12 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 40,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginTop: 20,
     marginBottom: 10,
@@ -976,21 +1109,21 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: theme.colors.gray,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 30,
   },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.forest,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
   addButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   mapContainer: {
@@ -1004,31 +1137,31 @@ const styles = StyleSheet.create({
 const filterStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   container: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '70%',
+    maxHeight: "70%",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   title: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
@@ -1042,23 +1175,23 @@ const filterStyles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     color: theme.colors.navy,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   list: {
     maxHeight: 300,
   },
   item: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   itemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   categoryDot: {
     width: 12,
@@ -1075,31 +1208,31 @@ const filterStyles = StyleSheet.create({
     margin: 20,
     paddingVertical: 14,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   applyButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 
 const detailStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
     padding: 20,
   },
   container: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 20,
-    maxHeight: '80%',
+    maxHeight: "80%",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
@@ -1108,12 +1241,12 @@ const detailStyles = StyleSheet.create({
     flex: 1,
   },
   categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   categoryDot: {
     width: 8,
@@ -1123,18 +1256,18 @@ const detailStyles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    fontWeight: "600",
+    textTransform: "uppercase",
   },
   name: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: theme.colors.navy,
     marginHorizontal: 20,
     marginTop: 15,
   },
   rating: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginHorizontal: 20,
     marginTop: 10,
   },
@@ -1146,8 +1279,8 @@ const detailStyles = StyleSheet.create({
     lineHeight: 24,
   },
   infoSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginHorizontal: 20,
     marginTop: 20,
     padding: 15,
@@ -1158,7 +1291,7 @@ const detailStyles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 14,
     color: theme.colors.gray,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
   },
   photosSection: {
     marginTop: 20,
@@ -1166,7 +1299,7 @@ const detailStyles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 10,
   },
@@ -1177,29 +1310,29 @@ const detailStyles = StyleSheet.create({
     marginRight: 10,
   },
   actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     marginTop: 25,
     gap: 10,
   },
   actionButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 8,
   },
   actionButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   secondaryActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     marginTop: 10,
     marginBottom: 20,
@@ -1207,9 +1340,9 @@ const detailStyles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
@@ -1217,7 +1350,7 @@ const detailStyles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     marginLeft: 8,
     color: theme.colors.navy,
   },

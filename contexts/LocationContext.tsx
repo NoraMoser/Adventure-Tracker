@@ -1,4 +1,4 @@
-// contexts/LocationContext.tsx - With Supabase Storage for photos
+// contexts/LocationContext.tsx - Fixed version with proper photo upload
 import * as Location from 'expo-location';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { CategoryType } from '../constants/categories';
@@ -47,9 +47,18 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  // Initialize photo storage on mount
+  // Initialize photo storage on mount - but don't try to create buckets
   useEffect(() => {
-    PhotoService.initializeStorage();
+    // Just check if buckets exist, don't try to create them
+    const checkStorage = async () => {
+      try {
+        const { data: buckets } = await supabase.storage.listBuckets();
+        console.log('Available storage buckets:', buckets?.map(b => b.name));
+      } catch (err) {
+        console.log('Could not list buckets:', err);
+      }
+    };
+    checkStorage();
   }, []);
 
   // Load saved spots from Supabase when user changes
@@ -157,6 +166,37 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
+  const processPhotosForUpload = async (photos: string[]): Promise<string[]> => {
+    if (!photos || photos.length === 0 || !user) return [];
+
+    const finalUrls: string[] = [];
+
+    for (const photo of photos) {
+      // Skip if already a URL (already uploaded)
+      if (photo.startsWith('http')) {
+        finalUrls.push(photo);
+        continue;
+      }
+
+      // Try to upload ALL local files (including file:// URIs from ImagePicker)
+      // Don't skip file:// paths - they're valid from ImagePicker!
+      try {
+        console.log('Attempting to upload photo:', photo);
+        const uploadedUrl = await PhotoService.uploadPhoto(photo, 'location-photos', user.id);
+        if (uploadedUrl) {
+          console.log('Successfully uploaded photo to:', uploadedUrl);
+          finalUrls.push(uploadedUrl);
+        } else {
+          console.log('Failed to upload photo:', photo);
+        }
+      } catch (err) {
+        console.error('Error uploading photo:', photo, err);
+      }
+    }
+
+    return finalUrls;
+  };
+
   const saveSpot = async (spot: Omit<SavedSpot, 'id' | 'timestamp'>): Promise<SavedSpot | null> => {
     if (!user) {
       setError('Please sign in to save locations');
@@ -164,19 +204,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     try {
-      // Upload photos to Supabase Storage first
-      let photoUrls: string[] = [];
-      if (spot.photos && spot.photos.length > 0) {
-        console.log('Uploading photos to storage...');
-        photoUrls = await PhotoService.uploadPhotos(
-          spot.photos,
-          'location-photos',
-          user.id
-        );
-        console.log('Photos uploaded:', photoUrls);
-      }
+      // Process photos - upload new ones, keep existing URLs
+      console.log('Processing photos for upload:', spot.photos);
+      const photoUrls = await processPhotosForUpload(spot.photos || []);
+      console.log('Final photo URLs:', photoUrls);
 
-      // Save location with photo URLs (not base64)
       const { data, error: insertError } = await supabase
         .from('locations')
         .insert({
@@ -187,7 +219,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
           description: spot.description || null,
           category: spot.category || 'other',
           rating: spot.rating || null,
-          photos: photoUrls, // Save URLs, not base64
+          photos: photoUrls, // Save URLs, not base64 or file paths
         })
         .select()
         .single();
@@ -252,6 +284,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     } catch (err) {
       console.error('Error saving current location:', err);
       setError('Failed to save location');
+      throw err; // Re-throw to handle in component
     } finally {
       setLoading(false);
     }
@@ -285,6 +318,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     } catch (err) {
       console.error('Error saving manual location:', err);
       setError('Failed to save location');
+      throw err; // Re-throw to handle in component
     } finally {
       setLoading(false);
     }
@@ -300,25 +334,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       setLoading(true);
       setError(null);
 
-      // Handle photo updates if needed
-      let photoUrls = updatedSpot.photos || [];
-      
-      // Check if any photos are base64 (new photos) and upload them
-      const newPhotos: string[] = [];
-      const existingUrls: string[] = [];
-      
-      for (const photo of photoUrls) {
-        if (photo.startsWith('data:') || (!photo.startsWith('http') && photo.length > 0)) {
-          // This is a new photo (base64 or local URI), upload it
-          const url = await PhotoService.uploadPhoto(photo, 'location-photos', user.id);
-          if (url) newPhotos.push(url);
-        } else {
-          // This is an existing URL
-          existingUrls.push(photo);
-        }
-      }
-      
-      photoUrls = [...existingUrls, ...newPhotos];
+      // Process photos
+      const photoUrls = await processPhotosForUpload(updatedSpot.photos || []);
 
       const { error: updateError } = await supabase
         .from('locations')
@@ -366,7 +383,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         return;
       }
 
-      // Upload the new photo to storage
+      // Upload the new photo
       const photoUrl = await PhotoService.uploadPhoto(photoUri, 'location-photos', user.id);
       if (!photoUrl) {
         throw new Error('Failed to upload photo');

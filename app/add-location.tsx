@@ -5,9 +5,9 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
     Alert,
-    Animated,
     Image,
     Keyboard,
+    KeyboardAvoidingView,
     Platform,
     ScrollView,
     StyleSheet,
@@ -27,8 +27,6 @@ export default function AddLocationScreen() {
   const webViewRef = useRef<WebView>(null);
   const locationNameInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [keyboardOffset] = useState(new Animated.Value(0));
 
   const [selectedLocation, setSelectedLocation] = useState<{
     latitude: number;
@@ -40,8 +38,10 @@ export default function AddLocationScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType>("other");
+  const [selectedCategory, setSelectedCategory] =
+    useState<CategoryType>("other");
   const [mapReady, setMapReady] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
@@ -55,17 +55,6 @@ export default function AddLocationScreen() {
       getCurrentLocation();
     }
   }, []);
-
-  // Focus the location name input when form appears
-  useEffect(() => {
-    if (showForm && locationNameInputRef.current) {
-      // Small delay to ensure the form is fully rendered
-      const timer = setTimeout(() => {
-        locationNameInputRef.current?.focus();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [showForm]);
 
   const getCurrentLocation = async () => {
     try {
@@ -160,7 +149,7 @@ export default function AddLocationScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -182,7 +171,7 @@ export default function AddLocationScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -199,9 +188,10 @@ export default function AddLocationScreen() {
   };
 
   const handleSaveLocation = async () => {
-    console.log("Save button pressed!"); // Debug log
+    if (isSaving) return; // Prevent double-tap
+
     Keyboard.dismiss();
-    
+
     if (!locationName.trim()) {
       Alert.alert("Error", "Please enter a name for this location");
       return;
@@ -212,15 +202,15 @@ export default function AddLocationScreen() {
       return;
     }
 
-    console.log("Saving location:", locationName, selectedLocation); // Debug log
+    setIsSaving(true);
 
     try {
-      // Save the location with the selected coordinates, photos, and category
+      // Pass photos directly - LocationContext will handle upload
       await saveManualLocation(
         locationName.trim(),
         selectedLocation,
         locationDescription.trim(),
-        photos,
+        photos, // Pass local URIs - context will upload them
         selectedCategory
       );
 
@@ -231,7 +221,6 @@ export default function AddLocationScreen() {
       setSelectedLocation(null);
       setShowForm(false);
       setSelectedCategory("other");
-      keyboardOffset.setValue(0);
 
       // Clear the marker from the map
       const js = `
@@ -256,8 +245,10 @@ export default function AddLocationScreen() {
         },
       ]);
     } catch (err) {
-      console.error("Error saving location:", err); // Debug log
-      Alert.alert("Error", "Failed to save location");
+      console.error("Error saving location:", err);
+      Alert.alert("Error", "Failed to save location. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -266,7 +257,6 @@ export default function AddLocationScreen() {
     setShowForm(false);
     setLocationName("");
     setLocationDescription("");
-    keyboardOffset.setValue(0);
     // Keep the marker on the map but hide the form
   };
 
@@ -378,12 +368,12 @@ export default function AddLocationScreen() {
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      
+
       if (data.type === "mapReady") {
         setMapReady(true);
         return;
       }
-      
+
       if (data.type === "locationSelected") {
         setSelectedLocation({
           latitude: data.latitude,
@@ -394,16 +384,6 @@ export default function AddLocationScreen() {
     } catch (error) {
       console.log("Error parsing message:", error);
     }
-  };
-
-  const handleLocationNameChange = (text: string) => {
-    console.log("Location name changing to:", text);
-    setLocationName(text);
-  };
-
-  const handleDescriptionChange = (text: string) => {
-    console.log("Description changing to:", text);
-    setLocationDescription(text);
   };
 
   return (
@@ -458,8 +438,6 @@ export default function AddLocationScreen() {
           scrollEnabled={true}
           javaScriptEnabled={true}
           domStorageEnabled={true}
-          // Disable interaction with WebView when form is shown
-          pointerEvents={showForm ? "none" : "auto"}
         />
 
         {/* Current Location Button */}
@@ -480,29 +458,29 @@ export default function AddLocationScreen() {
         )}
       </View>
 
-      {/* Location Form with Keyboard Animation */}
       {showForm && selectedLocation && (
-        <Animated.View 
-          style={[
-            styles.formContainer,
-            {
-              transform: [{
-                translateY: keyboardOffset
-              }]
-            }
-          ]}
+        <KeyboardAvoidingView
+          style={styles.formContainer}
+          behavior={Platform.OS === "ios" ? "padding" : undefined} // No behavior for Android
+          keyboardVerticalOffset={0} // No offset needed for Android
+          enabled={Platform.OS === "ios"} // Only enable for iOS
         >
-          <ScrollView 
-            ref={scrollViewRef}
-            style={styles.form} 
+          <ScrollView
+            style={styles.form}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.formContent}
-            scrollEnabled={true}
+            // This is the key prop for Android:
+            keyboardDismissMode="on-drag"
+            // Ensure we can scroll when keyboard is open
+            nestedScrollEnabled={true}
           >
             <View style={styles.formHeader}>
               <Text style={styles.formTitle}>Save This Location</Text>
-              <TouchableOpacity onPress={handleCancelForm} style={styles.closeButton}>
+              <TouchableOpacity
+                onPress={handleCancelForm}
+                style={styles.closeButton}
+              >
                 <Ionicons name="close" size={24} color={theme.colors.gray} />
               </TouchableOpacity>
             </View>
@@ -520,39 +498,15 @@ export default function AddLocationScreen() {
               ref={locationNameInputRef}
               style={styles.input}
               value={locationName}
-              onChangeText={handleLocationNameChange}
+              onChangeText={setLocationName}
               placeholder="e.g., Hidden Beach, Mom's House, Best Coffee Shop"
               placeholderTextColor={theme.colors.lightGray}
-              editable={true}
+              editable={!isSaving}
               keyboardType="default"
               autoCapitalize="words"
               autoCorrect={false}
               returnKeyType="next"
               onSubmitEditing={() => descriptionInputRef.current?.focus()}
-              onFocus={() => {
-                // Animate form up when name input is focused
-                Animated.timing(keyboardOffset, {
-                  toValue: -100,  // Reduced from -200
-                  duration: 250,
-                  useNativeDriver: true,
-                }).start();
-                
-                // Scroll to top
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-                }, 100);
-            }}
-              onBlur={() => {
-                // Don't reset immediately - check if another input is focused
-                setTimeout(() => {
-                  // Reset position when done with all inputs
-                  Animated.timing(keyboardOffset, {
-                    toValue: 0,
-                    duration: 250,
-                    useNativeDriver: true,
-                  }).start();
-                }, 100);
-              }}
             />
 
             <Text style={styles.label}>Description (Optional)</Text>
@@ -560,44 +514,33 @@ export default function AddLocationScreen() {
               ref={descriptionInputRef}
               style={[styles.input, styles.textArea]}
               value={locationDescription}
-              onChangeText={handleDescriptionChange}
+              onChangeText={setLocationDescription}
               placeholder="What makes this place special? Any tips for visiting?"
               placeholderTextColor={theme.colors.lightGray}
-              editable={true}
+              editable={!isSaving}
               multiline={true}
               numberOfLines={3}
               textAlignVertical="top"
               keyboardType="default"
               autoCapitalize="sentences"
               autoCorrect={true}
-              onFocus={() => {
-                // Move form up even more for description
-                Animated.timing(keyboardOffset, {
-                  toValue: -150,  // Reduced from -300
-                  duration: 250,
-                  useNativeDriver: true,
-                }).start();
-                
-                // Scroll to show description field
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollTo({ y: 80, animated: true });
-                }, 100);
-              }}
             />
 
             {/* Photo Section */}
             <Text style={styles.label}>Photos (Optional)</Text>
             <View style={styles.photoActions}>
               <TouchableOpacity
-                style={styles.photoButton}
+                style={[styles.photoButton, isSaving && styles.disabledButton]}
                 onPress={handleTakePhoto}
+                disabled={isSaving}
               >
                 <Ionicons name="camera" size={20} color={theme.colors.forest} />
                 <Text style={styles.photoButtonText}>Camera</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.photoButton}
+                style={[styles.photoButton, isSaving && styles.disabledButton]}
                 onPress={handlePickImage}
+                disabled={isSaving}
               >
                 <Ionicons name="images" size={20} color={theme.colors.forest} />
                 <Text style={styles.photoButtonText}>Gallery</Text>
@@ -616,6 +559,7 @@ export default function AddLocationScreen() {
                     <TouchableOpacity
                       style={styles.removePhotoButton}
                       onPress={() => handleRemovePhoto(index)}
+                      disabled={isSaving}
                     >
                       <Ionicons
                         name="close-circle"
@@ -632,23 +576,36 @@ export default function AddLocationScreen() {
               <TouchableOpacity
                 style={[styles.button, styles.cancelButton]}
                 onPress={handleCancelForm}
+                disabled={isSaving}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.button, styles.saveButton]}
+                style={[
+                  styles.button,
+                  styles.saveButton,
+                  isSaving && styles.saveButtonDisabled,
+                ]}
                 onPress={handleSaveLocation}
+                disabled={isSaving}
               >
-                <Ionicons name="save" size={20} color={theme.colors.white} />
-                <Text style={styles.saveButtonText}>Save</Text>
+                {isSaving ? (
+                  <Text style={styles.saveButtonText}>Saving...</Text>
+                ) : (
+                  <>
+                    <Ionicons
+                      name="save"
+                      size={20}
+                      color={theme.colors.white}
+                    />
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
-            
-            {/* Extra padding at bottom for keyboard */}
-            <View style={{ height: 150 }} />
           </ScrollView>
-        </Animated.View>
+        </KeyboardAvoidingView>
       )}
     </View>
   );
@@ -760,7 +717,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    height: "85%",
+    maxHeight: Platform.OS === 'android' ? "70%" : "75%",  // Less height on Android
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -769,10 +726,11 @@ const styles = StyleSheet.create({
   },
   form: {
     flex: 1,
-    padding: 20,
   },
   formContent: {
-    paddingBottom: 200,
+    padding: 20,
+    // More padding at bottom for Android to ensure scroll
+    paddingBottom: Platform.OS === 'android' ? 200 : 100,
   },
   formHeader: {
     flexDirection: "row",
@@ -820,15 +778,16 @@ const styles = StyleSheet.create({
     minHeight: 45,
   },
   textArea: {
-    height: 80,
+    height: 100,  // Increased height
     textAlignVertical: "top",
     paddingTop: 12,
+    minHeight: 100,  // Ensure minimum height
   },
+
   formButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 10,
-    marginBottom: 20,
   },
   button: {
     flex: 1,
@@ -853,6 +812,10 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.forest,
     marginLeft: 10,
   },
+  saveButtonDisabled: {
+    backgroundColor: theme.colors.lightGray,
+    opacity: 0.7,
+  },
   saveButtonText: {
     color: theme.colors.white,
     fontSize: 16,
@@ -873,6 +836,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.colors.forest,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   photoButtonText: {
     color: theme.colors.forest,
