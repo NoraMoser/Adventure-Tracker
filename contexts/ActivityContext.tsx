@@ -7,6 +7,7 @@ import React, {
     useRef,
     useState,
 } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -24,6 +25,7 @@ interface LocationPoint {
   longitude: number;
   timestamp: number;
   altitude?: number;
+  accuracy?: number;
 }
 
 interface Activity {
@@ -69,13 +71,14 @@ interface ActivityContextType {
   loading: boolean;
   error: string | null;
 }
+
 export type { Activity };
 
 const ActivityContext = createContext<ActivityContextType | undefined>(
   undefined
 );
 
-// Utility function to calculate distance between two points (Haversine formula)
+// Improved distance calculation with GPS accuracy considerations
 const calculateDistance = (
   lat1: number,
   lon1: number,
@@ -94,6 +97,50 @@ const calculateDistance = (
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
+};
+
+// Smooth GPS data using a simple moving average
+const smoothGPSData = (points: LocationPoint[], windowSize: number = 3): LocationPoint[] => {
+  if (points.length <= windowSize) return points;
+  
+  const smoothed: LocationPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const currentPoint = points[i];
+    if (!currentPoint) continue;
+    
+    if (i < windowSize - 1) {
+      smoothed.push(currentPoint);
+    } else {
+      let sumLat = 0, sumLon = 0, sumAlt = 0;
+      let altCount = 0;
+      let validPoints = 0;
+      
+      for (let j = i - windowSize + 1; j <= i; j++) {
+        const point = points[j];
+        if (point) {
+          sumLat += point.latitude;
+          sumLon += point.longitude;
+          validPoints++;
+          if (point.altitude) {
+            sumAlt += point.altitude;
+            altCount++;
+          }
+        }
+      }
+      
+      if (validPoints > 0) {
+        smoothed.push({
+          latitude: sumLat / validPoints,
+          longitude: sumLon / validPoints,
+          timestamp: currentPoint.timestamp,
+          altitude: altCount > 0 ? sumAlt / altCount : undefined,
+          accuracy: currentPoint.accuracy,
+        });
+      }
+    }
+  }
+  
+  return smoothed;
 };
 
 export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
@@ -118,17 +165,60 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     null
   );
   const startTimeRef = useRef<number | null>(null);
-  const pausedTimeRef = useRef<number>(0); // Track total paused time
-  const pauseStartRef = useRef<number | null>(null); // When pause started
+  const pausedTimeRef = useRef<number>(0);
+  const pauseStartRef = useRef<number | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateSubscription = useRef<any>(null);
+  const lastValidPoint = useRef<LocationPoint | null>(null);
+  const speedBuffer = useRef<number[]>([]);
+
+  // Handle app state changes to maintain tracking in background
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      console.log("App state changed to:", nextAppState);
+      
+      if (nextAppState === "active" && isTracking && !isPaused) {
+        // App came to foreground, ensure tracking is still working
+        console.log("Resuming active tracking");
+        
+        // Re-establish location subscription if needed
+        if (!locationSubscription.current && startTimeRef.current) {
+          restartLocationTracking();
+        }
+      }
+    };
+
+    appStateSubscription.current = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
+
+    return () => {
+      if (appStateSubscription.current) {
+        appStateSubscription.current.remove();
+      }
+    };
+  }, [isTracking, isPaused]);
 
   useEffect(() => {
     if (user) {
       loadActivities();
     } else {
-      setActivities([]); // Clear activities when no user
+      setActivities([]);
     }
   }, [user]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (locationSubscription.current) {
+        locationSubscription.current.remove();
+      }
+      if (durationInterval.current) {
+        clearInterval(durationInterval.current);
+      }
+    };
+  }, []);
 
   const loadActivities = async () => {
     if (!user) {
@@ -147,7 +237,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       if (error) throw error;
 
       if (data) {
-        // Transform database format to app format
         const transformedActivities = data.map((act) => ({
           id: act.id,
           type: act.type as ActivityType,
@@ -173,6 +262,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       setLoading(false);
     }
   };
+
   const saveActivity = async (activity: Activity): Promise<Activity | null> => {
     if (!user) {
       console.error("No user logged in");
@@ -180,6 +270,21 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
 
     try {
+      // Smooth the GPS data before saving
+      const smoothedRoute = smoothGPSData(activity.route);
+      
+      // Recalculate distance with smoothed data
+      let recalculatedDistance = 0;
+      for (let i = 1; i < smoothedRoute.length; i++) {
+        const dist = calculateDistance(
+          smoothedRoute[i - 1].latitude,
+          smoothedRoute[i - 1].longitude,
+          smoothedRoute[i].latitude,
+          smoothedRoute[i].longitude
+        );
+        recalculatedDistance += dist;
+      }
+
       const { data, error } = await supabase
         .from("activities")
         .insert({
@@ -189,8 +294,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           start_time: activity.startTime.toISOString(),
           end_time: activity.endTime.toISOString(),
           duration: activity.duration,
-          distance: activity.distance,
-          route: activity.route,
+          distance: recalculatedDistance,
+          route: smoothedRoute,
           average_speed: activity.averageSpeed,
           max_speed: activity.maxSpeed,
           elevation_gain: activity.elevationGain,
@@ -221,7 +326,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           isManualEntry: data.is_manual_entry,
         };
 
-        // Update local state
         setActivities((prev) => [...prev, newActivity]);
         return newActivity;
       }
@@ -231,6 +335,109 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       throw error;
     }
   };
+
+  const restartLocationTracking = async () => {
+    try {
+      console.log("Restarting location tracking...");
+      
+      // Remove existing subscription
+      if (locationSubscription.current) {
+        locationSubscription.current.remove();
+        locationSubscription.current = null;
+      }
+
+      // Start new subscription
+      locationSubscription.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 2000, // Update every 2 seconds
+          distanceInterval: 5, // Update every 5 meters
+          mayShowUserSettingsDialog: true,
+        },
+        handleLocationUpdate
+      );
+      
+      console.log("Location tracking restarted successfully");
+    } catch (err) {
+      console.error("Error restarting location tracking:", err);
+    }
+  };
+
+  const handleLocationUpdate = (location: Location.LocationObject) => {
+    console.log("Location update received, accuracy:", location.coords.accuracy);
+    
+    if (!pauseStartRef.current) {
+      const newPoint: LocationPoint = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        timestamp: location.timestamp,
+        altitude: location.coords.altitude || undefined,
+        accuracy: location.coords.accuracy || undefined,
+      };
+
+      // Filter out poor accuracy readings
+      if (location.coords.accuracy && location.coords.accuracy > 50) {
+        console.log("Skipping low accuracy point:", location.coords.accuracy);
+        return;
+      }
+
+      setCurrentLocation(newPoint);
+      
+      setCurrentRoute((prev) => {
+        // GPS jitter and error filtering
+        if (prev.length > 0) {
+          const lastPoint = prev[prev.length - 1];
+          const distance = calculateDistance(
+            lastPoint.latitude,
+            lastPoint.longitude,
+            newPoint.latitude,
+            newPoint.longitude
+          );
+          
+          // Calculate time difference
+          const timeDiff = (newPoint.timestamp - lastPoint.timestamp) / 1000; // seconds
+          
+          // Skip if no significant movement (GPS jitter)
+          if (distance < 2) {
+            console.log("Skipping point - too close to last:", distance);
+            return prev;
+          }
+          
+          // Skip if unrealistic speed (> 120 km/h for most activities)
+          const speed = (distance / 1000) / (timeDiff / 3600); // km/h
+          if (speed > 120) {
+            console.log("Skipping point - unrealistic speed:", speed);
+            return prev;
+          }
+          
+          // Update distance
+          setCurrentDistance((prevDist) => prevDist + distance);
+          
+          // Update speed with smoothing
+          if (location.coords.speed && location.coords.speed > 0) {
+            speedBuffer.current.push(location.coords.speed * 3.6);
+            if (speedBuffer.current.length > 5) {
+              speedBuffer.current.shift();
+            }
+            const avgSpeed = speedBuffer.current.reduce((a, b) => a + b, 0) / speedBuffer.current.length;
+            setCurrentSpeed(avgSpeed);
+          }
+        }
+        
+        lastValidPoint.current = newPoint;
+        
+        // Limit stored points to prevent memory issues
+        const updatedRoute = [...prev, newPoint];
+        if (updatedRoute.length > 5000) {
+          // Keep every nth point when we have too many
+          return updatedRoute.filter((_, index) => index % 2 === 0 || index === updatedRoute.length - 1);
+        }
+        
+        return updatedRoute;
+      });
+    }
+  };
+
   const startTracking = async (activityType: ActivityType) => {
     try {
       console.log("Starting tracking for:", activityType);
@@ -238,37 +445,44 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       setError(null);
 
       // Request permissions
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      console.log("Foreground permission:", status);
-      if (status !== "granted") {
+      const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
+      console.log("Foreground permission:", foregroundStatus);
+      
+      if (foregroundStatus !== "granted") {
         setError("Location permission is required for tracking");
         setLoading(false);
         return;
       }
 
-      // Request background permission for continuous tracking (optional)
+      // Request background permission for continuous tracking
       try {
-        const { status: bgStatus } =
-          await Location.requestBackgroundPermissionsAsync();
-        console.log("Background permission:", bgStatus);
+        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+        console.log("Background permission:", backgroundStatus);
+        
+        if (backgroundStatus !== "granted") {
+          console.log("Background permission not granted - tracking may pause when app is backgrounded");
+        }
       } catch (e) {
         console.log("Background permission not available:", e);
       }
 
-      // Set activity type and start tracking
+      // Initialize tracking state
       setCurrentActivity(activityType);
       setIsTracking(true);
       setIsPaused(false);
       setCurrentRoute([]);
       setCurrentDistance(0);
       setCurrentDuration(0);
+      setCurrentSpeed(0);
       startTimeRef.current = Date.now();
       pausedTimeRef.current = 0;
       pauseStartRef.current = null;
+      lastValidPoint.current = null;
+      speedBuffer.current = [];
 
-      // Start duration timer - update every second
+      // Start duration timer
       durationInterval.current = setInterval(() => {
-        if (startTimeRef.current) {
+        if (startTimeRef.current && !pauseStartRef.current) {
           const elapsed = Math.floor(
             (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
           );
@@ -277,49 +491,16 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       }, 1000);
 
       console.log("Starting location watch...");
-      // Start location tracking
+      
+      // Start location tracking with enhanced options
       locationSubscription.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 5000, // Update every 5 seconds
+          timeInterval: 2000, // Update every 2 seconds
           distanceInterval: 5, // Update every 5 meters
+          mayShowUserSettingsDialog: true,
         },
-        (location) => {
-          console.log("Location update received");
-          if (!pauseStartRef.current) {
-            // Only track location if not paused
-            const newPoint: LocationPoint = {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-              timestamp: location.timestamp,
-              altitude: location.coords.altitude || undefined,
-            };
-
-            setCurrentLocation(newPoint);
-            setCurrentRoute((prev) => {
-              const updatedRoute = [...prev, newPoint];
-
-              // Calculate distance
-              if (prev.length > 0) {
-                const lastPoint = prev[prev.length - 1];
-                const distance = calculateDistance(
-                  lastPoint.latitude,
-                  lastPoint.longitude,
-                  newPoint.latitude,
-                  newPoint.longitude
-                );
-                setCurrentDistance((prevDist) => prevDist + distance);
-              }
-
-              // Calculate current speed
-              if (location.coords.speed && location.coords.speed > 0) {
-                setCurrentSpeed(location.coords.speed * 3.6); // Convert m/s to km/h
-              }
-
-              return updatedRoute;
-            });
-          }
-        }
+        handleLocationUpdate
       );
 
       console.log("Tracking started successfully");
@@ -332,6 +513,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const pauseTracking = () => {
+    console.log("Pausing tracking");
     setIsPaused(true);
     pauseStartRef.current = Date.now();
 
@@ -343,8 +525,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const resumeTracking = () => {
+    console.log("Resuming tracking");
     if (pauseStartRef.current) {
-      // Add the paused duration to total paused time
       pausedTimeRef.current += Date.now() - pauseStartRef.current;
       pauseStartRef.current = null;
     }
@@ -359,10 +541,17 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         setCurrentDuration(elapsed);
       }
     }, 1000);
+
+    // Ensure location tracking is still active
+    if (!locationSubscription.current && startTimeRef.current) {
+      restartLocationTracking();
+    }
   };
 
   const stopTracking = async (name: string, notes?: string) => {
     try {
+      console.log("Stopping tracking");
+      
       // Clean up tracking resources
       if (locationSubscription.current) {
         locationSubscription.current.remove();
@@ -388,18 +577,17 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         startTimeRef.current = null;
         pausedTimeRef.current = 0;
         pauseStartRef.current = null;
-        return; // Exit without saving
+        lastValidPoint.current = null;
+        speedBuffer.current = [];
+        return;
       }
 
-      // Only save if we have a valid name or meaningful data
+      // Only save if we have meaningful data
       if (name || currentDistance > 0) {
         console.log("Saving activity:", name);
 
-        // Calculate final duration accounting for paused time
+        // Calculate final duration
         let finalDuration = currentDuration;
-
-        // If we're currently paused, we already have the correct duration
-        // If not paused, calculate one final time
         if (!pauseStartRef.current && startTimeRef.current) {
           finalDuration = Math.floor(
             (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
@@ -411,14 +599,14 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         const startTime = new Date(startTimeRef.current || Date.now());
         const avgSpeed =
           currentDistance > 0
-            ? currentDistance / 1000 / (finalDuration / 3600)
+            ? (currentDistance / 1000) / (finalDuration / 3600)
             : 0;
 
         // Find max speed from route
         let maxSpeed = 0;
         for (let i = 1; i < currentRoute.length; i++) {
           const timeDiff =
-            (currentRoute[i].timestamp - currentRoute[i - 1].timestamp) / 1000; // seconds
+            (currentRoute[i].timestamp - currentRoute[i - 1].timestamp) / 1000;
           if (timeDiff > 0) {
             const dist = calculateDistance(
               currentRoute[i - 1].latitude,
@@ -426,8 +614,10 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
               currentRoute[i].latitude,
               currentRoute[i].longitude
             );
-            const speed = dist / 1000 / (timeDiff / 3600); // km/h
-            maxSpeed = Math.max(maxSpeed, speed);
+            const speed = (dist / 1000) / (timeDiff / 3600);
+            if (speed < 120) { // Filter out unrealistic speeds
+              maxSpeed = Math.max(maxSpeed, speed);
+            }
           }
         }
 
@@ -461,6 +651,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       startTimeRef.current = null;
       pausedTimeRef.current = 0;
       pauseStartRef.current = null;
+      lastValidPoint.current = null;
+      speedBuffer.current = [];
     } catch (err) {
       console.error("Error stopping tracking:", err);
       setError("Failed to stop tracking");
@@ -495,7 +687,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     try {
       const newActivity: Activity = {
         ...activity,
-        id: "", // Will be set by database
+        id: "",
         isManualEntry: true,
       };
 

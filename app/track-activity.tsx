@@ -1,4 +1,3 @@
-// track-activity.tsx - Complete file with all improvements
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -47,25 +46,55 @@ export default function TrackActivityScreen() {
   const router = useRouter();
   const { formatDistance, formatSpeed, settings } = useSettings();
 
-  // Use default activity type from settings
   const [selectedActivity, setSelectedActivity] = useState<ActivityType>(
     settings.defaultActivityType || "bike"
   );
   const [activityName, setActivityName] = useState("");
   const [activityNotes, setActivityNotes] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  
+  // Store final values when stopping
+  const [finalDistance, setFinalDistance] = useState(0);
+  const [finalDuration, setFinalDuration] = useState(0);
+  const [finalSpeed, setFinalSpeed] = useState(0);
 
-  // Update selected activity when settings change
   useEffect(() => {
     if (!isTracking && settings.defaultActivityType) {
       setSelectedActivity(settings.defaultActivityType);
     }
   }, [settings.defaultActivityType, isTracking]);
 
-  // Generate Leaflet HTML for the route
+  useEffect(() => {
+    if (error) {
+      Alert.alert("Error", error);
+    }
+  }, [error]);
+
+  // Auto-save on app background (protection against crashes)
+  useEffect(() => {
+    const saveEmergencyActivity = async () => {
+      if (isTracking && currentDistance > 100) { // Only if tracked > 100m
+        console.log("Emergency save triggered");
+        const emergencyName = `Auto-saved ${selectedActivity} activity`;
+        await stopTracking(emergencyName, "Activity auto-saved due to app interruption");
+      }
+    };
+
+    // Set up emergency save handler
+    const handleEmergency = () => {
+      if (isTracking && !showSaveDialog) {
+        saveEmergencyActivity();
+      }
+    };
+
+    // This will trigger on app termination
+    return () => {
+      handleEmergency();
+    };
+  }, [isTracking, currentDistance, selectedActivity, showSaveDialog]);
+
   const generateRouteMapHTML = () => {
     if (currentRoute.length === 0) {
-      // Show current location if no route yet
       const center = currentLocation || {
         latitude: 47.6062,
         longitude: -122.3321,
@@ -80,35 +109,43 @@ export default function TrackActivityScreen() {
           <style>
             body { margin: 0; padding: 0; }
             #map { height: 100vh; width: 100vw; }
+            .accuracy-circle {
+              fill: #4285F4;
+              fill-opacity: 0.2;
+              stroke: #4285F4;
+              stroke-width: 2;
+            }
           </style>
         </head>
         <body>
           <div id="map"></div>
           <script>
-            var map = L.map('map').setView([${center.latitude}, ${center.longitude}], 14);
+            var map = L.map('map').setView([${center.latitude}, ${center.longitude}], 15);
             
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
               attribution: '© OpenStreetMap',
               maxZoom: 19
             }).addTo(map);
 
-            // Add current position marker
-            L.circleMarker([${center.latitude}, ${center.longitude}], {
-              radius: 8,
-              fillColor: '#2d5a3d',
-              color: '#fff',
-              weight: 2,
-              opacity: 1,
-              fillOpacity: 0.8
-            }).addTo(map);
+            // Add current position marker with pulse animation
+            var pulseIcon = L.divIcon({
+              className: 'pulse-icon',
+              html: '<div style="width: 16px; height: 16px; border-radius: 50%; background: #4285F4; box-shadow: 0 0 0 0 rgba(66, 133, 244, 0.7); animation: pulse 2s infinite;"></div>',
+              iconSize: [16, 16]
+            });
+            
+            L.marker([${center.latitude}, ${center.longitude}], {icon: pulseIcon}).addTo(map);
+            
+            // Add CSS animation
+            var style = document.createElement('style');
+            style.innerHTML = '@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(66, 133, 244, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(66, 133, 244, 0); } 100% { box-shadow: 0 0 0 0 rgba(66, 133, 244, 0); } }';
+            document.head.appendChild(style);
           </script>
         </body>
         </html>
       `;
     }
 
-    const firstPoint = currentRoute[0];
-    const lastPoint = currentRoute[currentRoute.length - 1];
     const routeCoords = currentRoute
       .map((point) => `[${point.latitude}, ${point.longitude}]`)
       .join(",");
@@ -135,16 +172,17 @@ export default function TrackActivityScreen() {
             maxZoom: 19
           }).addTo(map);
 
-          // Draw the route with theme color
           var routeCoords = [${routeCoords}];
           if (routeCoords.length > 0) {
+            // Draw the route
             var polyline = L.polyline(routeCoords, {
-              color: '#2d5a3d', // forest green
-              weight: 5,
-              opacity: 0.8
+              color: '#2d5a3d',
+              weight: 4,
+              opacity: 0.8,
+              smoothFactor: 1
             }).addTo(map);
 
-            // Add start marker with theme color
+            // Add start marker
             L.circleMarker(routeCoords[0], {
               radius: 8,
               fillColor: '#2d5a3d',
@@ -154,35 +192,33 @@ export default function TrackActivityScreen() {
               fillOpacity: 1
             }).addTo(map).bindPopup('Start');
 
-            // Add current position marker with accent color
-            L.circleMarker(routeCoords[routeCoords.length - 1], {
-              radius: 10,
-              fillColor: '#cc5500',
-              color: '#fff',
-              weight: 3,
-              opacity: 1,
-              fillOpacity: 1
-            }).addTo(map).bindPopup('Current');
+            // Add current position marker
+            var pulseIcon = L.divIcon({
+              className: 'pulse-icon',
+              html: '<div style="width: 12px; height: 12px; border-radius: 50%; background: #cc5500; box-shadow: 0 0 0 0 rgba(204, 85, 0, 0.7); animation: pulse 2s infinite;"></div>',
+              iconSize: [12, 12]
+            });
+            
+            L.marker(routeCoords[routeCoords.length - 1], {icon: pulseIcon}).addTo(map);
 
-            // Fit map to route with good padding
-            map.fitBounds(polyline.getBounds().pad(0.2));
+            // Fit map to route
+            map.fitBounds(polyline.getBounds().pad(0.1));
             
             // Don't zoom in too far
-            if (map.getZoom() > 16) {
-              map.setZoom(16);
+            if (map.getZoom() > 17) {
+              map.setZoom(17);
             }
+            
+            // Add CSS animation
+            var style = document.createElement('style');
+            style.innerHTML = '@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(204, 85, 0, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(204, 85, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(204, 85, 0, 0); } }';
+            document.head.appendChild(style);
           }
         </script>
       </body>
       </html>
     `;
   };
-
-  useEffect(() => {
-    if (error) {
-      Alert.alert("Error", error);
-    }
-  }, [error]);
 
   const handleStart = async () => {
     await startTracking(selectedActivity);
@@ -197,6 +233,11 @@ export default function TrackActivityScreen() {
   };
 
   const handleStop = () => {
+    // Store final values
+    setFinalDistance(currentDistance);
+    setFinalDuration(currentDuration);
+    setFinalSpeed(currentDistance > 0 ? (currentDistance / 1000) / (currentDuration / 3600) : 0);
+    
     // Pause tracking while showing save dialog
     if (!isPaused) {
       pauseTracking();
@@ -206,7 +247,6 @@ export default function TrackActivityScreen() {
 
   const handleSaveActivity = async () => {
     const name = activityName.trim() || `${selectedActivity} activity`;
-    // Stop tracking (it's already paused)
     await stopTracking(name, activityNotes);
     setActivityName("");
     setActivityNotes("");
@@ -216,16 +256,15 @@ export default function TrackActivityScreen() {
     ]);
   };
 
-  const handleCancel = () => {
+  const handleDiscardActivity = () => {
     Alert.alert(
       "Discard Activity?",
-      "Are you sure you want to discard this activity?",
+      "Are you sure you want to discard this activity? This cannot be undone.",
       [
         {
           text: "Keep Recording",
           style: "cancel",
           onPress: () => {
-            // Resume tracking if user wants to continue
             resumeTracking();
             setShowSaveDialog(false);
           },
@@ -234,7 +273,7 @@ export default function TrackActivityScreen() {
           text: "Discard",
           style: "destructive",
           onPress: async () => {
-            await stopTracking("", "");
+            await stopTracking("", "DISCARD_ACTIVITY");
             setShowSaveDialog(false);
             router.back();
           },
@@ -260,6 +299,9 @@ export default function TrackActivityScreen() {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.forest} />
         <Text style={styles.loadingText}>Starting activity tracking...</Text>
+        <Text style={styles.loadingSubtext}>
+          Please ensure location services are enabled
+        </Text>
       </View>
     );
   }
@@ -269,13 +311,12 @@ export default function TrackActivityScreen() {
       <ScrollView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Choose Activity Type</Text>
-          <Text style={styles.subtitle}>
-            Default:{" "}
-            {settings.defaultActivityType
-              ? settings.defaultActivityType.charAt(0).toUpperCase() +
-                settings.defaultActivityType.slice(1)
-              : "None"}
-          </Text>
+          {settings.defaultActivityType && (
+            <Text style={styles.subtitle}>
+              Default: {settings.defaultActivityType.charAt(0).toUpperCase() + 
+                settings.defaultActivityType.slice(1)}
+            </Text>
+          )}
         </View>
 
         <View style={styles.activityGrid}>
@@ -329,11 +370,10 @@ export default function TrackActivityScreen() {
 
   if (showSaveDialog) {
     return (
-      <View style={styles.container}>
+      <ScrollView style={styles.container}>
         <View style={styles.saveDialog}>
           <Text style={styles.saveTitle}>Save Activity</Text>
           
-          {/* Activity Type Indicator */}
           <View style={styles.activityTypeIndicator}>
             <Ionicons 
               name={activityTypes.find(a => a.type === selectedActivity)?.icon as any} 
@@ -345,10 +385,9 @@ export default function TrackActivityScreen() {
             </Text>
           </View>
 
-          {/* Paused Indicator */}
           <View style={styles.pausedIndicator}>
             <Ionicons name="pause-circle" size={20} color={theme.colors.burntOrange} />
-            <Text style={styles.pausedIndicatorText}>Activity Paused</Text>
+            <Text style={styles.pausedIndicatorText}>Recording Paused</Text>
           </View>
 
           <Text style={styles.label}>Activity Name</Text>
@@ -377,28 +416,23 @@ export default function TrackActivityScreen() {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Distance:</Text>
               <Text style={styles.summaryValue}>
-                {formatDistance(currentDistance)}
+                {formatDistance(finalDistance)}
               </Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Duration:</Text>
               <Text style={styles.summaryValue}>
-                {formatDuration(currentDuration)}
+                {formatDuration(finalDuration)}
               </Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Avg Speed:</Text>
               <Text style={styles.summaryValue}>
-                {formatSpeed(
-                  currentDistance > 0
-                    ? currentDistance / 1000 / (currentDuration / 3600)
-                    : 0
-                )}
+                {formatSpeed(finalSpeed)}
               </Text>
             </View>
           </View>
 
-          {/* Save Button */}
           <TouchableOpacity
             style={styles.saveButton}
             onPress={handleSaveActivity}
@@ -407,7 +441,6 @@ export default function TrackActivityScreen() {
             <Text style={styles.saveButtonText}>Save Activity</Text>
           </TouchableOpacity>
 
-          {/* Continue Recording Button */}
           <TouchableOpacity 
             style={styles.continueButton} 
             onPress={() => {
@@ -419,20 +452,21 @@ export default function TrackActivityScreen() {
             <Text style={styles.continueButtonText}>Continue Recording</Text>
           </TouchableOpacity>
 
-          {/* Discard Button */}
-          <TouchableOpacity style={styles.discardButton} onPress={handleCancel}>
+          <TouchableOpacity 
+            style={styles.discardButton} 
+            onPress={handleDiscardActivity}
+          >
             <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
             <Text style={styles.discardButtonText}>Discard Activity</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
   return (
     <View style={styles.container}>
       <View style={styles.trackingContainer}>
-        {/* Stats Cards at Top */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Distance</Text>
@@ -452,7 +486,6 @@ export default function TrackActivityScreen() {
           </View>
         </View>
 
-        {/* Map View */}
         <View style={styles.mapContainer}>
           <WebView
             style={styles.map}
@@ -466,9 +499,14 @@ export default function TrackActivityScreen() {
               <Text style={styles.pausedText}>PAUSED</Text>
             </View>
           )}
+          {currentRoute.length === 0 && (
+            <View style={styles.gpsStatus}>
+              <ActivityIndicator size="small" color={theme.colors.forest} />
+              <Text style={styles.gpsStatusText}>Acquiring GPS signal...</Text>
+            </View>
+          )}
         </View>
 
-        {/* Control Buttons */}
         <View style={styles.controlsContainer}>
           {!isPaused ? (
             <TouchableOpacity style={styles.pauseButton} onPress={handlePause}>
@@ -499,6 +537,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+  },
+  loadingText: {
+    marginTop: 20,
+    fontSize: 16,
+    color: theme.colors.navy,
+    fontWeight: "600",
+  },
+  loadingSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: theme.colors.gray,
   },
   header: {
     padding: 20,
@@ -535,6 +590,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   activityCardSelected: {
     backgroundColor: theme.colors.forest,
@@ -557,12 +617,35 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 18,
     borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   startButtonText: {
     color: theme.colors.white,
     fontSize: 18,
     fontWeight: "bold",
     marginLeft: 10,
+  },
+  manualButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: 20,
+    marginTop: 0,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.colors.forest,
+    backgroundColor: "transparent",
+  },
+  manualButtonText: {
+    color: theme.colors.navy,
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
   },
   trackingContainer: {
     flex: 1,
@@ -607,12 +690,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   pausedText: {
     color: theme.colors.white,
     fontSize: 14,
     fontWeight: "bold",
     letterSpacing: 1,
+  },
+  gpsStatus: {
+    position: "absolute",
+    bottom: 20,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  gpsStatusText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: theme.colors.navy,
   },
   controlsContainer: {
     flexDirection: "row",
@@ -682,6 +791,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 15,
+    padding: 10,
+    backgroundColor: theme.colors.white,
+    borderRadius: 8,
   },
   activityTypeText: {
     fontSize: 16,
@@ -725,10 +837,12 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   summaryCard: {
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: theme.colors.white,
     padding: 15,
     borderRadius: 8,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
   },
   summaryTitle: {
     fontSize: 16,
@@ -758,6 +872,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   saveButtonText: {
     color: theme.colors.white,
@@ -792,35 +911,6 @@ const styles = StyleSheet.create({
     color: theme.colors.burntOrange,
     fontSize: 16,
     fontWeight: "500",
-    marginLeft: 8,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: theme.colors.offWhite,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: theme.colors.gray,
-  },
-  manualButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: 20,
-    marginTop: 0,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: theme.colors.forest,
-    backgroundColor: "transparent",
-  },
-  manualButtonText: {
-    color: theme.colors.navy,
-    fontSize: 16,
-    fontWeight: "600",
     marginLeft: 8,
   },
 });
