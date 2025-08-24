@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { ActivityType, useActivity } from "../contexts/ActivityContext";
 import { useSettings } from "../contexts/SettingsContext";
@@ -53,11 +52,6 @@ export default function TrackActivityScreen() {
   const [activityNotes, setActivityNotes] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   
-  // Map-related state
-  const [showMap, setShowMap] = useState(false);
-  const [mapView, setMapView] = useState<'simple' | 'full'>('simple');
-  const mapLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
   // Store final values when stopping
   const [finalDistance, setFinalDistance] = useState(0);
   const [finalDuration, setFinalDuration] = useState(0);
@@ -75,176 +69,7 @@ export default function TrackActivityScreen() {
     }
   }, [error]);
 
-  // Delay map loading to reduce initial load
-  useEffect(() => {
-    if (isTracking && !showMap) {
-      // Wait 3 seconds after tracking starts to load the map
-      mapLoadTimeoutRef.current = setTimeout(() => {
-        setShowMap(true);
-      }, 3000);
-    }
-    
-    return () => {
-      if (mapLoadTimeoutRef.current) {
-        clearTimeout(mapLoadTimeoutRef.current);
-      }
-    };
-  }, [isTracking]);
-
-  // Switch to full map after getting some GPS points
-  useEffect(() => {
-    if (currentRoute.length > 5 && mapView === 'simple') {
-      setMapView('full');
-    }
-  }, [currentRoute.length, mapView]);
-
-  // Auto-save on app background (protection against crashes)
-  useEffect(() => {
-    const saveEmergencyActivity = async () => {
-      if (isTracking && currentDistance > 100) {
-        console.log("Emergency save triggered");
-        const emergencyName = `Auto-saved ${selectedActivity} activity`;
-        await stopTracking(emergencyName, "Activity auto-saved due to app interruption");
-      }
-    };
-
-    const handleEmergency = () => {
-      if (isTracking && !showSaveDialog) {
-        saveEmergencyActivity();
-      }
-    };
-
-    return () => {
-      handleEmergency();
-    };
-  }, [isTracking, currentDistance, selectedActivity, showSaveDialog]);
-
-  // Simple map that just shows current location (lightweight)
-  const generateSimpleMapHTML = () => {
-    const center = currentLocation || { latitude: 47.6062, longitude: -122.3321 };
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-        <style>
-          body { 
-            margin: 0; 
-            padding: 0; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          }
-          .location-info {
-            text-align: center;
-            color: white;
-          }
-          .coords {
-            font-size: 14px;
-            opacity: 0.9;
-            margin-top: 10px;
-          }
-          .pulse {
-            width: 30px;
-            height: 30px;
-            background: white;
-            border-radius: 50%;
-            margin: 0 auto 20px;
-            position: relative;
-            animation: pulse 2s infinite;
-          }
-          @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
-            70% { box-shadow: 0 0 0 20px rgba(255, 255, 255, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="location-info">
-          <div class="pulse"></div>
-          <div>📍 GPS Active</div>
-          <div class="coords">${center.latitude.toFixed(4)}, ${center.longitude.toFixed(4)}</div>
-        </div>
-      </body>
-      </html>
-    `;
-  };
-
-  // Full map with route (only load when needed)
-  const generateFullMapHTML = () => {
-    const routeCoords = currentRoute
-      .map((point) => `[${point.latitude}, ${point.longitude}]`)
-      .join(",");
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <style>
-          body { margin: 0; padding: 0; }
-          #map { height: 100vh; width: 100vw; }
-        </style>
-      </head>
-      <body>
-        <div id="map"></div>
-        <script>
-          var map = L.map('map', {
-            zoomControl: false,
-            attributionControl: false
-          });
-          
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OSM'
-          }).addTo(map);
-
-          var routeCoords = [${routeCoords}];
-          if (routeCoords.length > 0) {
-            var polyline = L.polyline(routeCoords, {
-              color: '#2d5a3d',
-              weight: 4,
-              opacity: 0.8
-            }).addTo(map);
-
-            // Start marker
-            L.circleMarker(routeCoords[0], {
-              radius: 6,
-              fillColor: '#2d5a3d',
-              color: '#fff',
-              weight: 2,
-              opacity: 1,
-              fillOpacity: 1
-            }).addTo(map);
-
-            // Current position
-            L.circleMarker(routeCoords[routeCoords.length - 1], {
-              radius: 8,
-              fillColor: '#cc5500',
-              color: '#fff',
-              weight: 2,
-              opacity: 1,
-              fillOpacity: 1
-            }).addTo(map);
-
-            map.fitBounds(polyline.getBounds().pad(0.1));
-            if (map.getZoom() > 17) map.setZoom(17);
-          }
-        </script>
-      </body>
-      </html>
-    `;
-  };
-
   const handleStart = async () => {
-    setShowMap(false);
-    setMapView('simple');
     await startTracking(selectedActivity);
   };
 
@@ -273,7 +98,6 @@ export default function TrackActivityScreen() {
     setActivityName("");
     setActivityNotes("");
     setShowSaveDialog(false);
-    setShowMap(false);
     Alert.alert("Success", "Activity saved!", [
       { text: "OK", onPress: () => router.back() },
     ]);
@@ -298,7 +122,6 @@ export default function TrackActivityScreen() {
           onPress: async () => {
             await stopTracking("", "DISCARD_ACTIVITY");
             setShowSaveDialog(false);
-            setShowMap(false);
             router.back();
           },
         },
@@ -488,74 +311,80 @@ export default function TrackActivityScreen() {
     );
   }
 
+  // TRACKING VIEW - NO MAP, JUST STATS
   return (
     <View style={styles.container}>
       <View style={styles.trackingContainer}>
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Distance</Text>
-            <Text style={styles.statValue}>
+        {/* Large Stats Display */}
+        <View style={styles.mainStatsContainer}>
+          {isPaused && (
+            <View style={styles.pausedBanner}>
+              <Ionicons name="pause-circle" size={20} color={theme.colors.white} />
+              <Text style={styles.pausedBannerText}>PAUSED</Text>
+            </View>
+          )}
+          
+          <View style={styles.primaryStat}>
+            <Text style={styles.primaryStatLabel}>Distance</Text>
+            <Text style={styles.primaryStatValue}>
               {formatDistance(currentDistance)}
             </Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Duration</Text>
-            <Text style={styles.statValue}>
-              {formatDuration(currentDuration)}
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Speed</Text>
-            <Text style={styles.statValue}>{formatSpeed(currentSpeed)}</Text>
-          </View>
-        </View>
 
-        <View style={styles.mapContainer}>
-          {!showMap ? (
-            <View style={styles.mapPlaceholder}>
-              <ActivityIndicator size="large" color={theme.colors.forest} />
-              <Text style={styles.mapLoadingText}>Initializing GPS...</Text>
-              <Text style={styles.mapLoadingSubtext}>
-                {currentRoute.length > 0 
-                  ? `${currentRoute.length} points recorded`
-                  : "Waiting for location signal"}
+          <View style={styles.secondaryStats}>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Duration</Text>
+              <Text style={styles.statValue}>
+                {formatDuration(currentDuration)}
               </Text>
             </View>
-          ) : (
-            <WebView
-              style={styles.map}
-              source={{ 
-                html: mapView === 'simple' 
-                  ? generateSimpleMapHTML() 
-                  : generateFullMapHTML() 
-              }}
-              scrollEnabled={false}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              // Reduce WebView overhead
-              androidHardwareAccelerationDisabled={false}
-              cacheEnabled={false}
-              incognito={true}
-            />
-          )}
-          
-          {isPaused && (
-            <View style={styles.pausedOverlay}>
-              <Text style={styles.pausedText}>PAUSED</Text>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Current Speed</Text>
+              <Text style={styles.statValue}>{formatSpeed(currentSpeed)}</Text>
             </View>
-          )}
-          
-          {showMap && mapView === 'simple' && (
-            <TouchableOpacity 
-              style={styles.showMapButton}
-              onPress={() => setMapView('full')}
-            >
-              <Ionicons name="map" size={16} color={theme.colors.white} />
-              <Text style={styles.showMapButtonText}>Show Map</Text>
-            </TouchableOpacity>
-          )}
+          </View>
+
+          <View style={styles.secondaryStats}>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Avg Speed</Text>
+              <Text style={styles.statValue}>
+                {formatSpeed(
+                  currentDistance > 0 && currentDuration > 0
+                    ? (currentDistance / 1000) / (currentDuration / 3600)
+                    : 0
+                )}
+              </Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>GPS Points</Text>
+              <Text style={styles.statValue}>{currentRoute.length}</Text>
+            </View>
+          </View>
+
+          {/* GPS Status */}
+          <View style={styles.gpsStatus}>
+            <View style={[styles.gpsIndicator, currentLocation ? styles.gpsActive : styles.gpsSearching]} />
+            <Text style={styles.gpsStatusText}>
+              {currentLocation 
+                ? `GPS Active (±${currentLocation.accuracy?.toFixed(0) || '?'}m)`
+                : 'Acquiring GPS...'}
+            </Text>
+          </View>
+
+          {/* Activity Type Indicator */}
+          <View style={styles.activityIndicator}>
+            <Ionicons 
+              name={activityTypes.find(a => a.type === selectedActivity)?.icon as any} 
+              size={32} 
+              color={theme.colors.forest} 
+            />
+            <Text style={styles.activityIndicatorText}>
+              {selectedActivity.charAt(0).toUpperCase() + selectedActivity.slice(1)}
+            </Text>
+          </View>
         </View>
 
+        {/* Control Buttons */}
         <View style={styles.controlsContainer}>
           {!isPaused ? (
             <TouchableOpacity style={styles.pauseButton} onPress={handlePause}>
@@ -639,11 +468,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   activityCardSelected: {
     backgroundColor: theme.colors.forest,
@@ -666,11 +490,6 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 18,
     borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
   },
   startButtonText: {
     color: theme.colors.white,
@@ -699,12 +518,49 @@ const styles = StyleSheet.create({
   trackingContainer: {
     flex: 1,
   },
-  statsRow: {
+  mainStatsContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.white,
+    padding: 20,
+  },
+  pausedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.burntOrange,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  pausedBannerText: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 8,
+    letterSpacing: 1,
+  },
+  primaryStat: {
+    alignItems: "center",
+    paddingVertical: 30,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  primaryStatLabel: {
+    fontSize: 18,
+    color: theme.colors.gray,
+    marginBottom: 10,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  primaryStatValue: {
+    fontSize: 48,
+    fontWeight: "bold",
+    color: theme.colors.navy,
+  },
+  secondaryStats: {
     flexDirection: "row",
     justifyContent: "space-around",
-    backgroundColor: theme.colors.white,
-    paddingVertical: 15,
-    paddingHorizontal: 10,
+    paddingVertical: 20,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
@@ -715,7 +571,7 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: theme.colors.gray,
-    marginBottom: 4,
+    marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -724,71 +580,39 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: theme.colors.navy,
   },
-  mapContainer: {
-    flex: 1,
-    position: "relative",
-  },
-  map: {
-    flex: 1,
-  },
-  mapPlaceholder: {
-    flex: 1,
-    justifyContent: "center",
+  gpsStatus: {
+    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    justifyContent: "center",
+    paddingVertical: 20,
   },
-  mapLoadingText: {
-    marginTop: 20,
-    fontSize: 16,
-    color: theme.colors.navy,
-    fontWeight: "600",
+  gpsIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 10,
   },
-  mapLoadingSubtext: {
-    marginTop: 8,
+  gpsActive: {
+    backgroundColor: theme.colors.forest,
+  },
+  gpsSearching: {
+    backgroundColor: theme.colors.burntOrange,
+  },
+  gpsStatusText: {
     fontSize: 14,
     color: theme.colors.gray,
   },
-  showMapButton: {
-    position: "absolute",
-    bottom: 20,
-    alignSelf: "center",
+  activityIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.forest,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    justifyContent: "center",
+    paddingTop: 20,
   },
-  showMapButtonText: {
-    marginLeft: 6,
-    color: theme.colors.white,
-    fontSize: 14,
+  activityIndicatorText: {
+    fontSize: 20,
+    color: theme.colors.forest,
+    marginLeft: 10,
     fontWeight: "600",
-  },
-  pausedOverlay: {
-    position: "absolute",
-    top: 20,
-    alignSelf: "center",
-    backgroundColor: theme.colors.burntOrange,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  pausedText: {
-    color: theme.colors.white,
-    fontSize: 14,
-    fontWeight: "bold",
-    letterSpacing: 1,
   },
   controlsContainer: {
     flexDirection: "row",
@@ -806,11 +630,6 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
   },
   resumeButton: {
     backgroundColor: theme.colors.forest,
@@ -819,11 +638,6 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
   },
   stopButton: {
     backgroundColor: theme.colors.navy,
@@ -832,11 +646,6 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
   },
   controlButtonText: {
     color: theme.colors.white,
@@ -939,11 +748,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
   },
   saveButtonText: {
     color: theme.colors.white,
