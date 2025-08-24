@@ -12,6 +12,7 @@ export interface Friend {
   username: string;
   displayName: string; // Maps to display_name in DB
   avatar?: string;
+  profile_picture?: string | null; // Add this field for profile pictures
   friendsSince: Date;
   status: 'pending' | 'accepted' | 'blocked';
   lastActive?: Date; // Maps to last_active in DB
@@ -94,6 +95,7 @@ export interface FriendSuggestion {
   username: string;
   displayName: string;
   avatar?: string;
+  profile_picture?: string | null;
   mutualFriendsCount: number;
   suggestionReason: string;
 }
@@ -238,6 +240,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             username,
             display_name,
             avatar,
+            profile_picture,
             last_active
           )
         `)
@@ -259,6 +262,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             username: f.friend.username,
             displayName: f.friend.display_name, // Transform to old name
             avatar: f.friend.avatar,
+            profile_picture: f.friend.profile_picture, // Include profile_picture
             friendsSince: new Date(f.accepted_at || f.requested_at),
             status: 'accepted' as const,
             lastActive: f.friend.last_active ? new Date(f.friend.last_active) : undefined, // Transform to old name
@@ -275,7 +279,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             id,
             username,
             display_name,
-            avatar
+            avatar,
+            profile_picture
           )
         `)
         .eq('to_user_id', currentUserId);
@@ -301,6 +306,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
               username: r.from_user.username,
               displayName: r.from_user.display_name, // Transform to old name
               avatar: r.from_user.avatar,
+              profile_picture: r.from_user.profile_picture,
               friendsSince: new Date(),
               status: 'pending' as const,
             },
@@ -309,6 +315,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
               username: r.from_user.username,
               displayName: r.from_user.display_name,
               avatar: r.from_user.avatar,
+              profile_picture: r.from_user.profile_picture,
               friendsSince: new Date(),
               status: 'pending' as const,
             },
@@ -327,7 +334,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
           to_user:profiles!friend_requests_to_user_id_fkey(
             id,
             username,
-            display_name
+            display_name,
+            avatar,
+            profile_picture
           )
         `)
         .eq('from_user_id', currentUserId);
@@ -371,7 +380,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
       // Get some active users as suggestions (simplified version)
       const { data: activeUsers } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar')
+        .select('id, username, display_name, avatar, profile_picture')
         .neq('id', currentUserId)
         .order('last_active', { ascending: false })
         .limit(10);
@@ -392,6 +401,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
           username: u.username,
           displayName: u.display_name, // Transform to old name
           avatar: u.avatar,
+          profile_picture: u.profile_picture,
           mutualFriendsCount: 0,
           suggestionReason: 'Active on ExplorAble',
         }));
@@ -433,7 +443,8 @@ const loadFeed = async () => {
           id,
           username,
           display_name,
-          avatar
+          avatar,
+          profile_picture
         )
       `)
       .in('user_id', friendIds)
@@ -453,7 +464,8 @@ const loadFeed = async () => {
           id,
           username,
           display_name,
-          avatar
+          avatar,
+          profile_picture
         )
       `)
       .in('user_id', friendIds)
@@ -488,6 +500,7 @@ const loadFeed = async () => {
             username: activity.user.username,
             displayName: activity.user.display_name || activity.user.username,
             avatar: activity.user.avatar,
+            profile_picture: activity.user.profile_picture,
             friendsSince: new Date(),
             status: 'accepted' as const,
           },
@@ -519,6 +532,7 @@ const loadFeed = async () => {
             username: location.user.username,
             displayName: location.user.display_name || location.user.username,
             avatar: location.user.avatar,
+            profile_picture: location.user.profile_picture,
             friendsSince: new Date(),
             status: 'accepted' as const,
           },
@@ -756,6 +770,7 @@ const loadFeed = async () => {
         username: user.username,
         displayName: user.display_name, // Transform to old name
         avatar: user.avatar,
+        profile_picture: user.profile_picture, // Include profile_picture
         friendsSince: new Date(),
         status: 'pending' as const,
         lastActive: user.last_active ? new Date(user.last_active) : undefined, // Transform to old name

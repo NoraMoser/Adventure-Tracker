@@ -1,4 +1,4 @@
-// app/friends-feed.tsx
+// app/friends-feed.tsx - Updated with better colors and avatar support
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -22,7 +22,7 @@ import { useFriends } from '../contexts/FriendsContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { ShareService } from '../services/shareService';
 
-// Share Modal Component for re-sharing items from friends
+// Share Modal Component
 const ShareFriendItemModal = ({
   visible,
   onClose,
@@ -60,7 +60,6 @@ const ShareFriendItemModal = ({
     }
     onShare(friendsToShare, shareMessage);
     onClose();
-    // Reset state
     setSelectedFriends([]);
     setShareMessage("");
     setShareToAll(false);
@@ -75,6 +74,13 @@ const ShareFriendItemModal = ({
       return `${item.data.achievementName} achievement`;
     }
     return 'Shared item';
+  };
+
+  const renderAvatar = (friend: any) => {
+    if (friend.profilePicture) {
+      return <Image source={{ uri: friend.profilePicture }} style={shareModalStyles.friendAvatarImage} />;
+    }
+    return <Text style={shareModalStyles.friendAvatar}>{friend.avatar || '👤'}</Text>;
   };
 
   return (
@@ -144,9 +150,7 @@ const ShareFriendItemModal = ({
                     onPress={() => toggleFriend(friend.id)}
                   >
                     <View style={shareModalStyles.friendInfo}>
-                      <Text style={shareModalStyles.friendAvatar}>
-                        {friend.avatar || "👤"}
-                      </Text>
+                      {renderAvatar(friend)}
                       <Text style={shareModalStyles.friendName}>
                         {friend.displayName}
                       </Text>
@@ -211,20 +215,27 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
     if (minutes > 0) return `${minutes}m ago`;
     return 'Just now';
   };
+
+  const renderUserAvatar = (user: any) => {
+    if (user.profilePicture) {
+      return <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />;
+    }
+    return <Text style={styles.avatarText}>{user.avatar || '👤'}</Text>;
+  };
   
   const renderActivityContent = (activity: any) => (
     <View style={styles.activityContent}>
       <View style={styles.activityStats}>
         <View style={styles.statItem}>
-          <Ionicons name="navigate" size={16} color={theme.colors.gray} />
+          <Ionicons name="navigate" size={16} color={theme.colors.forest} />
           <Text style={styles.statText}>{formatDistance(activity.distance)}</Text>
         </View>
         <View style={styles.statItem}>
-          <Ionicons name="time" size={16} color={theme.colors.gray} />
+          <Ionicons name="time" size={16} color={theme.colors.forest} />
           <Text style={styles.statText}>{Math.round(activity.duration / 60)}min</Text>
         </View>
         <View style={styles.statItem}>
-          <Ionicons name="speedometer" size={16} color={theme.colors.gray} />
+          <Ionicons name="speedometer" size={16} color={theme.colors.forest} />
           <Text style={styles.statText}>{formatSpeed(activity.averageSpeed)}</Text>
         </View>
       </View>
@@ -248,7 +259,7 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
         </ScrollView>
       )}
       <View style={styles.locationCoords}>
-        <Ionicons name="pin" size={14} color={theme.colors.gray} />
+        <Ionicons name="pin" size={14} color={theme.colors.burntOrange} />
         <Text style={styles.coordsText}>
           {location.location.latitude.toFixed(4)}, {location.location.longitude.toFixed(4)}
         </Text>
@@ -285,9 +296,7 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
       <View style={styles.cardHeader}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {item.data.sharedBy.avatar || '👤'}
-            </Text>
+            {renderUserAvatar(item.data.sharedBy)}
           </View>
           <View style={styles.userText}>
             <Text style={styles.userName}>{item.data.sharedBy.displayName}</Text>
@@ -427,7 +436,6 @@ export default function FriendsFeedScreen() {
   const handleShare = (item: any) => {
     console.log('handleShare called with item:', item);
     
-    // Check if user has friends to share with
     if (friends.filter((f) => f.status === "accepted").length === 0) {
       Alert.alert(
         "No Friends Yet",
@@ -440,15 +448,11 @@ export default function FriendsFeedScreen() {
       return;
     }
 
-    // For now, let's try different sharing methods based on item type
     if (item.type === 'location') {
-      // Share as location using existing ShareService
       handleShareLocation(item.data);
     } else if (item.type === 'activity') {
-      // Share as activity using existing ShareService  
       handleShareActivity(item.data);
     } else {
-      // For other types or re-sharing, use the modal
       setItemToShare(item);
       setShowShareModal(true);
     }
@@ -481,8 +485,6 @@ export default function FriendsFeedScreen() {
     message?: string
   ) => {
     try {
-      // This would typically send to your backend
-      // For now, just show success
       Alert.alert("Success", "Content shared with friends!");
       setShowShareModal(false);
       setItemToShare(null);
@@ -498,6 +500,13 @@ export default function FriendsFeedScreen() {
     if (filter === 'achievements') return item.type === 'achievement';
     return true;
   });
+
+  const renderOnlineAvatar = (friend: any) => {
+    if (friend.profilePicture) {
+      return <Image source={{ uri: friend.profilePicture }} style={styles.onlineAvatarImage} />;
+    }
+    return <Text style={styles.onlineAvatarText}>{friend.avatar || '👤'}</Text>;
+  };
   
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
@@ -557,7 +566,7 @@ export default function FriendsFeedScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {friends.filter(f => f.status === 'accepted').map(friend => {
               const isOnline = friend.lastActive && 
-                (new Date().getTime() - new Date(friend.lastActive).getTime()) < 300000; // 5 minutes
+                (new Date().getTime() - new Date(friend.lastActive).getTime()) < 300000;
               
               return (
                 <TouchableOpacity 
@@ -566,7 +575,7 @@ export default function FriendsFeedScreen() {
                   onPress={() => router.push(`/friend-profile/${friend.id}`)}
                 >
                   <View style={styles.onlineAvatar}>
-                    <Text style={styles.onlineAvatarText}>{friend.avatar || '👤'}</Text>
+                    {renderOnlineAvatar(friend)}
                     {isOnline && <View style={styles.onlineIndicator} />}
                   </View>
                   <Text style={styles.onlineName}>{friend.displayName.split(' ')[0]}</Text>
@@ -684,10 +693,12 @@ const shareModalStyles = StyleSheet.create({
     color: theme.colors.navy,
   },
   itemPreview: {
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: theme.colors.forest + "10",
     margin: 20,
     padding: 15,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.forest + "20",
   },
   previewHeader: {
     flexDirection: "row",
@@ -710,6 +721,8 @@ const shareModalStyles = StyleSheet.create({
     color: theme.colors.navy,
     minHeight: 80,
     textAlignVertical: "top",
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
   },
   shareToAll: {
     flexDirection: "row",
@@ -751,6 +764,12 @@ const shareModalStyles = StyleSheet.create({
   },
   friendAvatar: {
     fontSize: 20,
+    marginRight: 10,
+  },
+  friendAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     marginRight: 10,
   },
   friendName: {
@@ -822,11 +841,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   onlineBar: {
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.forest + '15',
     paddingVertical: 15,
     paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
+    borderBottomColor: theme.colors.forest + '20',
   },
   onlineFriend: {
     alignItems: 'center',
@@ -836,13 +855,20 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    borderWidth: 2,
+    borderColor: theme.colors.forest + '30',
   },
   onlineAvatarText: {
     fontSize: 24,
+  },
+  onlineAvatarImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -857,8 +883,9 @@ const styles = StyleSheet.create({
   },
   onlineName: {
     fontSize: 12,
-    color: theme.colors.gray,
+    color: theme.colors.navy,
     marginTop: 5,
+    fontWeight: '500',
   },
   filterTabs: {
     flexDirection: 'row',
@@ -874,6 +901,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 20,
     marginHorizontal: 5,
+    backgroundColor: theme.colors.offWhite,
   },
   filterTabActive: {
     backgroundColor: theme.colors.forest,
@@ -891,21 +919,24 @@ const styles = StyleSheet.create({
   },
   feedCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
+    backgroundColor: theme.colors.offWhite,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   userInfo: {
     flexDirection: 'row',
@@ -915,13 +946,20 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
   },
   avatarText: {
     fontSize: 20,
+  },
+  avatarImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
   },
   userText: {
     flex: 1,
@@ -956,9 +994,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 10,
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: theme.colors.forest + '08',
     borderRadius: 8,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.forest + '15',
   },
   statItem: {
     flexDirection: 'row',
@@ -975,6 +1015,7 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     fontStyle: 'italic',
     marginTop: 10,
+    paddingHorizontal: 10,
   },
   locationContent: {},
   locationName: {
@@ -987,6 +1028,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
     marginBottom: 10,
+    lineHeight: 20,
   },
   photoScroll: {
     marginVertical: 10,
@@ -1001,10 +1043,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 10,
+    backgroundColor: theme.colors.burntOrange + '10',
+    padding: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
   },
   coordsText: {
     fontSize: 12,
-    color: theme.colors.gray,
+    color: theme.colors.navy,
     marginLeft: 5,
     fontFamily: 'monospace',
   },
@@ -1016,7 +1062,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: theme.colors.forest + '15',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
@@ -1037,6 +1083,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
+    backgroundColor: theme.colors.offWhite,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   actionButton: {
     flexDirection: 'row',
@@ -1053,9 +1102,13 @@ const styles = StyleSheet.create({
     padding: 15,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
+    backgroundColor: theme.colors.offWhite,
   },
   comment: {
     marginBottom: 10,
+    backgroundColor: 'white',
+    padding: 10,
+    borderRadius: 8,
   },
   commentUser: {
     fontSize: 14,
@@ -1079,13 +1132,15 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    backgroundColor: theme.colors.offWhite,
+    backgroundColor: 'white',
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 8,
     marginRight: 10,
     fontSize: 14,
     color: theme.colors.navy,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
   },
   sendButton: {
     padding: 8,

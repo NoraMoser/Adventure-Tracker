@@ -1,4 +1,4 @@
-// app/friends.tsx - Fixed version compatible with restored FriendsContext
+// app/friends.tsx - Complete file with unfriend and block options
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -20,12 +20,94 @@ import { theme } from '../constants/theme';
 import { useAuth } from '../contexts/AuthContext';
 import { Friend, FriendRequest, FriendSuggestion, useFriends } from '../contexts/FriendsContext';
 
+// Friend Options Modal Component
+const FriendOptionsModal = ({
+  visible,
+  friend,
+  onClose,
+  onUnfriend,
+  onBlock,
+  onViewProfile,
+}: {
+  visible: boolean;
+  friend: Friend | null;
+  onClose: () => void;
+  onUnfriend: () => void;
+  onBlock: () => void;
+  onViewProfile: () => void;
+}) => {
+  if (!friend) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
+      <View style={optionStyles.overlay}>
+        <View style={optionStyles.container}>
+          <View style={optionStyles.header}>
+            <View style={optionStyles.headerInfo}>
+              <Text style={optionStyles.avatar}>{friend.avatar || '👤'}</Text>
+              <View>
+                <Text style={optionStyles.name}>{friend.displayName}</Text>
+                <Text style={optionStyles.username}>@{friend.username}</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={theme.colors.gray} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={optionStyles.options}>
+            <TouchableOpacity
+              style={optionStyles.option}
+              onPress={onViewProfile}
+            >
+              <Ionicons name="person-outline" size={24} color={theme.colors.navy} />
+              <Text style={optionStyles.optionText}>View Profile</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={optionStyles.option}
+              onPress={onUnfriend}
+            >
+              <Ionicons name="person-remove-outline" size={24} color={theme.colors.burntOrange} />
+              <Text style={[optionStyles.optionText, { color: theme.colors.burntOrange }]}>
+                Unfriend
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[optionStyles.option, optionStyles.dangerOption]}
+              onPress={onBlock}
+            >
+              <Ionicons name="ban-outline" size={24} color="#FF4757" />
+              <Text style={[optionStyles.optionText, { color: "#FF4757" }]}>
+                Block User
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={optionStyles.warning}>
+            Blocking will remove this person from your friends and prevent them from sending you requests.
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Friend Item Component
 const FriendItem: React.FC<{
   friend: Friend;
   onPress: () => void;
-  onRemove: () => void;
-}> = ({ friend, onPress, onRemove }) => {
+  onOptions: () => void;
+}> = ({ friend, onPress, onOptions }) => {
   const getLastActiveText = (lastActive?: Date) => {
     if (!lastActive) return 'Offline';
     
@@ -60,7 +142,7 @@ const FriendItem: React.FC<{
       
       <TouchableOpacity 
         style={styles.moreButton}
-        onPress={onRemove}
+        onPress={onOptions}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Ionicons name="ellipsis-vertical" size={20} color={theme.colors.gray} />
@@ -77,8 +159,6 @@ const RequestItem: React.FC<{
   onDecline?: () => void;
   onCancel?: () => void;
 }> = ({ request, type, onAccept, onDecline, onCancel }) => {
-  // For incoming requests, use from or from_user
-  // For outgoing requests, use to field
   let user: any = null;
   let displayName = '';
   let username = '';
@@ -97,7 +177,6 @@ const RequestItem: React.FC<{
       avatar = user.avatar;
     }
   } else {
-    // For outgoing requests, to is just a string username
     username = request.to || 'Unknown';
     displayName = username;
   }
@@ -194,8 +273,8 @@ export default function FriendsScreen() {
   const { profile } = useAuth();
   const {
     friends,
-    friendRequests, // incoming requests
-    pendingRequests, // outgoing requests
+    friendRequests,
+    pendingRequests,
     suggestions,
     loading,
     sendFriendRequest,
@@ -203,6 +282,7 @@ export default function FriendsScreen() {
     declineFriendRequest,
     cancelFriendRequest,
     removeFriend,
+    blockUser,
     searchUsers,
     refreshFriends,
     refreshSuggestions,
@@ -216,6 +296,8 @@ export default function FriendsScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addUsername, setAddUsername] = useState('');
   const [addMessage, setAddMessage] = useState('');
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   
   useEffect(() => {
     if (refreshFriends) {
@@ -249,7 +331,6 @@ export default function FriendsScreen() {
   
   const handleSendRequest = async (username: string, message?: string) => {
     await sendFriendRequest(username, message);
-    // Since sendFriendRequest doesn't return a boolean, we just clear the form
     setAddUsername('');
     setAddMessage('');
     setShowAddModal(false);
@@ -257,26 +338,63 @@ export default function FriendsScreen() {
     setSearchResults([]);
   };
   
-  const handleRemoveFriend = (friend: Friend) => {
+  const handleFriendOptions = (friend: Friend) => {
+    setSelectedFriend(friend);
+    setShowOptionsModal(true);
+  };
+  
+  const handleUnfriend = () => {
+    if (!selectedFriend) return;
+    
     Alert.alert(
-      'Remove Friend',
-      `Remove ${friend.displayName} from your friends?`,
+      'Unfriend',
+      `Remove ${selectedFriend.displayName} from your friends?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Unfriend',
           style: 'destructive',
-          onPress: () => removeFriend(friend.id),
+          onPress: () => {
+            removeFriend(selectedFriend.id);
+            setShowOptionsModal(false);
+            setSelectedFriend(null);
+          },
         },
       ]
     );
+  };
+  
+  const handleBlockUser = () => {
+    if (!selectedFriend) return;
+    
+    Alert.alert(
+      'Block User',
+      `Block ${selectedFriend.displayName}? They won't be able to send you friend requests or see your shared content.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => {
+            blockUser(selectedFriend.id);
+            setShowOptionsModal(false);
+            setSelectedFriend(null);
+          },
+        },
+      ]
+    );
+  };
+  
+  const handleViewProfile = () => {
+    if (!selectedFriend) return;
+    setShowOptionsModal(false);
+    router.push(`/friend-profile/${selectedFriend.id}` as any);
   };
   
   const handleCancelRequest = async (requestId: string) => {
     if (cancelFriendRequest) {
       await cancelFriendRequest(requestId);
     } else {
-      // Fallback: use decline for outgoing requests if cancel is not available
       await declineFriendRequest(requestId);
     }
   };
@@ -298,7 +416,7 @@ export default function FriendsScreen() {
         <FriendItem
           friend={item}
           onPress={() => router.push(`/friend-profile/${item.id}` as any)}
-          onRemove={() => handleRemoveFriend(item)}
+          onOptions={() => handleFriendOptions(item)}
         />
       )}
       refreshControl={
@@ -611,6 +729,19 @@ export default function FriendsScreen() {
           </View>
         </View>
       </Modal>
+      
+      {/* Friend Options Modal */}
+      <FriendOptionsModal
+        visible={showOptionsModal}
+        friend={selectedFriend}
+        onClose={() => {
+          setShowOptionsModal(false);
+          setSelectedFriend(null);
+        }}
+        onUnfriend={handleUnfriend}
+        onBlock={handleBlockUser}
+        onViewProfile={handleViewProfile}
+      />
     </View>
   );
 }
@@ -1093,5 +1224,71 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+});
+
+const optionStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  headerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  name: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.navy,
+  },
+  username: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  options: {
+    padding: 20,
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  dangerOption: {
+    borderBottomWidth: 0,
+  },
+  optionText: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.navy,
+    marginLeft: 15,
+  },
+  warning: {
+    fontSize: 12,
+    color: theme.colors.lightGray,
+    textAlign: 'center',
+    marginHorizontal: 20,
+    marginTop: 10,
   },
 });

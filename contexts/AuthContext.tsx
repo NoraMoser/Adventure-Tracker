@@ -20,6 +20,8 @@ interface Profile {
     share_locations: boolean;
     allow_friend_requests: boolean;
   };
+    profile_picture?: string | null;  // Add this line
+
 }
 
 interface AuthContextType {

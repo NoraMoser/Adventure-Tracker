@@ -1,4 +1,4 @@
-// app/index.tsx - Complete file with profile editing
+// app/index.tsx - Complete file with left sidebar and friends features
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -25,6 +25,7 @@ import { categories } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useAuth } from "../contexts/AuthContext";
+import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { supabase } from "../lib/supabase";
@@ -39,12 +40,25 @@ export default function DashboardScreen() {
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
   const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings();
+  const { friendRequests } = useFriends();
   const webViewRef = useRef<WebView>(null);
 
   // State
   const [isInitializing, setIsInitializing] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+
+  // Sidebar animation
+  const sidebarAnimation = useRef(new Animated.Value(-width * 0.75)).current;
+
+  const toggleSidebar = (show: boolean) => {
+    Animated.timing(sidebarAnimation, {
+      toValue: show ? 0 : -width * 0.75,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+    setShowSidebar(show);
+  };
 
   // Bottom sheet animation
   const animatedValue = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
@@ -83,12 +97,10 @@ export default function DashboardScreen() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Wait for auth to be ready
         if (authLoading) {
           return;
         }
 
-        // Check onboarding status
         const onboardingComplete = await AsyncStorage.getItem("onboardingComplete");
         
         if (onboardingComplete !== "true") {
@@ -97,18 +109,15 @@ export default function DashboardScreen() {
           return;
         }
 
-        // Check authentication
         if (!user && !isOfflineMode) {
           console.log("No user and not offline - redirecting to login");
           router.replace("/auth/login");
           return;
         }
 
-        // All checks passed
         console.log("Dashboard ready - User:", user?.id, "Offline:", isOfflineMode);
         setIsInitializing(false);
 
-        // Get location after initialization
         if (!location) {
           getLocation();
         }
@@ -129,7 +138,6 @@ export default function DashboardScreen() {
     const [checkingUsername, setCheckingUsername] = useState(false);
     const [usernameError, setUsernameError] = useState("");
 
-    // Check if username is available
     const checkUsernameAvailability = async (username: string) => {
       if (!username || username === profile?.username) {
         setUsernameError("");
@@ -154,7 +162,6 @@ export default function DashboardScreen() {
         setCheckingUsername(false);
         return true;
       } catch (err) {
-        // No user found with this username - it's available!
         setUsernameError("");
         setCheckingUsername(false);
         return true;
@@ -162,11 +169,9 @@ export default function DashboardScreen() {
     };
 
     const handleUsernameChange = (text: string) => {
-      // Only allow alphanumeric and underscore
       const cleaned = text.toLowerCase().replace(/[^a-z0-9_]/g, '');
       setLocalUsername(cleaned);
       
-      // Clear error when user types
       if (usernameError) {
         setUsernameError("");
       }
@@ -178,7 +183,6 @@ export default function DashboardScreen() {
         return;
       }
       
-      // Check username availability if it changed
       if (localUsername !== profile?.username) {
         const isAvailable = await checkUsernameAvailability(localUsername);
         if (!isAvailable) {
@@ -194,7 +198,6 @@ export default function DashboardScreen() {
           updated_at: new Date().toISOString()
         };
 
-        // Only update username if it changed
         if (localUsername !== profile?.username) {
           updates.username = localUsername.toLowerCase();
         }
@@ -206,7 +209,6 @@ export default function DashboardScreen() {
 
         if (error) throw error;
 
-        // Fetch the updated profile
         const { data: updatedProfile } = await supabase
           .from('profiles')
           .select('*')
@@ -214,7 +216,6 @@ export default function DashboardScreen() {
           .single();
 
         if (updatedProfile) {
-          // Refresh the profile using the context method
           await refreshProfile();
           Alert.alert(
             'Success', 
@@ -335,7 +336,6 @@ export default function DashboardScreen() {
     );
   };
 
-  // Show loading screen while checking auth
   if (isInitializing || authLoading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -350,7 +350,6 @@ export default function DashboardScreen() {
     );
   }
 
-  // Calculate statistics
   const stats = {
     totalDistance: activities.reduce((sum, act) => sum + act.distance, 0),
     totalDuration: activities.reduce((sum, act) => sum + act.duration, 0),
@@ -513,7 +512,6 @@ export default function DashboardScreen() {
               .bindPopup('You are here');
             ` : ""}
             
-            // Fit bounds if we have content
             var allLayers = [];
             adventureLayer.eachLayer(function(layer) {
               allLayers.push(layer);
@@ -575,7 +573,7 @@ export default function DashboardScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => setShowSidebar(true)}
+          onPress={() => toggleSidebar(true)}
           style={styles.menuButton}
           hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
         >
@@ -587,6 +585,17 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.headerActions}>
+          {friendRequests && friendRequests.length > 0 && (
+            <TouchableOpacity
+              style={styles.notificationButton}
+              onPress={() => router.push("/friend-requests")}
+            >
+              <Ionicons name="notifications" size={24} color={theme.colors.burntOrange} />
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{friendRequests.length}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
           {user ? (
             <View style={styles.authIndicator}>
               <Ionicons name="cloud-done" size={20} color={theme.colors.forest} />
@@ -599,7 +608,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Welcome Bar - Only show if we have a profile */}
+      {/* Welcome Bar */}
       {profile && (
         <View style={styles.welcomeBar}>
           <View style={styles.welcomeContent}>
@@ -682,6 +691,36 @@ export default function DashboardScreen() {
               </Text>
               <Text style={styles.quickStatLabel}>Avg Distance</Text>
             </View>
+          </View>
+        </View>
+
+        {/* Friends Section - NEW! */}
+        <View style={styles.friendsSection}>
+          <Text style={styles.sectionTitle}>Friends & Social</Text>
+          <View style={styles.friendsButtons}>
+            <TouchableOpacity
+              style={styles.friendButton}
+              onPress={() => router.push("/friends-feed")}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.friendIconContainer, { backgroundColor: theme.colors.forest + "20" }]}>
+                <Ionicons name="people" size={24} color={theme.colors.forest} />
+              </View>
+              <Text style={styles.friendButtonTitle}>Friends Feed</Text>
+              <Text style={styles.friendButtonSubtitle}>See what friends are up to</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.friendButton}
+              onPress={() => router.push("/friends")}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.friendIconContainer, { backgroundColor: theme.colors.burntOrange + "20" }]}>
+                <Ionicons name="person-add" size={24} color={theme.colors.burntOrange} />
+              </View>
+              <Text style={styles.friendButtonTitle}>Manage Friends</Text>
+              <Text style={styles.friendButtonSubtitle}>Add or find friends</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -813,32 +852,45 @@ export default function DashboardScreen() {
             <Ionicons name="fitness" size={24} color={theme.colors.navy} />
             <Text style={styles.quickActionText}>Track</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/saved-spots")}>
-            <Ionicons name="map" size={24} color={theme.colors.burntOrange} />
-            <Text style={styles.quickActionText}>Browse</Text>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/friends")}>
+            <Ionicons name="people" size={24} color={theme.colors.burntOrange} />
+            <Text style={styles.quickActionText}>Friends</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/friends-feed")}>
+            <Ionicons name="share-social" size={24} color="#9C27B0" />
+            <Text style={styles.quickActionText}>Feed</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Sidebar Modal */}
+      {/* Sidebar Modal - Slides from LEFT */}
       <Modal
         visible={showSidebar}
         animationType="none"
         transparent={true}
-        onRequestClose={() => setShowSidebar(false)}
+        onRequestClose={() => toggleSidebar(false)}
       >
         <View style={styles.sidebarContainer}>
+          {/* Overlay BEHIND the sidebar */}
           <TouchableOpacity
             style={styles.sidebarOverlay}
             activeOpacity={1}
-            onPress={() => setShowSidebar(false)}
+            onPress={() => toggleSidebar(false)}
           />
-
-          <Animated.View style={[styles.sidebar]}>
+          
+          {/* Sidebar ABOVE the overlay */}
+          <Animated.View 
+            style={[
+              styles.sidebar,
+              {
+                transform: [{ translateX: sidebarAnimation }]
+              }
+            ]}
+          >
             <TouchableOpacity 
               style={styles.profileSection}
               onPress={() => {
-                setShowSidebar(false);
+                toggleSidebar(false);
                 setShowProfileEdit(true);
               }}
               activeOpacity={0.7}
@@ -872,7 +924,7 @@ export default function DashboardScreen() {
                     key={index}
                     style={[styles.sidebarItem, item.active && styles.sidebarItemActive]}
                     onPress={() => {
-                      setShowSidebar(false);
+                      toggleSidebar(false);
                       if (item.route) {
                         router.push(item.route as any);
                       }
@@ -899,7 +951,7 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={styles.authStatusButton}
                   onPress={() => {
-                    setShowSidebar(false);
+                    toggleSidebar(false);
                     router.push("/settings");
                   }}
                 >
@@ -910,7 +962,7 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={styles.authStatusButton}
                   onPress={() => {
-                    setShowSidebar(false);
+                    toggleSidebar(false);
                     router.push("/auth/login");
                   }}
                 >
@@ -973,6 +1025,28 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
+  },
+  notificationButton: {
+    padding: 8,
+    position: "relative",
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
   },
   authIndicator: {
     padding: 8,
@@ -993,28 +1067,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.forest,
     fontWeight: "500",
-  },
-  treeIcon: {
-    marginLeft: 8,
-    alignItems: "center",
-  },
-  triangle: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 12,
-    borderStyle: "solid",
-    backgroundColor: "transparent",
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderBottomColor: theme.colors.forest,
-  },
-  trunk: {
-    width: 4,
-    height: 4,
-    backgroundColor: theme.colors.navy,
-    marginTop: -1,
   },
   scrollContainer: {
     flex: 1,
@@ -1086,6 +1138,43 @@ const styles = StyleSheet.create({
   quickStatDivider: {
     width: 1,
     backgroundColor: theme.colors.borderGray,
+  },
+  friendsSection: {
+    backgroundColor: theme.colors.white,
+    paddingVertical: 20,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+  },
+  friendsButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  friendButton: {
+    flex: 1,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    padding: 15,
+    alignItems: "center",
+  },
+  friendIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  friendButtonTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginBottom: 4,
+  },
+  friendButtonSubtitle: {
+    fontSize: 11,
+    color: theme.colors.gray,
+    textAlign: "center",
   },
   mapSection: {
     backgroundColor: theme.colors.white,
@@ -1271,17 +1360,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   sidebarOverlay: {
-    flex: 1,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   sidebar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
     width: width * 0.75,
     backgroundColor: theme.colors.white,
     shadowColor: "#000",
-    shadowOffset: { width: -2, height: 0 },
+    shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 5,
+    zIndex: 100,
   },
   profileSection: {
     backgroundColor: theme.colors.offWhite,
