@@ -1,4 +1,4 @@
-// app/friend-profile/[id].tsx - Fixed to load friend's actual data
+// app/friend-profile/[id].tsx - Complete file with profile picture support
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -6,6 +6,7 @@ import {
     ActivityIndicator,
     Alert,
     Dimensions,
+    Image,
     Modal,
     ScrollView,
     StyleSheet,
@@ -20,12 +21,11 @@ import { Activity } from "../../contexts/ActivityContext";
 import { Friend, useFriends } from "../../contexts/FriendsContext";
 import { SavedSpot, useLocation } from "../../contexts/LocationContext";
 import { useSettings } from "../../contexts/SettingsContext";
-import { supabase } from '../../lib/supabase';
 import { FriendDataService } from "../../services/friendDataService";
 
 const { width, height } = Dimensions.get("window");
 
-// Privacy Settings Modal (keep the same)
+// Privacy Settings Modal
 const PrivacySettingsModal = ({
   visible,
   onClose,
@@ -227,7 +227,7 @@ export default function FriendProfileScreen() {
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [friendPrivacySettings, setFriendPrivacySettings] = useState({});
   
-  // New state for friend's data
+  // State for friend's data
   const [friendActivities, setFriendActivities] = useState<Activity[]>([]);
   const [friendLocations, setFriendLocations] = useState<SavedSpot[]>([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -245,50 +245,28 @@ export default function FriendProfileScreen() {
     }
   }, [friend?.id]);
 
-  // Add this debug version of loadFriendData to your [id].tsx file
-// Replace the existing loadFriendData function with this:
-
-const loadFriendData = async () => {
-  if (!friend) return;
-  
-  setLoadingData(true);
-  try {
-    console.log('=== DEBUG: Loading data for friend ===');
-    console.log('Friend ID:', friend.id);
-    console.log('Friend username:', friend.username);
-    console.log('Friend object:', friend);
+  const loadFriendData = async () => {
+    if (!friend) return;
     
-    // First, let's check if we can access the data directly
-    const { data: directActivities, error: directError } = await supabase
-      .from('activities')
-      .select('*')
-      .eq('user_id', friend.id);
-    
-    console.log('Direct activities query result:', directActivities);
-    console.log('Direct activities error:', directError);
-    
-    // Now use the service
-    const [activities, locations, stats] = await Promise.all([
-      FriendDataService.loadFriendActivities(friend.id),
-      FriendDataService.loadFriendLocations(friend.id),
-      FriendDataService.loadFriendStats(friend.id),
-    ]);
-    
-    console.log('Service loaded activities:', activities);
-    console.log('Service loaded locations:', locations);
-    console.log('Service loaded stats:', stats);
-    
-    setFriendActivities(activities);
-    setFriendLocations(locations);
-    setFriendStats(stats);
-    
-  } catch (error) {
-    console.error('Error loading friend data:', error);
-    Alert.alert('Error', 'Failed to load friend data');
-  } finally {
-    setLoadingData(false);
-  }
-};
+    setLoadingData(true);
+    try {
+      const [activities, locations, stats] = await Promise.all([
+        FriendDataService.loadFriendActivities(friend.id),
+        FriendDataService.loadFriendLocations(friend.id),
+        FriendDataService.loadFriendStats(friend.id),
+      ]);
+      
+      setFriendActivities(activities);
+      setFriendLocations(locations);
+      setFriendStats(stats);
+      
+    } catch (error) {
+      console.error('Error loading friend data:', error);
+      Alert.alert('Error', 'Failed to load friend data');
+    } finally {
+      setLoadingData(false);
+    }
+  };
 
   // Calculate mutual spots
   const mutualSpots = savedSpots.filter((mySpot) =>
@@ -451,6 +429,17 @@ const loadFriendData = async () => {
     `;
   };
 
+  // Helper function to render avatars with profile picture support
+  const renderAvatar = (user: Friend, size: 'small' | 'large' = 'small') => {
+    const imageStyle = size === 'large' ? styles.profileAvatarImage : styles.smallAvatarImage;
+    const textStyle = size === 'large' ? styles.profileAvatarText : styles.smallAvatarText;
+    
+    if (user.profile_picture) {
+      return <Image source={{ uri: user.profile_picture }} style={imageStyle} />;
+    }
+    return <Text style={textStyle}>{user.avatar || '👤'}</Text>;
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen
@@ -478,7 +467,7 @@ const loadFriendData = async () => {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.profileAvatar}>
-            <Text style={styles.avatarText}>{friend.avatar || "👤"}</Text>
+            {renderAvatar(friend, 'large')}
             {isOnline && <View style={styles.onlineIndicator} />}
           </View>
 
@@ -612,9 +601,9 @@ const loadFriendData = async () => {
                         router.push(`/friend-profile/${mFriend.id}` as any)
                       }
                     >
-                      <Text style={styles.mutualFriendAvatar}>
-                        {mFriend.avatar || "👤"}
-                      </Text>
+                      <View style={styles.mutualFriendAvatar}>
+                        {renderAvatar(mFriend, 'small')}
+                      </View>
                       <Text style={styles.mutualFriendName}>
                         {mFriend.displayName}
                       </Text>
@@ -677,7 +666,7 @@ const loadFriendData = async () => {
           {loadingData ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={theme.colors.forest} />
-              <Text style={styles.loadingText}>Loading friend&apos;s data...</Text>
+              <Text style={styles.loadingText}>Loading friend data...</Text>
             </View>
           ) : (
             <>
@@ -935,7 +924,6 @@ const loadFriendData = async () => {
   );
 }
 
-// Keep all the same styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -969,9 +957,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
     marginBottom: 15,
+    borderWidth: 2,
+    borderColor: theme.colors.borderGray,
+    overflow: 'hidden',
   },
-  avatarText: {
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 50,
+  },
+  profileAvatarText: {
     fontSize: 48,
+  },
+  smallAvatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  smallAvatarText: {
+    fontSize: 20,
   },
   onlineIndicator: {
     position: "absolute",
@@ -1095,8 +1099,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   mutualFriendAvatar: {
-    fontSize: 20,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     marginRight: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
   mutualFriendName: {
     fontSize: 12,
@@ -1317,7 +1326,7 @@ const styles = StyleSheet.create({
   },
 });
 
-// Privacy Modal Styles (keep the same)
+// Privacy Modal Styles
 const privacyStyles = StyleSheet.create({
   overlay: {
     flex: 1,

@@ -1,4 +1,3 @@
-// app/friends-feed.tsx - Updated with better colors and avatar support
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -7,194 +6,98 @@ import {
     Alert,
     FlatList,
     Image,
-    Modal,
     RefreshControl,
     ScrollView,
     StyleSheet,
-    Switch,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { theme } from '../constants/theme';
 import { useFriends } from '../contexts/FriendsContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { ShareService } from '../services/shareService';
 
-// Share Modal Component
-const ShareFriendItemModal = ({
-  visible,
-  onClose,
-  item,
-  onShare,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  item: any;
-  onShare: (selectedFriends: string[], message?: string) => void;
+// Reusable Avatar Component
+const UserAvatar = ({ 
+  user, 
+  size = 40, 
+  style = {} 
+}: { 
+  user: any; 
+  size?: number; 
+  style?: any;
 }) => {
-  const { friends } = useFriends();
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
-  const [shareMessage, setShareMessage] = useState("");
-  const [shareToAll, setShareToAll] = useState(false);
-
-  const toggleFriend = (friendId: string) => {
-    if (selectedFriends.includes(friendId)) {
-      setSelectedFriends(selectedFriends.filter((id) => id !== friendId));
-    } else {
-      setSelectedFriends([...selectedFriends, friendId]);
-    }
-  };
-
-  const handleShare = () => {
-    const friendsToShare = shareToAll
-      ? friends.map((f) => f.id)
-      : selectedFriends;
-    if (friendsToShare.length === 0) {
-      Alert.alert(
-        "Select Friends",
-        "Please select at least one friend to share with"
-      );
-      return;
-    }
-    onShare(friendsToShare, shareMessage);
-    onClose();
-    setSelectedFriends([]);
-    setShareMessage("");
-    setShareToAll(false);
-  };
-
-  const getItemTitle = () => {
-    if (item?.type === 'activity') {
-      return `${item.data.sharedBy.displayName}'s ${item.data.type} activity`;
-    } else if (item?.type === 'location') {
-      return `${item.data.name} (shared by ${item.data.sharedBy.displayName})`;
-    } else if (item?.type === 'achievement') {
-      return `${item.data.achievementName} achievement`;
-    }
-    return 'Shared item';
-  };
-
-  const renderAvatar = (friend: any) => {
-    if (friend.profilePicture) {
-      return <Image source={{ uri: friend.profilePicture }} style={shareModalStyles.friendAvatarImage} />;
-    }
-    return <Text style={shareModalStyles.friendAvatar}>{friend.avatar || '👤'}</Text>;
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={shareModalStyles.overlay}>
-        <View style={shareModalStyles.content}>
-          <View style={shareModalStyles.header}>
-            <Text style={shareModalStyles.title}>Share with Friends</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={theme.colors.gray} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={shareModalStyles.itemPreview}>
-            <View style={shareModalStyles.previewHeader}>
-              <Ionicons
-                name={
-                  item?.type === 'activity' ? 'fitness' :
-                  item?.type === 'location' ? 'location' :
-                  'trophy'
-                }
-                size={20}
-                color={theme.colors.forest}
-              />
-              <Text style={shareModalStyles.previewName}>{getItemTitle()}</Text>
-            </View>
-          </View>
-
-          <TextInput
-            style={shareModalStyles.messageInput}
-            placeholder="Add a message (optional)..."
-            value={shareMessage}
-            onChangeText={setShareMessage}
-            multiline
-            numberOfLines={3}
-            placeholderTextColor={theme.colors.lightGray}
-          />
-
-          <View style={shareModalStyles.shareToAll}>
-            <Text style={shareModalStyles.shareToAllText}>
-              Share with all friends
-            </Text>
-            <Switch
-              value={shareToAll}
-              onValueChange={(value: boolean) => setShareToAll(value)}
-              trackColor={{
-                false: theme.colors.borderGray,
-                true: theme.colors.forest,
-              }}
-            />
-          </View>
-
-          {!shareToAll && (
-            <ScrollView style={shareModalStyles.friendsList}>
-              <Text style={shareModalStyles.friendsTitle}>Select Friends:</Text>
-              {friends
-                .filter((f) => f.status === "accepted")
-                .map((friend) => (
-                  <TouchableOpacity
-                    key={friend.id}
-                    style={shareModalStyles.friendItem}
-                    onPress={() => toggleFriend(friend.id)}
-                  >
-                    <View style={shareModalStyles.friendInfo}>
-                      {renderAvatar(friend)}
-                      <Text style={shareModalStyles.friendName}>
-                        {friend.displayName}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name={
-                        selectedFriends.includes(friend.id)
-                          ? "checkbox"
-                          : "square-outline"
-                      }
-                      size={24}
-                      color={
-                        selectedFriends.includes(friend.id)
-                          ? theme.colors.forest
-                          : theme.colors.gray
-                      }
-                    />
-                  </TouchableOpacity>
-                ))}
-            </ScrollView>
-          )}
-
-          <View style={shareModalStyles.actions}>
-            <TouchableOpacity
-              style={shareModalStyles.cancelBtn}
-              onPress={onClose}
-            >
-              <Text style={shareModalStyles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={shareModalStyles.shareBtn}
-              onPress={handleShare}
-            >
-              <Ionicons name="share-social" size={20} color="white" />
-              <Text style={shareModalStyles.shareText}>Share</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+  if (user?.profile_picture) {
+    return (
+      <Image 
+        source={{ uri: user.profile_picture }}
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: '#f0f0f0',
+          },
+          style
+        ]}
+        onError={(e) => {
+          console.log('Error loading profile picture:', e.nativeEvent.error);
+        }}
+      />
+    );
+  }
+  
+  if (user?.avatar) {
+    return (
+      <View style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: 'white',
+          justifyContent: 'center',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: theme.colors.borderGray,
+        },
+        style
+      ]}>
+        <Text style={{ fontSize: size * 0.6 }}>{user.avatar}</Text>
       </View>
-    </Modal>
+    );
+  }
+  
+  return (
+    <View style={[
+      {
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: theme.colors.lightGray + '30',
+        justifyContent: 'center',
+        alignItems: 'center',
+      },
+      style
+    ]}>
+      <Ionicons 
+        name="person" 
+        size={size * 0.6} 
+        color={theme.colors.gray} 
+      />
+    </View>
   );
 };
 
-const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, formatSpeed }: any) => {
+// Feed Item Card Component
+const FeedItemCard = ({ 
+  item, 
+  onLike, 
+  onComment, 
+  onShare, 
+  formatDistance, 
+  formatSpeed 
+}: any) => {
   const { currentUserId } = useFriends();
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -214,13 +117,6 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
     if (hours > 0) return `${hours}h ago`;
     if (minutes > 0) return `${minutes}m ago`;
     return 'Just now';
-  };
-
-  const renderUserAvatar = (user: any) => {
-    if (user.profilePicture) {
-      return <Image source={{ uri: user.profilePicture }} style={styles.avatarImage} />;
-    }
-    return <Text style={styles.avatarText}>{user.avatar || '👤'}</Text>;
   };
   
   const renderActivityContent = (activity: any) => (
@@ -259,9 +155,9 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
         </ScrollView>
       )}
       <View style={styles.locationCoords}>
-        <Ionicons name="pin" size={14} color={theme.colors.burntOrange} />
+        <Ionicons name="location" size={14} color={theme.colors.burntOrange} />
         <Text style={styles.coordsText}>
-          {location.location.latitude.toFixed(4)}, {location.location.longitude.toFixed(4)}
+          {location.location?.latitude?.toFixed(4)}, {location.location?.longitude?.toFixed(4)}
         </Text>
       </View>
     </View>
@@ -273,7 +169,7 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
         <Ionicons name={achievement.achievementIcon as any} size={40} color="#FFD700" />
       </View>
       <Text style={styles.achievementName}>{achievement.achievementName}</Text>
-      <Text style={styles.achievementText}>Achievement Unlocked! 🎉</Text>
+      <Text style={styles.achievementText}>Achievement Unlocked!</Text>
     </View>
   );
   
@@ -292,14 +188,13 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
   
   return (
     <View style={styles.feedCard}>
-      {/* Header */}
       <View style={styles.cardHeader}>
         <View style={styles.userInfo}>
-          <View style={styles.avatar}>
-            {renderUserAvatar(item.data.sharedBy)}
-          </View>
+          <UserAvatar user={item.data.sharedBy} size={40} />
           <View style={styles.userText}>
-            <Text style={styles.userName}>{item.data.sharedBy.displayName}</Text>
+            <Text style={styles.userName}>
+              {item.data.sharedBy.displayName || item.data.sharedBy.display_name}
+            </Text>
             <Text style={styles.timeAgo}>{getTimeAgo(item.data.sharedAt)}</Text>
           </View>
         </View>
@@ -313,14 +208,12 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
         )}
       </View>
       
-      {/* Content */}
       <View style={styles.cardContent}>
         {item.type === 'activity' && renderActivityContent(item.data)}
         {item.type === 'location' && renderLocationContent(item.data)}
         {item.type === 'achievement' && renderAchievementContent(item.data)}
       </View>
       
-      {/* Actions */}
       <View style={styles.cardActions}>
         <TouchableOpacity 
           style={styles.actionButton}
@@ -355,7 +248,6 @@ const FeedItemCard = ({ item, onLike, onComment, onShare, formatDistance, format
         </TouchableOpacity>
       </View>
       
-      {/* Comments Section */}
       {showComments && (
         <View style={styles.commentsSection}>
           {item.data.comments.map((comment: any) => (
@@ -408,8 +300,6 @@ export default function FriendsFeedScreen() {
   
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'activities' | 'locations' | 'achievements'>('all');
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [itemToShare, setItemToShare] = useState<any>(null);
   
   useEffect(() => {
     refreshFeed();
@@ -434,63 +324,7 @@ export default function FriendsFeedScreen() {
   };
   
   const handleShare = (item: any) => {
-    console.log('handleShare called with item:', item);
-    
-    if (friends.filter((f) => f.status === "accepted").length === 0) {
-      Alert.alert(
-        "No Friends Yet",
-        "Add some friends to share content with them!",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Find Friends", onPress: () => router.push("/friends") },
-        ]
-      );
-      return;
-    }
-
-    if (item.type === 'location') {
-      handleShareLocation(item.data);
-    } else if (item.type === 'activity') {
-      handleShareActivity(item.data);
-    } else {
-      setItemToShare(item);
-      setShowShareModal(true);
-    }
-  };
-
-  const handleShareLocation = async (location: any) => {
-    try {
-      if (location.photos && location.photos.length > 0) {
-        await ShareService.shareLocationWithPhotos(location);
-      } else {
-        await ShareService.shareLocation(location);
-      }
-    } catch (error) {
-      console.error("Error sharing location:", error);
-      Alert.alert("Error", "Failed to share location");
-    }
-  };
-
-  const handleShareActivity = async (activity: any) => {
-    try {
-      await ShareService.shareActivity?.(activity) || ShareService.shareLocation(activity);
-    } catch (error) {
-      console.error("Error sharing activity:", error);
-      Alert.alert("Error", "Failed to share activity");
-    }
-  };
-
-  const handleShareToFriends = async (
-    selectedFriends: string[],
-    message?: string
-  ) => {
-    try {
-      Alert.alert("Success", "Content shared with friends!");
-      setShowShareModal(false);
-      setItemToShare(null);
-    } catch (error) {
-      Alert.alert("Error", "Failed to share with friends");
-    }
+    Alert.alert('Share', 'Sharing functionality coming soon!');
   };
   
   const filteredFeed = feed.filter(item => {
@@ -500,13 +334,6 @@ export default function FriendsFeedScreen() {
     if (filter === 'achievements') return item.type === 'achievement';
     return true;
   });
-
-  const renderOnlineAvatar = (friend: any) => {
-    if (friend.profilePicture) {
-      return <Image source={{ uri: friend.profilePicture }} style={styles.onlineAvatarImage} />;
-    }
-    return <Text style={styles.onlineAvatarText}>{friend.avatar || '👤'}</Text>;
-  };
   
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
@@ -560,7 +387,6 @@ export default function FriendsFeedScreen() {
         }} 
       />
       
-      {/* Friends Online Bar */}
       {friends.length > 0 && (
         <View style={styles.onlineBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -575,10 +401,12 @@ export default function FriendsFeedScreen() {
                   onPress={() => router.push(`/friend-profile/${friend.id}`)}
                 >
                   <View style={styles.onlineAvatar}>
-                    {renderOnlineAvatar(friend)}
+                    <UserAvatar user={friend} size={46} />
                     {isOnline && <View style={styles.onlineIndicator} />}
                   </View>
-                  <Text style={styles.onlineName}>{friend.displayName.split(' ')[0]}</Text>
+                  <Text style={styles.onlineName}>
+                    {(friend.displayName || friend.displayName || friend.username).split(' ')[0]}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -586,7 +414,6 @@ export default function FriendsFeedScreen() {
         </View>
       )}
       
-      {/* Filter Tabs */}
       <View style={styles.filterTabs}>
         <TouchableOpacity
           style={[styles.filterTab, filter === 'all' && styles.filterTabActive]}
@@ -622,7 +449,6 @@ export default function FriendsFeedScreen() {
         </TouchableOpacity>
       </View>
       
-      {/* Feed */}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.forest} />
@@ -653,162 +479,9 @@ export default function FriendsFeedScreen() {
           }
         />
       )}
-
-      {/* Share Modal */}
-      <ShareFriendItemModal
-        visible={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        item={itemToShare}
-        onShare={handleShareToFriends}
-      />
     </View>
   );
 }
-
-// Share Modal Styles
-const shareModalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  content: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "85%",
-    paddingBottom: 30,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: theme.colors.navy,
-  },
-  itemPreview: {
-    backgroundColor: theme.colors.forest + "10",
-    margin: 20,
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.forest + "20",
-  },
-  previewHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  previewName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: theme.colors.navy,
-    marginLeft: 8,
-  },
-  messageInput: {
-    backgroundColor: theme.colors.offWhite,
-    marginHorizontal: 20,
-    marginBottom: 15,
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 14,
-    color: theme.colors.navy,
-    minHeight: 80,
-    textAlignVertical: "top",
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  shareToAll: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginHorizontal: 20,
-    marginBottom: 15,
-    padding: 15,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 8,
-  },
-  shareToAllText: {
-    fontSize: 16,
-    color: theme.colors.navy,
-    fontWeight: "500",
-  },
-  friendsList: {
-    maxHeight: 200,
-    marginHorizontal: 20,
-    marginBottom: 20,
-  },
-  friendsTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.colors.gray,
-    marginBottom: 10,
-  },
-  friendItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  friendInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  friendAvatar: {
-    fontSize: 20,
-    marginRight: 10,
-  },
-  friendAvatarImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 10,
-  },
-  friendName: {
-    fontSize: 14,
-    color: theme.colors.navy,
-  },
-  actions: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: theme.colors.offWhite,
-  },
-  cancelText: {
-    fontSize: 16,
-    color: theme.colors.gray,
-    fontWeight: "600",
-  },
-  shareBtn: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 8,
-    backgroundColor: theme.colors.forest,
-  },
-  shareText: {
-    fontSize: 16,
-    color: "white",
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-});
 
 const styles = StyleSheet.create({
   container: {
@@ -830,14 +503,15 @@ const styles = StyleSheet.create({
     right: -5,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
-    width: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 4,
   },
   requestBadgeText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   onlineBar: {
@@ -852,23 +526,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   onlineAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
     position: 'relative',
-    borderWidth: 2,
-    borderColor: theme.colors.forest + '30',
-  },
-  onlineAvatarText: {
-    fontSize: 24,
-  },
-  onlineAvatarImage: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -941,25 +599,7 @@ const styles = StyleSheet.create({
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  avatarText: {
-    fontSize: 20,
-  },
-  avatarImage: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    gap: 12,
   },
   userText: {
     flex: 1,

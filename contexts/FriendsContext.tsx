@@ -1,31 +1,27 @@
-// contexts/FriendsContext.tsx - Fixed to properly sync with user changes
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
-import { supabase } from '../lib/supabase';
-import { Activity } from './ActivityContext';
-import { useAuth } from './AuthContext'; // Import useAuth
+// contexts/FriendsContext.tsx - Complete version with location comments/likes
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+    createContext,
+    ReactNode,
+    useContext,
+    useEffect,
+    useState,
+} from "react";
+import { Alert } from "react-native";
+import { supabase } from "../lib/supabase";
+import { Activity } from "./ActivityContext";
+import { useAuth } from "./AuthContext";
 
-// Types - Keeping OLD names for compatibility
+// Type definitions
 export interface Friend {
   id: string;
   username: string;
-  displayName: string; // Maps to display_name in DB
+  displayName: string;
   avatar?: string;
-  profile_picture?: string | null; // Add this field for profile pictures
+  profile_picture?: string | null;
   friendsSince: Date;
-  status: 'pending' | 'accepted' | 'blocked';
-  lastActive?: Date; // Maps to last_active in DB
-}
-
-export interface Friendship {
-  id: string;
-  user_id: string;
-  friend_id: string;
-  status: 'pending' | 'accepted' | 'blocked';
-  requested_at: string;
-  accepted_at?: string;
-  friend?: Friend;
+  status: "pending" | "accepted" | "blocked";
+  lastActive?: Date;
 }
 
 export interface FriendRequest {
@@ -35,9 +31,9 @@ export interface FriendRequest {
   message?: string;
   sent_at: string;
   from_user?: Friend;
-  from?: Friend; // For compatibility with existing code
-  to?: string;   // For compatibility
-  sentAt?: Date; // For compatibility
+  from?: Friend;
+  to?: string;
+  sentAt?: Date;
 }
 
 export interface FeedComment {
@@ -48,14 +44,11 @@ export interface FeedComment {
   timestamp: Date;
 }
 
-// Update the FeedPost interface in FriendsContext.tsx to make timestamp required
-
 export interface FeedPost {
   id: string;
-  type: 'activity' | 'location' | 'achievement';
-  timestamp: Date; // Changed from optional (timestamp?) to required
+  type: "activity" | "location" | "achievement";
+  timestamp: Date;
   data: {
-    // Activity data
     id?: string;
     name?: string;
     type?: string;
@@ -67,8 +60,6 @@ export interface FeedPost {
     startTime?: Date;
     notes?: string;
     route?: any[];
-    
-    // Location data
     location?: {
       latitude: number;
       longitude: number;
@@ -76,20 +67,15 @@ export interface FeedPost {
     description?: string;
     photos?: string[];
     category?: string;
-    
-    // Achievement data
     achievementName?: string;
     achievementIcon?: string;
-    
-    // Shared data
     sharedBy: Friend;
     sharedAt: Date;
-    likes: string[]; // Array of user IDs who liked
+    likes: string[];
     comments: FeedComment[];
   };
 }
 
-// Add missing type
 export interface FriendSuggestion {
   id: string;
   username: string;
@@ -100,95 +86,83 @@ export interface FriendSuggestion {
   suggestionReason: string;
 }
 
-// Context Type - Keeping OLD method names for compatibility
 interface FriendsContextType {
-  // State - Using OLD names
   friends: Friend[];
-  friendRequests: FriendRequest[]; // incoming requests
-  pendingRequests: FriendRequest[]; // outgoing requests (was sentRequests)
-  suggestions?: FriendSuggestion[]; // optional for compatibility
+  friendRequests: FriendRequest[];
+  pendingRequests: FriendRequest[];
+  suggestions?: FriendSuggestion[];
   feed: FeedPost[];
   loading: boolean;
   error: string | null;
-
-  // Friend Management - OLD signatures
+  currentUserId: string;
+  
   sendFriendRequest: (username: string, message?: string) => Promise<void>;
   acceptFriendRequest: (requestId: string) => Promise<void>;
   declineFriendRequest: (requestId: string) => Promise<void>;
-  cancelFriendRequest?: (requestId: string) => Promise<void>; // optional
+  cancelFriendRequest?: (requestId: string) => Promise<void>;
   removeFriend: (friendId: string) => Promise<void>;
   searchUsers: (query: string) => Promise<Friend[]>;
   
-  // Feed & Sharing - OLD signatures
   refreshFeed: () => Promise<void>;
+  refreshFriends?: () => Promise<void>;
+  refreshSuggestions?: () => Promise<void>;
   shareActivity: (activityId: string, friendIds?: string[], options?: any) => Promise<void>;
   shareLocation: (locationId: string, friendIds?: string[]) => Promise<void>;
   shareAchievement: (achievementId: string, achievementName: string, achievementIcon: string) => Promise<void>;
   addActivityToFeed: (activity: Activity, options?: any) => Promise<void>;
   
-  // Interactions - OLD names
-  likeItem: (itemId: string) => Promise<void>; // was likePost
-  unlikeItem: (itemId: string) => Promise<void>; // was unlikePost
+  likeItem: (itemId: string) => Promise<void>;
+  unlikeItem: (itemId: string) => Promise<void>;
   addComment: (itemId: string, text: string) => Promise<void>;
   deleteComment: (itemId: string, commentId: string) => Promise<void>;
   
-  // Friend Data
   getFriendActivities: (friendId: string) => any[];
   getFriendLocations: (friendId: string) => any[];
   
-  // Privacy
   privacySettings: {
     shareActivitiesWithFriends: boolean;
     shareLocationsWithFriends: boolean;
     allowFriendRequests: boolean;
     showOnlineStatus: boolean;
-    defaultActivityPrivacy: 'stats_only' | 'general_area' | 'full_route';
+    defaultActivityPrivacy: "stats_only" | "general_area" | "full_route";
     autoShareActivities: boolean;
   };
-  updatePrivacySettings: (settings: Partial<FriendsContextType['privacySettings']>) => Promise<void>;
+  updatePrivacySettings: (settings: Partial<FriendsContextType["privacySettings"]>) => Promise<void>;
   
-  // Utils
   blockUser: (userId: string) => Promise<void>;
   unblockUser: (userId: string) => Promise<void>;
-  
-  // Current User
-  currentUserId: string;
-  
-  // Optional new methods for compatibility
-  refreshFriends?: () => Promise<void>;
-  refreshSuggestions?: () => Promise<void>;
 }
 
 const FriendsContext = createContext<FriendsContextType | undefined>(undefined);
 
 export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user } = useAuth(); // Get user from AuthContext
+  const { user } = useAuth();
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]); // incoming
-  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]); // outgoing
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
   const [suggestions, setSuggestions] = useState<FriendSuggestion[]>([]);
   const [feed, setFeed] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [privacySettings, setPrivacySettings] = useState({
     shareActivitiesWithFriends: true,
     shareLocationsWithFriends: true,
     allowFriendRequests: true,
     showOnlineStatus: true,
-    defaultActivityPrivacy: 'general_area' as 'stats_only' | 'general_area' | 'full_route',
+    defaultActivityPrivacy: "general_area" as "stats_only" | "general_area" | "full_route",
     autoShareActivities: false,
   });
 
-  // Update currentUserId when user changes from AuthContext
+  // Update currentUserId when user changes
   useEffect(() => {
     if (user) {
-      console.log('FriendsContext: User changed to:', user.id);
+      console.log("FriendsContext: User changed to:", user.id);
       setCurrentUserId(user.id);
     } else {
-      console.log('FriendsContext: User logged out, clearing data');
-      setCurrentUserId('');
-      // Clear all data when user logs out
+      console.log("FriendsContext: User logged out");
+      setCurrentUserId("");
+      // Clear all data
       setFriends([]);
       setFriendRequests([]);
       setPendingRequests([]);
@@ -198,41 +172,30 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [user]);
 
-  // Load data when currentUserId changes
+  // Load data when user changes
   useEffect(() => {
-    if (currentUserId && currentUserId !== '') {
-      console.log('FriendsContext: Loading data for user:', currentUserId);
+    if (currentUserId) {
       loadFriendsData();
       loadFeed();
     }
   }, [currentUserId]);
 
+  // Reload feed when friends list changes
   useEffect(() => {
-  if (friends.length > 0) {
-    console.log('Friends list changed, reloading feed');
-    loadFeed();
-  }
-}, [friends.length]); 
+    if (friends.length > 0 && currentUserId) {
+      loadFeed();
+    }
+  }, [friends.length]);
 
   const loadFriendsData = async () => {
-    if (!currentUserId || currentUserId === '') {
-      console.log('No user ID, skipping friends data load');
-      return;
-    }
-    
+    if (!currentUserId) return;
+
     try {
       setLoading(true);
-      console.log('Loading friends data for user:', currentUserId);
-      
-      // Clear previous data first
-      setFriends([]);
-      setFriendRequests([]);
-      setPendingRequests([]);
-      setSuggestions([]);
       
       // Load accepted friends
       const { data: friendships, error: friendsError } = await supabase
-        .from('friendships')
+        .from("friendships")
         .select(`
           *,
           friend:profiles!friendships_friend_id_fkey(
@@ -244,35 +207,30 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             last_active
           )
         `)
-        .eq('user_id', currentUserId)
-        .eq('status', 'accepted');
+        .eq("user_id", currentUserId)
+        .eq("status", "accepted");
 
-      if (friendsError) {
-        console.error('Error loading friends:', friendsError);
-        throw friendsError;
-      }
-      
-      console.log('Loaded friendships:', friendships?.length || 0);
-      
+      if (friendsError) throw friendsError;
+
       if (friendships && friendships.length > 0) {
         const transformedFriends = friendships
           .filter(f => f.friend)
           .map(f => ({
             id: f.friend.id,
             username: f.friend.username,
-            displayName: f.friend.display_name, // Transform to old name
+            displayName: f.friend.display_name,
             avatar: f.friend.avatar,
-            profile_picture: f.friend.profile_picture, // Include profile_picture
+            profile_picture: f.friend.profile_picture,
             friendsSince: new Date(f.accepted_at || f.requested_at),
-            status: 'accepted' as const,
-            lastActive: f.friend.last_active ? new Date(f.friend.last_active) : undefined, // Transform to old name
+            status: "accepted" as const,
+            lastActive: f.friend.last_active ? new Date(f.friend.last_active) : undefined,
           }));
         setFriends(transformedFriends);
       }
 
       // Load incoming friend requests
       const { data: requests, error: requestsError } = await supabase
-        .from('friend_requests')
+        .from("friend_requests")
         .select(`
           *,
           from_user:profiles!friend_requests_from_user_id_fkey(
@@ -283,15 +241,10 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             profile_picture
           )
         `)
-        .eq('to_user_id', currentUserId);
+        .eq("to_user_id", currentUserId);
 
-      if (requestsError) {
-        console.error('Error loading requests:', requestsError);
-        throw requestsError;
-      }
-      
-      console.log('Loaded incoming friend requests:', requests?.length || 0);
-      
+      if (requestsError) throw requestsError;
+
       if (requests && requests.length > 0) {
         const transformedRequests = requests
           .filter(r => r.from_user)
@@ -304,11 +257,11 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             from_user: {
               id: r.from_user.id,
               username: r.from_user.username,
-              displayName: r.from_user.display_name, // Transform to old name
+              displayName: r.from_user.display_name,
               avatar: r.from_user.avatar,
               profile_picture: r.from_user.profile_picture,
               friendsSince: new Date(),
-              status: 'pending' as const,
+              status: "pending" as const,
             },
             from: {
               id: r.from_user.id,
@@ -317,18 +270,17 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
               avatar: r.from_user.avatar,
               profile_picture: r.from_user.profile_picture,
               friendsSince: new Date(),
-              status: 'pending' as const,
+              status: "pending" as const,
             },
             to: r.to_user_id,
             sentAt: new Date(r.sent_at),
           }));
         setFriendRequests(transformedRequests);
-        console.log('Set friend requests:', transformedRequests.map(r => r.from.username));
       }
 
-      // Load sent friend requests (pendingRequests in old naming)
+      // Load sent friend requests
       const { data: sent, error: sentError } = await supabase
-        .from('friend_requests')
+        .from("friend_requests")
         .select(`
           *,
           to_user:profiles!friend_requests_to_user_id_fkey(
@@ -339,15 +291,10 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
             profile_picture
           )
         `)
-        .eq('from_user_id', currentUserId);
+        .eq("from_user_id", currentUserId);
 
-      if (sentError) {
-        console.error('Error loading sent requests:', sentError);
-        throw sentError;
-      }
-      
-      console.log('Loaded sent requests:', sent?.length || 0);
-      
+      if (sentError) throw sentError;
+
       if (sent && sent.length > 0) {
         const transformedSent = sent.map(s => ({
           id: s.id,
@@ -359,15 +306,13 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
           sentAt: new Date(s.sent_at),
         }));
         setPendingRequests(transformedSent);
-        console.log('Set pending requests to:', transformedSent.map(r => r.to));
       }
 
-      // Load suggestions
       await loadSuggestions();
 
     } catch (err) {
-      console.error('Error loading friends data:', err);
-      setError('Failed to load friends');
+      console.error("Error loading friends data:", err);
+      setError("Failed to load friends");
     } finally {
       setLoading(false);
     }
@@ -377,12 +322,11 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!currentUserId) return;
 
     try {
-      // Get some active users as suggestions (simplified version)
       const { data: activeUsers } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar, profile_picture')
-        .neq('id', currentUserId)
-        .order('last_active', { ascending: false })
+        .from("profiles")
+        .select("id, username, display_name, avatar, profile_picture")
+        .neq("id", currentUserId)
+        .order("last_active", { ascending: false })
         .limit(10);
 
       if (activeUsers) {
@@ -392,175 +336,723 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
           ...pendingRequests.map(r => r.to_user_id),
         ];
 
-        const filtered = activeUsers.filter(u => 
-          !friendIds.includes(u.id) && !requestUserIds.includes(u.id)
+        const filtered = activeUsers.filter(
+          u => !friendIds.includes(u.id) && !requestUserIds.includes(u.id)
         );
 
         const suggestionsList: FriendSuggestion[] = filtered.map(u => ({
           id: u.id,
           username: u.username,
-          displayName: u.display_name, // Transform to old name
+          displayName: u.display_name,
           avatar: u.avatar,
           profile_picture: u.profile_picture,
           mutualFriendsCount: 0,
-          suggestionReason: 'Active on ExplorAble',
+          suggestionReason: "Active on ExplorAble",
         }));
 
         setSuggestions(suggestionsList);
       }
     } catch (err) {
-      console.error('Error loading suggestions:', err);
+      console.error("Error loading suggestions:", err);
     }
   };
 
-  // Add this loadFeed function to FriendsContext.tsx to replace the existing one
-
-// Complete loadFeed function with type fixes for FriendsContext.tsx
-
-const loadFeed = async () => {
-  if (!currentUserId || currentUserId === '') {
-    return;
-  }
-  
-  try {
-    console.log('Loading feed for user:', currentUserId);
-    
-    // Get all friend IDs
-    const friendIds = friends.map(f => f.id);
-    
-    if (friendIds.length === 0) {
-      console.log('No friends, feed will be empty');
+  const loadFeed = async () => {
+    if (!currentUserId || friends.length === 0) {
       setFeed([]);
       return;
     }
-    
-    // Load activities from friends
-    const { data: friendActivities, error: activitiesError } = await supabase
-      .from('activities')
-      .select(`
-        *,
-        user:profiles!activities_user_id_fkey(
-          id,
-          username,
-          display_name,
-          avatar,
-          profile_picture
-        )
-      `)
-      .in('user_id', friendIds)
-      .order('start_time', { ascending: false })
-      .limit(50);
-    
-    if (activitiesError) {
-      console.error('Error loading friend activities:', activitiesError);
+
+    try {
+      const friendIds = friends.map(f => f.id);
+
+      // Load activities
+      const { data: activities, error: activitiesError } = await supabase
+        .from("activities")
+        .select(`
+          *,
+          user:profiles!activities_user_id_fkey(
+            id,
+            username,
+            display_name,
+            avatar,
+            profile_picture
+          )
+        `)
+        .in("user_id", friendIds)
+        .order("start_time", { ascending: false })
+        .limit(50);
+
+      if (activitiesError) {
+        console.error("Error loading activities:", activitiesError);
+        return;
+      }
+
+      // Load locations
+      const { data: locations, error: locationsError } = await supabase
+        .from("locations")
+        .select(`
+          *,
+          user:profiles!locations_user_id_fkey(
+            id,
+            username,
+            display_name,
+            avatar,
+            profile_picture
+          )
+        `)
+        .in("user_id", friendIds)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (locationsError) {
+        console.error("Error loading locations:", locationsError);
+      }
+
+      // Maps for likes and comments
+      let likesMap: Record<string, string[]> = {};
+      let commentsMap: Record<string, FeedComment[]> = {};
+
+      // Load activity likes and comments
+      if (activities && activities.length > 0) {
+        const activityIds = activities.map(a => a.id);
+
+        // Load activity likes
+        const { data: activityLikes } = await supabase
+          .from("likes")
+          .select("activity_id, user_id")
+          .in("activity_id", activityIds);
+
+        if (activityLikes) {
+          activityLikes.forEach(like => {
+            if (!likesMap[like.activity_id]) {
+              likesMap[like.activity_id] = [];
+            }
+            likesMap[like.activity_id].push(like.user_id);
+          });
+        }
+
+        // Load activity comments
+        const { data: activityComments } = await supabase
+          .from("comments")
+          .select("id, activity_id, text, created_at, user_id")
+          .in("activity_id", activityIds)
+          .order("created_at", { ascending: true });
+
+        if (activityComments && activityComments.length > 0) {
+          const userIds = [...new Set(activityComments.map(c => c.user_id))];
+          
+          const { data: userProfiles } = await supabase
+            .from("profiles")
+            .select("id, username, display_name, avatar")
+            .in("id", userIds);
+
+          const userMap: Record<string, any> = {};
+          if (userProfiles) {
+            userProfiles.forEach(profile => {
+              userMap[profile.id] = profile;
+            });
+          }
+
+          activityComments.forEach(comment => {
+            if (!commentsMap[comment.activity_id]) {
+              commentsMap[comment.activity_id] = [];
+            }
+            const user = userMap[comment.user_id];
+            commentsMap[comment.activity_id].push({
+              id: comment.id,
+              userId: comment.user_id,
+              userName: user?.display_name || user?.username || "Unknown",
+              text: comment.text,
+              timestamp: new Date(comment.created_at),
+            });
+          });
+        }
+      }
+
+      // Load location likes and comments
+      if (locations && locations.length > 0) {
+        const locationIds = locations.map(l => l.id);
+        
+        // Load location likes
+        const { data: locationLikes } = await supabase
+          .from("likes")
+          .select("location_id, user_id")
+          .in("location_id", locationIds);
+        
+        if (locationLikes) {
+          locationLikes.forEach(like => {
+            if (!likesMap[like.location_id]) {
+              likesMap[like.location_id] = [];
+            }
+            likesMap[like.location_id].push(like.user_id);
+          });
+        }
+        
+        // Load location comments
+        const { data: locationComments } = await supabase
+          .from("comments")
+          .select("id, location_id, text, created_at, user_id")
+          .in("location_id", locationIds)
+          .order("created_at", { ascending: true });
+        
+        if (locationComments && locationComments.length > 0) {
+          const userIds = [...new Set(locationComments.map(c => c.user_id))];
+          
+          const { data: userProfiles } = await supabase
+            .from("profiles")
+            .select("id, username, display_name, avatar")
+            .in("id", userIds);
+          
+          const userMap: Record<string, any> = {};
+          if (userProfiles) {
+            userProfiles.forEach(profile => {
+              userMap[profile.id] = profile;
+            });
+          }
+          
+          locationComments.forEach(comment => {
+            if (!commentsMap[comment.location_id]) {
+              commentsMap[comment.location_id] = [];
+            }
+            const user = userMap[comment.user_id];
+            commentsMap[comment.location_id].push({
+              id: comment.id,
+              userId: comment.user_id,
+              userName: user?.display_name || user?.username || "Unknown",
+              text: comment.text,
+              timestamp: new Date(comment.created_at),
+            });
+          });
+        }
+      }
+
+      // Transform activities into feed posts
+      const activityPosts: FeedPost[] = (activities || [])
+        .filter(activity => activity.user)
+        .map(activity => ({
+          id: `activity-${activity.id}`,
+          type: "activity" as const,
+          timestamp: new Date(activity.start_time),
+          data: {
+            id: activity.id,
+            name: activity.name,
+            type: activity.type,
+            distance: activity.distance || 0,
+            duration: activity.duration || 0,
+            averageSpeed: activity.average_speed || 0,
+            maxSpeed: activity.max_speed || 0,
+            elevationGain: activity.elevation_gain || 0,
+            startTime: new Date(activity.start_time),
+            notes: activity.notes,
+            route: activity.route || [],
+            sharedBy: {
+              id: activity.user.id,
+              username: activity.user.username,
+              displayName: activity.user.display_name || activity.user.username,
+              avatar: activity.user.avatar,
+              profile_picture: activity.user.profile_picture,
+              friendsSince: new Date(),
+              status: "accepted" as const,
+            },
+            sharedAt: new Date(activity.created_at || activity.start_time),
+            likes: likesMap[activity.id] || [],
+            comments: commentsMap[activity.id] || [],
+          },
+        }));
+
+      // Transform locations into feed posts with real likes and comments
+      const locationPosts: FeedPost[] = (locations || [])
+        .filter(location => location.user)
+        .map(location => ({
+          id: `location-${location.id}`,
+          type: "location" as const,
+          timestamp: new Date(location.created_at),
+          data: {
+            id: location.id,
+            name: location.name,
+            location: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+            },
+            description: location.description,
+            photos: location.photos || [],
+            category: location.category,
+            sharedBy: {
+              id: location.user.id,
+              username: location.user.username,
+              displayName: location.user.display_name || location.user.username,
+              avatar: location.user.avatar,
+              profile_picture: location.user.profile_picture,
+              friendsSince: new Date(),
+              status: "accepted" as const,
+            },
+            sharedAt: new Date(location.created_at),
+            likes: likesMap[location.id] || [],
+            comments: commentsMap[location.id] || [],
+          },
+        }));
+
+      // Combine and sort
+      const allPosts = [...activityPosts, ...locationPosts]
+        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+        .slice(0, 50);
+
+      setFeed(allPosts);
+      console.log(`Loaded ${allPosts.length} feed items`);
+
+    } catch (err) {
+      console.error("Error loading feed:", err);
     }
-    
-    // Load locations from friends
-    const { data: friendLocations, error: locationsError } = await supabase
-      .from('locations')
-      .select(`
-        *,
-        user:profiles!locations_user_id_fkey(
-          id,
-          username,
-          display_name,
-          avatar,
-          profile_picture
-        )
-      `)
-      .in('user_id', friendIds)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    
-    if (locationsError) {
-      console.error('Error loading friend locations:', locationsError);
+  };
+
+  const sendFriendRequest = async (username: string, message?: string) => {
+    if (!currentUserId) {
+      Alert.alert("Error", "Please log in to send friend requests");
+      return;
     }
-    
-    // Transform activities into feed posts
-    const activityPosts: FeedPost[] = (friendActivities || [])
-      .filter(activity => activity.user) // Only include activities with user data
-      .map(activity => ({
-        id: `activity-${activity.id}`,
-        type: 'activity' as const,
-        timestamp: new Date(activity.start_time), // Make sure timestamp is always set
-        data: {
-          id: activity.id,
-          name: activity.name,
-          type: activity.type,
-          distance: activity.distance || 0,
-          duration: activity.duration || 0,
-          averageSpeed: activity.average_speed || 0,
-          maxSpeed: activity.max_speed || 0,
-          elevationGain: activity.elevation_gain || 0,
-          startTime: new Date(activity.start_time),
-          notes: activity.notes,
-          route: activity.route || [],
-          sharedBy: {
-            id: activity.user.id,
-            username: activity.user.username,
-            displayName: activity.user.display_name || activity.user.username,
-            avatar: activity.user.avatar,
-            profile_picture: activity.user.profile_picture,
-            friendsSince: new Date(),
-            status: 'accepted' as const,
+
+    try {
+      const cleanUsername = username.toLowerCase().trim();
+
+      const { data: targetUser, error: userError } = await supabase
+        .from("profiles")
+        .select("id, username, display_name")
+        .eq("username", cleanUsername)
+        .single();
+
+      if (userError || !targetUser) {
+        Alert.alert("Error", `User "${username}" not found`);
+        return;
+      }
+
+      // Check if already friends
+      const { data: existingFriendship } = await supabase
+        .from("friendships")
+        .select("id")
+        .or(
+          `and(user_id.eq.${currentUserId},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${currentUserId})`
+        )
+        .single();
+
+      if (existingFriendship) {
+        Alert.alert("Error", "You are already friends with this user");
+        return;
+      }
+
+      // Check for existing request
+      const { data: existingRequest } = await supabase
+        .from("friend_requests")
+        .select("id")
+        .or(
+          `and(from_user_id.eq.${currentUserId},to_user_id.eq.${targetUser.id}),and(from_user_id.eq.${targetUser.id},to_user_id.eq.${currentUserId})`
+        )
+        .single();
+
+      if (existingRequest) {
+        Alert.alert("Error", "A friend request already exists");
+        return;
+      }
+
+      // Send the request
+      const { error: requestError } = await supabase
+        .from("friend_requests")
+        .insert({
+          from_user_id: currentUserId,
+          to_user_id: targetUser.id,
+          message,
+          sent_at: new Date().toISOString(),
+        });
+
+      if (requestError) throw requestError;
+
+      Alert.alert("Success", `Friend request sent to ${targetUser.display_name}`);
+      await loadFriendsData();
+
+    } catch (err: any) {
+      console.error("Error sending friend request:", err);
+      Alert.alert("Error", "Failed to send friend request");
+    }
+  };
+
+  const acceptFriendRequest = async (requestId: string) => {
+    if (!currentUserId) return;
+
+    try {
+      const request = friendRequests.find(r => r.id === requestId);
+      if (!request) return;
+
+      // Create friendship records
+      const { error: friendshipError } = await supabase
+        .from("friendships")
+        .insert([
+          {
+            user_id: currentUserId,
+            friend_id: request.from_user_id,
+            status: "accepted",
+            accepted_at: new Date().toISOString(),
           },
-          sharedAt: new Date(activity.created_at || activity.start_time),
-          likes: [],
-          comments: [],
-        },
+          {
+            user_id: request.from_user_id,
+            friend_id: currentUserId,
+            status: "accepted",
+            accepted_at: new Date().toISOString(),
+          },
+        ]);
+
+      if (friendshipError) throw friendshipError;
+
+      // Delete the request
+      const { error: deleteError } = await supabase
+        .from("friend_requests")
+        .delete()
+        .eq("id", requestId);
+
+      if (deleteError) throw deleteError;
+
+      Alert.alert("Success", "Friend request accepted");
+      await loadFriendsData();
+
+    } catch (err) {
+      console.error("Error accepting friend request:", err);
+      Alert.alert("Error", "Failed to accept friend request");
+    }
+  };
+
+  const declineFriendRequest = async (requestId: string) => {
+    try {
+      const { error } = await supabase
+        .from("friend_requests")
+        .delete()
+        .eq("id", requestId);
+
+      if (error) throw error;
+      await loadFriendsData();
+
+    } catch (err) {
+      Alert.alert("Error", "Failed to decline friend request");
+    }
+  };
+
+  const cancelFriendRequest = async (requestId: string) => {
+    try {
+      const { error } = await supabase
+        .from("friend_requests")
+        .delete()
+        .eq("id", requestId);
+
+      if (error) throw error;
+      Alert.alert("Success", "Friend request cancelled");
+      await loadFriendsData();
+
+    } catch (err) {
+      Alert.alert("Error", "Failed to cancel friend request");
+    }
+  };
+
+  const removeFriend = async (friendId: string) => {
+    if (!currentUserId) return;
+
+    try {
+      const { error } = await supabase
+        .from("friendships")
+        .delete()
+        .or(
+          `and(user_id.eq.${currentUserId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${currentUserId})`
+        );
+
+      if (error) throw error;
+      Alert.alert("Success", "Friend removed");
+      await loadFriendsData();
+
+    } catch (err) {
+      Alert.alert("Error", "Failed to remove friend");
+    }
+  };
+
+  const searchUsers = async (query: string): Promise<Friend[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      return (data || []).map(user => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name,
+        avatar: user.avatar,
+        profile_picture: user.profile_picture,
+        friendsSince: new Date(),
+        status: "pending" as const,
+        lastActive: user.last_active ? new Date(user.last_active) : undefined,
       }));
-    
-    // Transform locations into feed posts
-    const locationPosts: FeedPost[] = (friendLocations || [])
-      .filter(location => location.user) // Only include locations with user data
-      .map(location => ({
-        id: `location-${location.id}`,
-        type: 'location' as const,
-        timestamp: new Date(location.created_at), // Make sure timestamp is always set
-        data: {
-          id: location.id,
-          name: location.name,
-          location: {
-            latitude: location.latitude,
-            longitude: location.longitude,
-          },
-          description: location.description,
-          photos: location.photos || [],
-          category: location.category,
-          sharedBy: {
-            id: location.user.id,
-            username: location.user.username,
-            displayName: location.user.display_name || location.user.username,
-            avatar: location.user.avatar,
-            profile_picture: location.user.profile_picture,
-            friendsSince: new Date(),
-            status: 'accepted' as const,
-          },
-          sharedAt: new Date(location.created_at),
-          likes: [],
-          comments: [],
+
+    } catch (err) {
+      console.error("Error searching users:", err);
+      return [];
+    }
+  };
+
+  const likeItem = async (itemId: string) => {
+    try {
+      const isActivity = itemId.startsWith("activity-");
+      const isLocation = itemId.startsWith("location-");
+      
+      const actualId = itemId.replace("activity-", "").replace("location-", "");
+
+      // Build query based on type
+      let existingLikeQuery = supabase
+        .from("likes")
+        .select("id")
+        .eq("user_id", currentUserId);
+      
+      if (isActivity) {
+        existingLikeQuery = existingLikeQuery.eq("activity_id", actualId);
+      } else if (isLocation) {
+        existingLikeQuery = existingLikeQuery.eq("location_id", actualId);
+      } else {
+        return;
+      }
+
+      const { data: existingLike } = await existingLikeQuery.single();
+
+      if (existingLike) {
+        // Unlike
+        await supabase.from("likes").delete().eq("id", existingLike.id);
+      } else {
+        // Like
+        const insertData: any = {
+          user_id: currentUserId,
+        };
+        
+        if (isActivity) {
+          insertData.activity_id = actualId;
+        } else if (isLocation) {
+          insertData.location_id = actualId;
+        }
+        
+        await supabase.from("likes").insert(insertData);
+      }
+
+      // Update local state
+      setFeed(prev =>
+        prev.map(post => {
+          if (post.id === itemId) {
+            const likes = post.data.likes.includes(currentUserId)
+              ? post.data.likes.filter(id => id !== currentUserId)
+              : [...post.data.likes, currentUserId];
+            
+            return {
+              ...post,
+              data: {
+                ...post.data,
+                likes,
+              },
+            };
+          }
+          return post;
+        })
+      );
+
+    } catch (err) {
+      console.error("Error liking item:", err);
+    }
+  };
+
+  const unlikeItem = async (itemId: string) => {
+    await likeItem(itemId);
+  };
+
+  const addComment = async (itemId: string, text: string) => {
+    if (!text.trim()) return;
+
+    try {
+      const isActivity = itemId.startsWith("activity-");
+      const isLocation = itemId.startsWith("location-");
+      
+      const actualId = itemId.replace("activity-", "").replace("location-", "");
+
+      // Build insert data based on type
+      const insertData: any = {
+        user_id: currentUserId,
+        text: text.trim(),
+      };
+      
+      if (isActivity) {
+        insertData.activity_id = actualId;
+      } else if (isLocation) {
+        insertData.location_id = actualId;
+      } else {
+        return;
+      }
+
+      const { data: newComment, error } = await supabase
+        .from("comments")
+        .insert(insertData)
+        .select("id, text, created_at")
+        .single();
+
+      if (error) throw error;
+
+      // Get user profile
+      const { data: userProfile } = await supabase
+        .from("profiles")
+        .select("display_name, username")
+        .eq("id", currentUserId)
+        .single();
+
+      // Update local state
+      const comment: FeedComment = {
+        id: newComment.id,
+        userId: currentUserId,
+        userName: userProfile?.display_name || userProfile?.username || "You",
+        text: newComment.text,
+        timestamp: new Date(newComment.created_at),
+      };
+
+      setFeed(prev =>
+        prev.map(post => {
+          if (post.id === itemId) {
+            return {
+              ...post,
+              data: {
+                ...post.data,
+                comments: [...post.data.comments, comment],
+              },
+            };
+          }
+          return post;
+        })
+      );
+
+    } catch (error) {
+      console.error("Error adding comment:", error);
+      Alert.alert("Error", "Failed to add comment");
+    }
+  };
+
+  const deleteComment = async (itemId: string, commentId: string) => {
+    try {
+      await supabase.from("comments").delete().eq("id", commentId);
+      
+      setFeed(prev =>
+        prev.map(post => {
+          if (post.id === itemId) {
+            return {
+              ...post,
+              data: {
+                ...post.data,
+                comments: post.data.comments.filter(c => c.id !== commentId),
+              },
+            };
+          }
+          return post;
+        })
+      );
+    } catch (err) {
+      console.error("Error deleting comment:", err);
+    }
+  };
+
+  const blockUser = async (userId: string) => {
+    try {
+      if (!currentUserId) return;
+
+      const { error } = await supabase
+        .from("friendships")
+        .update({ status: "blocked" })
+        .eq("user_id", currentUserId)
+        .eq("friend_id", userId);
+
+      if (error) throw error;
+      await loadFriendsData();
+      Alert.alert("Success", "User blocked");
+
+    } catch (err) {
+      Alert.alert("Error", "Failed to block user");
+    }
+  };
+
+  const unblockUser = async (userId: string) => {
+    try {
+      if (!currentUserId) return;
+
+      const { error } = await supabase
+        .from("friendships")
+        .update({ status: "accepted" })
+        .eq("user_id", currentUserId)
+        .eq("friend_id", userId);
+
+      if (error) throw error;
+      await loadFriendsData();
+      Alert.alert("Success", "User unblocked");
+
+    } catch (err) {
+      Alert.alert("Error", "Failed to unblock user");
+    }
+  };
+
+  const updatePrivacySettings = async (settings: Partial<typeof privacySettings>) => {
+    try {
+      const updatedSettings = { ...privacySettings, ...settings };
+      setPrivacySettings(updatedSettings);
+      await AsyncStorage.setItem("friendsPrivacy", JSON.stringify(updatedSettings));
+    } catch (err) {
+      console.error("Error updating privacy settings:", err);
+    }
+  };
+
+  const shareActivity = async (activityId: string, friendIds?: string[], options?: any) => {
+    Alert.alert("Success", "Activity shared!");
+  };
+
+  const shareLocation = async (locationId: string, friendIds?: string[]) => {
+    Alert.alert("Success", "Location shared!");
+  };
+
+  const shareAchievement = async (achievementId: string, achievementName: string, achievementIcon: string) => {
+    Alert.alert("Success", "Achievement shared!");
+  };
+
+  const addActivityToFeed = async (activity: Activity, options: any = {}) => {
+    const newPost: FeedPost = {
+      id: `post-${Date.now()}`,
+      type: "activity",
+      timestamp: new Date(),
+      data: {
+        ...activity,
+        sharedBy: {
+          id: currentUserId,
+          username: "you",
+          displayName: "You",
+          avatar: "👤",
+          friendsSince: new Date(),
+          status: "accepted",
         },
-      }));
+        sharedAt: new Date(),
+        likes: [],
+        comments: [],
+      },
+    };
     
-    // Combine and sort all posts by timestamp
-    // Filter out any posts without timestamps (shouldn't happen now)
-    const allPosts = [...activityPosts, ...locationPosts]
-      .filter(post => post.timestamp) // Safety check
-      .sort((a, b) => {
-        // TypeScript now knows both timestamps exist due to filter
-        const timeA = a.timestamp ? a.timestamp.getTime() : 0;
-        const timeB = b.timestamp ? b.timestamp.getTime() : 0;
-        return timeB - timeA;
-      })
-      .slice(0, 50); // Limit to 50 most recent items
-    
-    console.log(`Loaded ${allPosts.length} feed items (${activityPosts.length} activities, ${locationPosts.length} locations)`);
-    
-    setFeed(allPosts);
-  } catch (err) {
-    console.error('Error loading feed:', err);
-  }
-};
+    setFeed(prev => [newPost, ...prev]);
+  };
+
+  const getFriendActivities = (friendId: string) => {
+    return feed
+      .filter(post => post.type === "activity" && post.data.sharedBy.id === friendId)
+      .map(post => post.data);
+  };
+
+  const getFriendLocations = (friendId: string) => {
+    return feed
+      .filter(post => post.type === "location" && post.data.sharedBy.id === friendId)
+      .map(post => post.data);
+  };
 
   const refreshFeed = async () => {
     await loadFeed();
@@ -574,433 +1066,15 @@ const loadFeed = async () => {
     await loadSuggestions();
   };
 
-  const sendFriendRequest = async (username: string, message?: string) => {
-    if (!currentUserId || currentUserId === '') {
-      Alert.alert('Error', 'Please log in to send friend requests');
-      return;
-    }
-
-    try {
-      console.log('Sending friend request from:', currentUserId, 'to username:', username);
-      
-      const cleanUsername = username.toLowerCase().trim();
-      
-      const { data: targetUser, error: userError } = await supabase
-        .from('profiles')
-        .select('id, username, display_name')
-        .eq('username', cleanUsername)
-        .single();
-
-      console.log('User search result:', targetUser, 'Error:', userError);
-
-      if (userError || !targetUser) {
-        const { data: alternativeSearch } = await supabase
-          .from('profiles')
-          .select('id, username, display_name')
-          .ilike('username', `${cleanUsername}%`)
-          .limit(5);
-        
-        if (alternativeSearch && alternativeSearch.length > 0) {
-          const userList = alternativeSearch.map(u => u.username).join('\n');
-          Alert.alert(
-            'User not found',
-            `Did you mean one of these?\n${userList}`,
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Error', `User "${username}" not found`);
-        }
-        return;
-      }
-
-      // Check if already friends
-      const { data: existingFriendship } = await supabase
-        .from('friendships')
-        .select('id')
-        .or(`and(user_id.eq.${currentUserId},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${currentUserId})`)
-        .single();
-
-      if (existingFriendship) {
-        Alert.alert('Error', 'You are already friends with this user');
-        return;
-      }
-
-      // Check for existing request (in either direction)
-      const { data: existingRequest } = await supabase
-        .from('friend_requests')
-        .select('id')
-        .or(`and(from_user_id.eq.${currentUserId},to_user_id.eq.${targetUser.id}),and(from_user_id.eq.${targetUser.id},to_user_id.eq.${currentUserId})`)
-        .single();
-
-      if (existingRequest) {
-        Alert.alert('Error', 'A friend request already exists between you and this user');
-        return;
-      }
-
-      // Send the request
-      const { error: requestError } = await supabase
-        .from('friend_requests')
-        .insert({
-          from_user_id: currentUserId,
-          to_user_id: targetUser.id,
-          message,
-          sent_at: new Date().toISOString(),
-        });
-
-      if (requestError) throw requestError;
-
-      Alert.alert('Success', `Friend request sent to ${targetUser.display_name} (@${targetUser.username})`);
-      await loadFriendsData();
-
-    } catch (err: any) {
-      console.error('Error sending friend request:', err);
-      Alert.alert('Error', err.message || 'Failed to send friend request');
-    }
-  };
-
-  const acceptFriendRequest = async (requestId: string) => {
-    if (!currentUserId) return;
-
-    try {
-      const request = friendRequests.find(r => r.id === requestId);
-      if (!request) return;
-
-      const { error: friendshipError } = await supabase
-        .from('friendships')
-        .insert([
-          {
-            user_id: currentUserId,
-            friend_id: request.from_user_id,
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-          },
-          {
-            user_id: request.from_user_id,
-            friend_id: currentUserId,
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-          },
-        ]);
-
-      if (friendshipError) throw friendshipError;
-
-      const { error: deleteError } = await supabase
-        .from('friend_requests')
-        .delete()
-        .eq('id', requestId);
-
-      if (deleteError) throw deleteError;
-
-      Alert.alert('Success', 'Friend request accepted');
-      await loadFriendsData();
-
-    } catch (err: any) {
-      console.error('Error accepting friend request:', err);
-      Alert.alert('Error', 'Failed to accept friend request');
-    }
-  };
-
-  const declineFriendRequest = async (requestId: string) => {
-    try {
-      const { error } = await supabase
-        .from('friend_requests')
-        .delete()
-        .eq('id', requestId);
-
-      if (error) throw error;
-
-      await loadFriendsData();
-
-    } catch (err: any) {
-      console.error('Error declining friend request:', err);
-      Alert.alert('Error', 'Failed to decline friend request');
-    }
-  };
-
-  const cancelFriendRequest = async (requestId: string) => {
-    try {
-      const { error } = await supabase
-        .from('friend_requests')
-        .delete()
-        .eq('id', requestId);
-
-      if (error) throw error;
-
-      Alert.alert('Success', 'Friend request cancelled');
-      await loadFriendsData();
-
-    } catch (err: any) {
-      console.error('Error cancelling friend request:', err);
-      Alert.alert('Error', 'Failed to cancel friend request');
-    }
-  };
-
-  const removeFriend = async (friendId: string) => {
-    if (!currentUserId) return;
-
-    try {
-      const { error } = await supabase
-        .from('friendships')
-        .delete()
-        .or(`and(user_id.eq.${currentUserId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${currentUserId})`);
-
-      if (error) throw error;
-
-      Alert.alert('Success', 'Friend removed');
-      await loadFriendsData();
-
-    } catch (err: any) {
-      console.error('Error removing friend:', err);
-      Alert.alert('Error', 'Failed to remove friend');
-    }
-  };
-
-  const searchUsers = async (query: string): Promise<Friend[]> => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
-        .limit(10);
-
-      if (error) throw error;
-      
-      return (data || []).map(user => ({
-        id: user.id,
-        username: user.username,
-        displayName: user.display_name, // Transform to old name
-        avatar: user.avatar,
-        profile_picture: user.profile_picture, // Include profile_picture
-        friendsSince: new Date(),
-        status: 'pending' as const,
-        lastActive: user.last_active ? new Date(user.last_active) : undefined, // Transform to old name
-      }));
-
-    } catch (err) {
-      console.error('Error searching users:', err);
-      return [];
-    }
-  };
-
-  const shareActivity = async (activityId: string, friendIds?: string[], options?: any) => {
-    try {
-      console.log('Sharing activity:', activityId, 'to friends:', friendIds, 'with options:', options);
-      Alert.alert('Success', 'Activity shared with friends!');
-    } catch (err) {
-      console.error('Error sharing activity:', err);
-    }
-  };
-
-  const shareLocation = async (locationId: string, friendIds?: string[]) => {
-    try {
-      Alert.alert('Success', 'Location shared with friends!');
-    } catch (err) {
-      console.error('Error sharing location:', err);
-    }
-  };
-
-  const shareAchievement = async (achievementId: string, achievementName: string, achievementIcon: string) => {
-    try {
-      Alert.alert('Success', 'Achievement shared with friends!');
-    } catch (err) {
-      console.error('Error sharing achievement:', err);
-    }
-  };
-
-  const addActivityToFeed = async (activity: Activity, options: any = {}) => {
-    try {
-      console.log('Adding activity to feed:', activity.name, 'with options:', options);
-      
-      const newPost: FeedPost = {
-        id: `post-${Date.now()}`,
-        type: 'activity',
-        timestamp: new Date(),
-        data: {
-          ...activity,
-          sharedBy: {
-            id: currentUserId,
-            username: 'you',
-            displayName: 'You',
-            avatar: '👤',
-            friendsSince: new Date(),
-            status: 'accepted',
-          },
-          sharedAt: new Date(),
-          likes: [],
-          comments: [],
-        },
-      };
-      
-      setFeed(prev => [newPost, ...prev]);
-      console.log('Activity added to feed successfully');
-      
-    } catch (err) {
-      console.error('Error adding activity to feed:', err);
-    }
-  };
-
-  const likeItem = async (itemId: string) => {
-    try {
-      setFeed(prev => prev.map(post => {
-        if (post.id === itemId) {
-          const likes = post.data.likes.includes(currentUserId)
-            ? post.data.likes.filter(id => id !== currentUserId)
-            : [...post.data.likes, currentUserId];
-          
-          return {
-            ...post,
-            data: {
-              ...post.data,
-              likes,
-            },
-          };
-        }
-        return post;
-      }));
-    } catch (err) {
-      console.error('Error liking item:', err);
-    }
-  };
-
-  const unlikeItem = async (itemId: string) => {
-    try {
-      setFeed(prev => prev.map(post => {
-        if (post.id === itemId) {
-          return {
-            ...post,
-            data: {
-              ...post.data,
-              likes: post.data.likes.filter(id => id !== currentUserId),
-            },
-          };
-        }
-        return post;
-      }));
-    } catch (err) {
-      console.error('Error unliking item:', err);
-    }
-  };
-
-  const addComment = async (itemId: string, text: string) => {
-    try {
-      const newComment: FeedComment = {
-        id: `comment-${Date.now()}`,
-        userId: currentUserId,
-        userName: 'You',
-        text,
-        timestamp: new Date(),
-      };
-
-      setFeed(prev => prev.map(post => {
-        if (post.id === itemId) {
-          return {
-            ...post,
-            data: {
-              ...post.data,
-              comments: [...post.data.comments, newComment],
-            },
-          };
-        }
-        return post;
-      }));
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      throw error;
-    }
-  };
-
-  const deleteComment = async (itemId: string, commentId: string) => {
-    try {
-      setFeed(prev => prev.map(post => {
-        if (post.id === itemId) {
-          return {
-            ...post,
-            data: {
-              ...post.data,
-              comments: post.data.comments.filter(c => c.id !== commentId),
-            },
-          };
-        }
-        return post;
-      }));
-    } catch (err) {
-      console.error('Error deleting comment:', err);
-    }
-  };
-
-  const blockUser = async (userId: string) => {
-    try {
-      if (!currentUserId) return;
-
-      const { error } = await supabase
-        .from('friendships')
-        .update({ status: 'blocked' })
-        .eq('user_id', currentUserId)
-        .eq('friend_id', userId);
-
-      if (error) throw error;
-      
-      await loadFriendsData();
-      Alert.alert('Success', 'User blocked');
-    } catch (err) {
-      console.error('Error blocking user:', err);
-      Alert.alert('Error', 'Failed to block user');
-    }
-  };
-
-  const unblockUser = async (userId: string) => {
-    try {
-      if (!currentUserId) return;
-
-      const { error } = await supabase
-        .from('friendships')
-        .update({ status: 'accepted' })
-        .eq('user_id', currentUserId)
-        .eq('friend_id', userId);
-
-      if (error) throw error;
-      
-      await loadFriendsData();
-      Alert.alert('Success', 'User unblocked');
-    } catch (err) {
-      console.error('Error unblocking user:', err);
-      Alert.alert('Error', 'Failed to unblock user');
-    }
-  };
-
-  const updatePrivacySettings = async (settings: Partial<typeof privacySettings>) => {
-    try {
-      const updatedSettings = { ...privacySettings, ...settings };
-      setPrivacySettings(updatedSettings);
-      await AsyncStorage.setItem('friendsPrivacy', JSON.stringify(updatedSettings));
-    } catch (err) {
-      console.error('Error updating privacy settings:', err);
-    }
-  };
-
-  const getFriendActivities = (friendId: string) => {
-    return feed
-      .filter(post => post.type === 'activity' && post.data.sharedBy.id === friendId)
-      .map(post => post.data);
-  };
-
-  const getFriendLocations = (friendId: string) => {
-    return feed
-      .filter(post => post.type === 'location' && post.data.sharedBy.id === friendId)
-      .map(post => post.data);
-  };
-
   const value: FriendsContextType = {
-    // State
     friends,
-    friendRequests, // incoming
-    pendingRequests, // outgoing (old name kept)
+    friendRequests,
+    pendingRequests,
     suggestions,
     feed,
     loading,
     error,
-    
-    // Methods
+    currentUserId,
     sendFriendRequest,
     acceptFriendRequest,
     declineFriendRequest,
@@ -1016,15 +1090,14 @@ const loadFeed = async () => {
     shareLocation,
     shareAchievement,
     addActivityToFeed,
-    likeItem, // old name kept
-    unlikeItem, // old name kept
+    likeItem,
+    unlikeItem,
     addComment,
     deleteComment,
     getFriendActivities,
     getFriendLocations,
     privacySettings,
     updatePrivacySettings,
-    currentUserId,
   };
 
   return (
@@ -1036,8 +1109,8 @@ const loadFeed = async () => {
 
 export const useFriends = () => {
   const context = useContext(FriendsContext);
-  if (context === undefined) {
-    throw new Error('useFriends must be used within a FriendsProvider');
+  if (!context) {
+    throw new Error("useFriends must be used within FriendsProvider");
   }
   return context;
 };

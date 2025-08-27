@@ -1,6 +1,6 @@
-// app/index.tsx - Complete file with left sidebar and friends features
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -8,6 +8,7 @@ import {
     Alert,
     Animated,
     Dimensions,
+    Image,
     Modal,
     PanResponder,
     ScrollView,
@@ -34,12 +35,93 @@ const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
 const BOTTOM_SHEET_MIN_HEIGHT = 80;
 
+// Reusable Avatar Component
+const UserAvatar = ({
+  user,
+  size = 40,
+  style = {},
+}: {
+  user: any;
+  size?: number;
+  style?: any;
+}) => {
+  const textStyle = { fontSize: size * 0.6 };
+  const profilePicture = user?.profile_picture || undefined;
+
+  if (profilePicture) {
+    return (
+      <Image
+        source={{ uri: profilePicture }}
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: "#f0f0f0",
+          },
+          style,
+        ]}
+        onError={(e) => {
+          console.log("Error loading profile picture:", e.nativeEvent.error);
+        }}
+      />
+    );
+  }
+
+  if (user?.avatar) {
+    return (
+      <View
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: "white",
+            justifyContent: "center",
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: theme.colors.borderGray,
+          },
+          style,
+        ]}
+      >
+        <Text style={textStyle}>{user.avatar}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: theme.colors.lightGray + "30",
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        style,
+      ]}
+    >
+      <Ionicons name="person" size={size * 0.6} color={theme.colors.gray} />
+    </View>
+  );
+};
+
 export default function DashboardScreen() {
   const router = useRouter();
-  const { user, profile, isOfflineMode, loading: authLoading, refreshProfile } = useAuth();
+  const {
+    user,
+    profile,
+    isOfflineMode,
+    loading: authLoading,
+    refreshProfile,
+  } = useAuth();
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
-  const { formatDistance, formatSpeed, settings, getMapTileUrl } = useSettings();
+  const { formatDistance, formatSpeed, settings, getMapTileUrl } =
+    useSettings();
   const { friendRequests } = useFriends();
   const webViewRef = useRef<WebView>(null);
 
@@ -47,6 +129,7 @@ export default function DashboardScreen() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   // Sidebar animation
   const sidebarAnimation = useRef(new Animated.Value(-width * 0.75)).current;
@@ -61,7 +144,9 @@ export default function DashboardScreen() {
   };
 
   // Bottom sheet animation
-  const animatedValue = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
+  const animatedValue = useRef(
+    new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)
+  ).current;
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -101,8 +186,10 @@ export default function DashboardScreen() {
           return;
         }
 
-        const onboardingComplete = await AsyncStorage.getItem("onboardingComplete");
-        
+        const onboardingComplete = await AsyncStorage.getItem(
+          "onboardingComplete"
+        );
+
         if (onboardingComplete !== "true") {
           console.log("Onboarding not complete - redirecting");
           router.replace("/onboarding");
@@ -115,7 +202,12 @@ export default function DashboardScreen() {
           return;
         }
 
-        console.log("Dashboard ready - User:", user?.id, "Offline:", isOfflineMode);
+        console.log(
+          "Dashboard ready - User:",
+          user?.id,
+          "Offline:",
+          isOfflineMode
+        );
         setIsInitializing(false);
 
         if (!location) {
@@ -128,11 +220,98 @@ export default function DashboardScreen() {
     };
 
     initializeApp();
-  }, [user, isOfflineMode, authLoading, router]);
+  }, [user, isOfflineMode, authLoading, router, location, getLocation]);
+
+  // Fetch notification count with real-time updates
+  useEffect(() => {
+    const fetchNotificationCount = async () => {
+      if (!user) return;
+
+      try {
+        const { count, error } = await supabase
+          .from("notifications")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("read", false);
+
+        if (!error && count !== null) {
+          setUnreadNotificationCount(count);
+        }
+      } catch (err) {
+        console.error("Error fetching notification count:", err);
+      }
+    };
+
+    if (user) {
+      fetchNotificationCount();
+
+      // Set up real-time subscription for notifications
+      const subscription = supabase
+        .channel("notifications")
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT", // New notifications
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchNotificationCount();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE", // When notifications are marked as read
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchNotificationCount();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [user]);
+
+  // Refresh notification count when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchNotificationCount = async () => {
+        if (!user) return;
+
+        try {
+          const { count, error } = await supabase
+            .from("notifications")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("read", false);
+
+          if (!error && count !== null) {
+            setUnreadNotificationCount(count);
+          }
+        } catch (err) {
+          console.error("Error fetching notification count:", err);
+        }
+      };
+
+      if (user) {
+        fetchNotificationCount();
+      }
+    }, [user])
+  );
 
   // Profile Edit Modal Component
   const ProfileEditModal = () => {
-    const [localDisplayName, setLocalDisplayName] = useState(profile?.display_name || profile?.username || "");
+    const [localDisplayName, setLocalDisplayName] = useState(
+      profile?.display_name || profile?.username || ""
+    );
     const [localUsername, setLocalUsername] = useState(profile?.username || "");
     const [saving, setSaving] = useState(false);
     const [checkingUsername, setCheckingUsername] = useState(false);
@@ -147,9 +326,9 @@ export default function DashboardScreen() {
       setCheckingUsername(true);
       try {
         const { data, error } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('username', username.toLowerCase())
+          .from("profiles")
+          .select("id")
+          .eq("username", username.toLowerCase())
           .single();
 
         if (data) {
@@ -157,7 +336,7 @@ export default function DashboardScreen() {
           setCheckingUsername(false);
           return false;
         }
-        
+
         setUsernameError("");
         setCheckingUsername(false);
         return true;
@@ -169,9 +348,9 @@ export default function DashboardScreen() {
     };
 
     const handleUsernameChange = (text: string) => {
-      const cleaned = text.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      const cleaned = text.toLowerCase().replace(/[^a-z0-9_]/g, "");
       setLocalUsername(cleaned);
-      
+
       if (usernameError) {
         setUsernameError("");
       }
@@ -179,14 +358,14 @@ export default function DashboardScreen() {
 
     const handleSave = async () => {
       if (!user || !localDisplayName.trim() || !localUsername.trim()) {
-        Alert.alert('Error', 'Display name and username are required');
+        Alert.alert("Error", "Display name and username are required");
         return;
       }
-      
+
       if (localUsername !== profile?.username) {
         const isAvailable = await checkUsernameAvailability(localUsername);
         if (!isAvailable) {
-          Alert.alert('Error', 'Username is already taken');
+          Alert.alert("Error", "Username is already taken");
           return;
         }
       }
@@ -195,7 +374,7 @@ export default function DashboardScreen() {
       try {
         const updates: any = {
           display_name: localDisplayName.trim(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         };
 
         if (localUsername !== profile?.username) {
@@ -203,39 +382,21 @@ export default function DashboardScreen() {
         }
 
         const { error } = await supabase
-          .from('profiles')
+          .from("profiles")
           .update(updates)
-          .eq('id', user.id);
+          .eq("id", user.id);
 
         if (error) throw error;
 
-        const { data: updatedProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (updatedProfile) {
-          await refreshProfile();
-          Alert.alert(
-            'Success', 
-            'Profile updated successfully!',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  setShowProfileEdit(false);
-                }
-              }
-            ]
-          );
-        }
+        await refreshProfile();
+        Alert.alert("Success", "Profile updated successfully!");
+        setShowProfileEdit(false);
       } catch (error: any) {
-        console.error('Error updating profile:', error);
-        if (error.code === '23505') {
-          Alert.alert('Error', 'Username is already taken');
+        console.error("Error updating profile:", error);
+        if (error.code === "23505") {
+          Alert.alert("Error", "Username is already taken");
         } else {
-          Alert.alert('Error', 'Failed to update profile');
+          Alert.alert("Error", "Failed to update profile");
         }
       } finally {
         setSaving(false);
@@ -279,7 +440,7 @@ export default function DashboardScreen() {
                 <TextInput
                   style={[
                     profileEditStyles.usernameInput,
-                    usernameError && profileEditStyles.inputError
+                    usernameError && profileEditStyles.inputError,
                   ]}
                   value={localUsername}
                   onChangeText={handleUsernameChange}
@@ -291,14 +452,19 @@ export default function DashboardScreen() {
                   maxLength={30}
                 />
                 {checkingUsername && (
-                  <ActivityIndicator size="small" color={theme.colors.forest} style={profileEditStyles.usernameSpinner} />
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.forest}
+                    style={profileEditStyles.usernameSpinner}
+                  />
                 )}
               </View>
               {usernameError ? (
                 <Text style={profileEditStyles.errorText}>{usernameError}</Text>
               ) : (
                 <Text style={profileEditStyles.hint}>
-                  Unique identifier for your profile (letters, numbers, underscore only)
+                  Unique identifier for your profile (letters, numbers,
+                  underscore only)
                 </Text>
               )}
 
@@ -316,7 +482,10 @@ export default function DashboardScreen() {
                 <Text style={profileEditStyles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[profileEditStyles.saveBtn, saving && profileEditStyles.saveBtnDisabled]}
+                style={[
+                  profileEditStyles.saveBtn,
+                  saving && profileEditStyles.saveBtnDisabled,
+                ]}
                 onPress={handleSave}
                 disabled={saving || !localDisplayName.trim()}
               >
@@ -369,7 +538,8 @@ export default function DashboardScreen() {
     if (activities.length === 0) return 0;
 
     const sortedActivities = [...activities].sort(
-      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      (a, b) =>
+        new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
 
     let streak = 0;
@@ -413,7 +583,8 @@ export default function DashboardScreen() {
 
     switch (settings.mapStyle) {
       case "satellite":
-        tileUrl = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+        tileUrl =
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
         attribution = "© Esri, Maxar, Earthstar Geographics";
         maxZoom = 18;
         break;
@@ -435,7 +606,9 @@ export default function DashboardScreen() {
         const category = categories[spot.category] || categories.other;
         const escapedName = spot.name.replace(/'/g, "\\'").replace(/"/g, '\\"');
         return `
-          L.circleMarker([${spot.location.latitude}, ${spot.location.longitude}], {
+          L.circleMarker([${spot.location.latitude}, ${
+          spot.location.longitude
+        }], {
             radius: 8,
             fillColor: '${category.mapColor || category.color}',
             color: '#fff',
@@ -444,7 +617,9 @@ export default function DashboardScreen() {
             fillOpacity: 0.8
           })
           .addTo(adventureLayer)
-          .bindPopup("<div style='text-align: center;'><b style='color: ${category.color}'>${escapedName}</b><br><small>${category.label}</small></div>");
+          .bindPopup("<div style='text-align: center;'><b style='color: ${
+            category.color
+          }'>${escapedName}</b><br><small>${category.label}</small></div>");
         `;
       })
       .join("\n");
@@ -452,7 +627,9 @@ export default function DashboardScreen() {
     const activityRoutes = activities
       .filter((act) => act.route && act.route.length > 0)
       .map((act) => {
-        const coords = act.route.map((p) => `[${p.latitude}, ${p.longitude}]`).join(",");
+        const coords = act.route
+          .map((p) => `[${p.latitude}, ${p.longitude}]`)
+          .join(",");
         return `
           L.polyline([${coords}], {
             color: '${theme.colors.forest}',
@@ -499,7 +676,9 @@ export default function DashboardScreen() {
             ${spotMarkers}
             ${activityRoutes}
             
-            ${location ? `
+            ${
+              location
+                ? `
               L.circleMarker([${location.latitude}, ${location.longitude}], {
                 radius: 10,
                 fillColor: '${theme.colors.burntOrange}',
@@ -510,17 +689,23 @@ export default function DashboardScreen() {
               })
               .addTo(map)
               .bindPopup('You are here');
-            ` : ""}
+            `
+                : ""
+            }
             
             var allLayers = [];
             adventureLayer.eachLayer(function(layer) {
               allLayers.push(layer);
             });
             
-            ${location ? `
+            ${
+              location
+                ? `
               var currentMarker = L.circleMarker([${location.latitude}, ${location.longitude}]);
               allLayers.push(currentMarker);
-            ` : ""}
+            `
+                : ""
+            }
             
             if (allLayers.length > 0) {
               var group = new L.featureGroup(allLayers);
@@ -529,7 +714,9 @@ export default function DashboardScreen() {
                 animate: false
               });
             } else if (${location ? "true" : "false"}) {
-              map.setView([${location?.latitude || centerLat}, ${location?.longitude || centerLng}], 13);
+              map.setView([${location?.latitude || centerLat}, ${
+      location?.longitude || centerLng
+    }], 13);
             }
           } catch (error) {
             console.error('Map initialization error:', error);
@@ -543,14 +730,29 @@ export default function DashboardScreen() {
 
   const sidebarItems = [
     { icon: "map", label: "Dashboard", route: "/", active: true },
+    {
+      icon: "notifications",
+      label: "Notifications",
+      route: "/notifications",
+      badge: unreadNotificationCount,
+    },
     { icon: "location", label: "Saved Spots", route: "/saved-spots" },
     { icon: "fitness", label: "Activities", route: "/past-activities" },
-    { icon: "people", label: "Friends Feed", route: "/friends-feed" },
+    {
+      icon: "people",
+      label: "Friends Feed",
+      route: "/friends-feed",
+      badge: friendRequests.length,
+    },
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
     { icon: "add-circle", label: "Add New", route: "/save-location" },
     { divider: true },
     { icon: "stats-chart", label: "Statistics", route: "/statistics" },
-    { icon: "trophy", label: "Achievements", route: "/statistics#achievements" },
+    {
+      icon: "trophy",
+      label: "Achievements",
+      route: "/statistics#achievements",
+    },
     { divider: true },
     { icon: "settings", label: "Settings", route: "/settings" },
     { icon: "information-circle", label: "About", route: "/" },
@@ -585,24 +787,38 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.headerActions}>
-          {friendRequests && friendRequests.length > 0 && (
+          {unreadNotificationCount > 0 && (
             <TouchableOpacity
               style={styles.notificationButton}
-              onPress={() => router.push("/friend-requests")}
+              onPress={() => router.push("/notifications")}
             >
-              <Ionicons name="notifications" size={24} color={theme.colors.burntOrange} />
+              <Ionicons
+                name="notifications"
+                size={24}
+                color={theme.colors.burntOrange}
+              />
               <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>{friendRequests.length}</Text>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadNotificationCount}
+                </Text>
               </View>
             </TouchableOpacity>
           )}
           {user ? (
             <View style={styles.authIndicator}>
-              <Ionicons name="cloud-done" size={20} color={theme.colors.forest} />
+              <Ionicons
+                name="cloud-done"
+                size={20}
+                color={theme.colors.forest}
+              />
             </View>
           ) : isOfflineMode ? (
             <View style={styles.authIndicator}>
-              <Ionicons name="cloud-offline" size={20} color={theme.colors.gray} />
+              <Ionicons
+                name="cloud-offline"
+                size={20}
+                color={theme.colors.gray}
+              />
             </View>
           ) : null}
         </View>
@@ -620,7 +836,10 @@ export default function DashboardScreen() {
       )}
 
       {/* Main Content */}
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Stats Section */}
         <View style={styles.statsSection}>
           <Text style={styles.sectionTitle}>This Week</Text>
@@ -631,7 +850,12 @@ export default function DashboardScreen() {
               onPress={() => router.push("/statistics")}
               activeOpacity={0.7}
             >
-              <View style={[styles.statIconContainer, { backgroundColor: "#9C27B0" + "20" }]}>
+              <View
+                style={[
+                  styles.statIconContainer,
+                  { backgroundColor: "#9C27B0" + "20" },
+                ]}
+              >
                 <Ionicons name="stats-chart" size={24} color="#9C27B0" />
               </View>
               <Text style={styles.statNumber}>View</Text>
@@ -643,16 +867,34 @@ export default function DashboardScreen() {
               onPress={() => router.push("/saved-spots")}
               activeOpacity={0.7}
             >
-              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.burntOrange + "20" }]}>
-                <Ionicons name="location" size={24} color={theme.colors.burntOrange} />
+              <View
+                style={[
+                  styles.statIconContainer,
+                  { backgroundColor: theme.colors.burntOrange + "20" },
+                ]}
+              >
+                <Ionicons
+                  name="location"
+                  size={24}
+                  color={theme.colors.burntOrange}
+                />
               </View>
               <Text style={styles.statNumber}>{stats.totalLocations}</Text>
               <Text style={styles.statLabel}>Places</Text>
             </TouchableOpacity>
 
             <View style={styles.statCard}>
-              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.navy + "20" }]}>
-                <Ionicons name="trending-up" size={24} color={theme.colors.navy} />
+              <View
+                style={[
+                  styles.statIconContainer,
+                  { backgroundColor: theme.colors.navy + "20" },
+                ]}
+              >
+                <Ionicons
+                  name="trending-up"
+                  size={24}
+                  color={theme.colors.navy}
+                />
               </View>
               <Text style={styles.statNumber}>
                 {formatDistance(stats.totalDistance, 0).split(" ")[0]}
@@ -663,7 +905,12 @@ export default function DashboardScreen() {
             </View>
 
             <View style={styles.statCard}>
-              <View style={[styles.statIconContainer, { backgroundColor: "#FFB800" + "20" }]}>
+              <View
+                style={[
+                  styles.statIconContainer,
+                  { backgroundColor: "#FFB800" + "20" },
+                ]}
+              >
                 <Ionicons name="flame" size={24} color="#FFB800" />
               </View>
               <Text style={styles.statNumber}>{stats.currentStreak}</Text>
@@ -671,22 +918,28 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Quick Stats Bar */}
           <View style={styles.quickStats}>
             <View style={styles.quickStatItem}>
-              <Text style={styles.quickStatValue}>{formatDuration(stats.totalDuration)}</Text>
+              <Text style={styles.quickStatValue}>
+                {formatDuration(stats.totalDuration)}
+              </Text>
               <Text style={styles.quickStatLabel}>Total Time</Text>
             </View>
             <View style={styles.quickStatDivider} />
             <View style={styles.quickStatItem}>
-              <Text style={styles.quickStatValue}>{stats.uniqueCategories}</Text>
+              <Text style={styles.quickStatValue}>
+                {stats.uniqueCategories}
+              </Text>
               <Text style={styles.quickStatLabel}>Categories</Text>
             </View>
             <View style={styles.quickStatDivider} />
             <View style={styles.quickStatItem}>
               <Text style={styles.quickStatValue}>
                 {stats.totalActivities > 0
-                  ? formatDistance(stats.totalDistance / stats.totalActivities, 1)
+                  ? formatDistance(
+                      stats.totalDistance / stats.totalActivities,
+                      1
+                    )
                   : "0 km"}
               </Text>
               <Text style={styles.quickStatLabel}>Avg Distance</Text>
@@ -694,7 +947,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Friends Section - NEW! */}
+        {/* Friends Section */}
         <View style={styles.friendsSection}>
           <Text style={styles.sectionTitle}>Friends & Social</Text>
           <View style={styles.friendsButtons}>
@@ -703,11 +956,18 @@ export default function DashboardScreen() {
               onPress={() => router.push("/friends-feed")}
               activeOpacity={0.7}
             >
-              <View style={[styles.friendIconContainer, { backgroundColor: theme.colors.forest + "20" }]}>
+              <View
+                style={[
+                  styles.friendIconContainer,
+                  { backgroundColor: theme.colors.forest + "20" },
+                ]}
+              >
                 <Ionicons name="people" size={24} color={theme.colors.forest} />
               </View>
               <Text style={styles.friendButtonTitle}>Friends Feed</Text>
-              <Text style={styles.friendButtonSubtitle}>See what friends are up to</Text>
+              <Text style={styles.friendButtonSubtitle}>
+                See what friends are up to
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -715,11 +975,22 @@ export default function DashboardScreen() {
               onPress={() => router.push("/friends")}
               activeOpacity={0.7}
             >
-              <View style={[styles.friendIconContainer, { backgroundColor: theme.colors.burntOrange + "20" }]}>
-                <Ionicons name="person-add" size={24} color={theme.colors.burntOrange} />
+              <View
+                style={[
+                  styles.friendIconContainer,
+                  { backgroundColor: theme.colors.burntOrange + "20" },
+                ]}
+              >
+                <Ionicons
+                  name="person-add"
+                  size={24}
+                  color={theme.colors.burntOrange}
+                />
               </View>
               <Text style={styles.friendButtonTitle}>Manage Friends</Text>
-              <Text style={styles.friendButtonSubtitle}>Add or find friends</Text>
+              <Text style={styles.friendButtonSubtitle}>
+                Add or find friends
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -741,7 +1012,8 @@ export default function DashboardScreen() {
                 color={theme.colors.forest}
               />
               <Text style={styles.mapStyleText}>
-                {settings.mapStyle.charAt(0).toUpperCase() + settings.mapStyle.slice(1)}
+                {settings.mapStyle.charAt(0).toUpperCase() +
+                  settings.mapStyle.slice(1)}
               </Text>
             </View>
           </View>
@@ -759,15 +1031,30 @@ export default function DashboardScreen() {
 
             <View style={styles.mapLegend}>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.colors.burntOrange }]} />
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: theme.colors.burntOrange },
+                  ]}
+                />
                 <Text style={styles.legendText}>You</Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.colors.forest }]} />
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: theme.colors.forest },
+                  ]}
+                />
                 <Text style={styles.legendText}>Routes</Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.colors.navy }]} />
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: theme.colors.navy },
+                  ]}
+                />
                 <Text style={styles.legendText}>Places</Text>
               </View>
             </View>
@@ -779,7 +1066,9 @@ export default function DashboardScreen() {
           <Text style={styles.sectionTitle}>Recent Adventures</Text>
           {activities.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No activities yet. Start tracking your adventures!</Text>
+              <Text style={styles.emptyText}>
+                No activities yet. Start tracking your adventures!
+              </Text>
               <TouchableOpacity
                 style={styles.startButton}
                 onPress={() => router.push("/track-activity")}
@@ -791,7 +1080,11 @@ export default function DashboardScreen() {
           ) : (
             <>
               {[...activities]
-                .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+                .sort(
+                  (a, b) =>
+                    new Date(b.startTime).getTime() -
+                    new Date(a.startTime).getTime()
+                )
                 .slice(0, 3)
                 .map((activity) => {
                   const icon = activityIcons[activity.type] || "fitness";
@@ -802,17 +1095,31 @@ export default function DashboardScreen() {
                       onPress={() => router.push("/past-activities")}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.recentIcon, { backgroundColor: theme.colors.forest + "20" }]}>
-                        <Ionicons name={icon as any} size={20} color={theme.colors.forest} />
+                      <View
+                        style={[
+                          styles.recentIcon,
+                          { backgroundColor: theme.colors.forest + "20" },
+                        ]}
+                      >
+                        <Ionicons
+                          name={icon as any}
+                          size={20}
+                          color={theme.colors.forest}
+                        />
                       </View>
                       <View style={styles.recentInfo}>
                         <Text style={styles.recentName}>{activity.name}</Text>
                         <Text style={styles.recentMeta}>
                           {new Date(activity.startTime).toLocaleDateString()} •{" "}
-                          {formatDistance(activity.distance)} • {formatDuration(activity.duration)}
+                          {formatDistance(activity.distance)} •{" "}
+                          {formatDuration(activity.duration)}
                         </Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+                      <Ionicons
+                        name="chevron-forward"
+                        size={20}
+                        color={theme.colors.lightGray}
+                      />
                     </TouchableOpacity>
                   );
                 })}
@@ -820,9 +1127,19 @@ export default function DashboardScreen() {
                 style={styles.viewStatsButton}
                 onPress={() => router.push("/statistics")}
               >
-                <Ionicons name="stats-chart" size={20} color={theme.colors.forest} />
-                <Text style={styles.viewStatsText}>View Detailed Statistics</Text>
-                <Ionicons name="chevron-forward" size={20} color={theme.colors.forest} />
+                <Ionicons
+                  name="stats-chart"
+                  size={20}
+                  color={theme.colors.forest}
+                />
+                <Text style={styles.viewStatsText}>
+                  View Detailed Statistics
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={theme.colors.forest}
+                />
               </TouchableOpacity>
             </>
           )}
@@ -844,26 +1161,49 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/save-location")}>
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push("/save-location")}
+          >
             <Ionicons name="location" size={24} color={theme.colors.forest} />
             <Text style={styles.quickActionText}>Save Spot</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/track-activity")}>
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push("/track-activity")}
+          >
             <Ionicons name="fitness" size={24} color={theme.colors.navy} />
             <Text style={styles.quickActionText}>Track</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/friends")}>
-            <Ionicons name="people" size={24} color={theme.colors.burntOrange} />
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push("/friends")}
+          >
+            <Ionicons
+              name="people"
+              size={24}
+              color={theme.colors.burntOrange}
+            />
             <Text style={styles.quickActionText}>Friends</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => router.push("/friends-feed")}>
-            <Ionicons name="share-social" size={24} color="#9C27B0" />
-            <Text style={styles.quickActionText}>Feed</Text>
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push("/notifications")}
+          >
+            <Ionicons name="notifications" size={24} color="#9C27B0" />
+            <Text style={styles.quickActionText}>Alerts</Text>
+            {unreadNotificationCount > 0 && (
+              <View style={styles.quickActionBadge}>
+                <Text style={styles.quickActionBadgeText}>
+                  {unreadNotificationCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Sidebar Modal - Slides from LEFT */}
+      {/* Sidebar Modal */}
       <Modal
         visible={showSidebar}
         animationType="none"
@@ -871,23 +1211,21 @@ export default function DashboardScreen() {
         onRequestClose={() => toggleSidebar(false)}
       >
         <View style={styles.sidebarContainer}>
-          {/* Overlay BEHIND the sidebar */}
           <TouchableOpacity
             style={styles.sidebarOverlay}
             activeOpacity={1}
             onPress={() => toggleSidebar(false)}
           />
-          
-          {/* Sidebar ABOVE the overlay */}
-          <Animated.View 
+
+          <Animated.View
             style={[
               styles.sidebar,
               {
-                transform: [{ translateX: sidebarAnimation }]
-              }
+                transform: [{ translateX: sidebarAnimation }],
+              },
             ]}
           >
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.profileSection}
               onPress={() => {
                 toggleSidebar(false);
@@ -896,19 +1234,22 @@ export default function DashboardScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.profileAvatar}>
-                <ExplorableIcon size={60} color={theme.colors.forest} />
+                <UserAvatar user={profile} size={60} />
               </View>
               <Text style={styles.profileName}>
                 {profile?.display_name || profile?.username || "Explorer"}
               </Text>
               <Text style={styles.profileStats}>
-                {stats.totalLocations} places • {stats.totalActivities} activities
+                {stats.totalLocations} places • {stats.totalActivities}{" "}
+                activities
               </Text>
-              {user && (
-                <Text style={styles.profileEmail}>{user.email}</Text>
-              )}
+              {user && <Text style={styles.profileEmail}>{user.email}</Text>}
               <View style={styles.editIndicator}>
-                <Ionicons name="create-outline" size={16} color={theme.colors.gray} />
+                <Ionicons
+                  name="create-outline"
+                  size={16}
+                  color={theme.colors.gray}
+                />
                 <Text style={styles.editText}>Tap to edit</Text>
               </View>
             </TouchableOpacity>
@@ -922,7 +1263,10 @@ export default function DashboardScreen() {
                 return (
                   <TouchableOpacity
                     key={index}
-                    style={[styles.sidebarItem, item.active && styles.sidebarItemActive]}
+                    style={[
+                      styles.sidebarItem,
+                      item.active && styles.sidebarItemActive,
+                    ]}
                     onPress={() => {
                       toggleSidebar(false);
                       if (item.route) {
@@ -930,22 +1274,35 @@ export default function DashboardScreen() {
                       }
                     }}
                   >
-                    <Ionicons
-                      name={item.icon as any}
-                      size={24}
-                      color={item.active ? theme.colors.forest : theme.colors.gray}
-                    />
-                    <Text
-                      style={[styles.sidebarItemText, item.active && styles.sidebarItemTextActive]}
-                    >
-                      {item.label}
-                    </Text>
+                    <View style={styles.sidebarItemContent}>
+                      <Ionicons
+                        name={item.icon as any}
+                        size={24}
+                        color={
+                          item.active ? theme.colors.forest : theme.colors.gray
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.sidebarItemText,
+                          item.active && styles.sidebarItemTextActive,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </View>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <View style={styles.sidebarBadge}>
+                        <Text style={styles.sidebarBadgeText}>
+                          {item.badge}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
-            {/* Auth Status in Sidebar */}
             <View style={styles.sidebarFooter}>
               {user ? (
                 <TouchableOpacity
@@ -955,7 +1312,11 @@ export default function DashboardScreen() {
                     router.push("/settings");
                   }}
                 >
-                  <Ionicons name="cloud-done" size={20} color={theme.colors.forest} />
+                  <Ionicons
+                    name="cloud-done"
+                    size={20}
+                    color={theme.colors.forest}
+                  />
                   <Text style={styles.authStatusText}>Synced</Text>
                 </TouchableOpacity>
               ) : (
@@ -966,7 +1327,11 @@ export default function DashboardScreen() {
                     router.push("/auth/login");
                   }}
                 >
-                  <Ionicons name="cloud-offline" size={20} color={theme.colors.gray} />
+                  <Ionicons
+                    name="cloud-offline"
+                    size={20}
+                    color={theme.colors.gray}
+                  />
                   <Text style={styles.authStatusText}>
                     {isOfflineMode ? "Offline Mode" : "Sign In"}
                   </Text>
@@ -1349,11 +1714,29 @@ const styles = StyleSheet.create({
   },
   quickAction: {
     alignItems: "center",
+    position: "relative",
   },
   quickActionText: {
     fontSize: 12,
     color: theme.colors.gray,
     marginTop: 4,
+  },
+  quickActionBadge: {
+    position: "absolute",
+    top: -5,
+    right: -8,
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  quickActionBadgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
   },
   sidebarContainer: {
     flex: 1,
@@ -1426,12 +1809,18 @@ const styles = StyleSheet.create({
   sidebarItem: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     padding: 15,
   },
   sidebarItemActive: {
     backgroundColor: theme.colors.offWhite,
     borderLeftWidth: 4,
     borderLeftColor: theme.colors.forest,
+  },
+  sidebarItemContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
   },
   sidebarItemText: {
     fontSize: 16,
@@ -1441,6 +1830,20 @@ const styles = StyleSheet.create({
   sidebarItemTextActive: {
     color: theme.colors.forest,
     fontWeight: "600",
+  },
+  sidebarBadge: {
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sidebarBadgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   sidebarDivider: {
     height: 1,
