@@ -208,6 +208,31 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, [user]);
 
+  useEffect(() => {
+  if (!user) {
+    // Clear all activity data immediately
+    setActivities([]);
+    setIsTracking(false);
+    setIsPaused(false);
+    setCurrentRoute([]);
+    setCurrentDistance(0);
+    setCurrentDuration(0);
+    setCurrentSpeed(0);
+    setCurrentLocation(null);
+    
+    // Clear any active tracking
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+    if (durationInterval.current) {
+      clearInterval(durationInterval.current);
+      durationInterval.current = null;
+    }
+  }
+}, [user]);
+
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -263,78 +288,81 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const saveActivity = async (activity: Activity): Promise<Activity | null> => {
-    if (!user) {
-      console.error("No user logged in");
-      return null;
+ const saveActivity = async (activity: Activity): Promise<Activity | null> => {
+  if (!user) {
+    console.error("No user logged in");
+    return null;
+  }
+
+  try {
+    const smoothedRoute = smoothGPSData(activity.route);
+    
+    let recalculatedDistance = 0;
+    for (let i = 1; i < smoothedRoute.length; i++) {
+      const dist = calculateDistance(
+        smoothedRoute[i - 1].latitude,
+        smoothedRoute[i - 1].longitude,
+        smoothedRoute[i].latitude,
+        smoothedRoute[i].longitude
+      );
+      recalculatedDistance += dist;
     }
 
-    try {
-      // Smooth the GPS data before saving
-      const smoothedRoute = smoothGPSData(activity.route);
+    const { data, error } = await supabase
+      .from("activities")
+      .insert({
+        user_id: user.id,
+        type: activity.type,
+        name: activity.name,
+        start_time: activity.startTime.toISOString(),
+        end_time: activity.endTime.toISOString(),
+        duration: activity.duration,
+        distance: recalculatedDistance,
+        route: smoothedRoute,
+        average_speed: activity.averageSpeed,
+        max_speed: activity.maxSpeed,
+        elevation_gain: activity.elevationGain,
+        notes: activity.notes,
+        photos: activity.photos,
+        is_manual_entry: activity.isManualEntry,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (data) {
+      const newActivity: Activity = {
+        id: data.id,
+        type: data.type as ActivityType,
+        name: data.name,
+        startTime: new Date(data.start_time),
+        endTime: new Date(data.end_time),
+        duration: data.duration,
+        distance: data.distance,
+        route: data.route || [],
+        averageSpeed: data.average_speed,
+        maxSpeed: data.max_speed,
+        elevationGain: data.elevation_gain,
+        notes: data.notes,
+        photos: data.photos,
+        isManualEntry: data.is_manual_entry,
+      };
+
+      // Update state immediately
+      setActivities((prev) => [newActivity, ...prev]);
       
-      // Recalculate distance with smoothed data
-      let recalculatedDistance = 0;
-      for (let i = 1; i < smoothedRoute.length; i++) {
-        const dist = calculateDistance(
-          smoothedRoute[i - 1].latitude,
-          smoothedRoute[i - 1].longitude,
-          smoothedRoute[i].latitude,
-          smoothedRoute[i].longitude
-        );
-        recalculatedDistance += dist;
-      }
-
-      const { data, error } = await supabase
-        .from("activities")
-        .insert({
-          user_id: user.id,
-          type: activity.type,
-          name: activity.name,
-          start_time: activity.startTime.toISOString(),
-          end_time: activity.endTime.toISOString(),
-          duration: activity.duration,
-          distance: recalculatedDistance,
-          route: smoothedRoute,
-          average_speed: activity.averageSpeed,
-          max_speed: activity.maxSpeed,
-          elevation_gain: activity.elevationGain,
-          notes: activity.notes,
-          photos: activity.photos,
-          is_manual_entry: activity.isManualEntry,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        const newActivity: Activity = {
-          id: data.id,
-          type: data.type as ActivityType,
-          name: data.name,
-          startTime: new Date(data.start_time),
-          endTime: new Date(data.end_time),
-          duration: data.duration,
-          distance: data.distance,
-          route: data.route || [],
-          averageSpeed: data.average_speed,
-          maxSpeed: data.max_speed,
-          elevationGain: data.elevation_gain,
-          notes: data.notes,
-          photos: data.photos,
-          isManualEntry: data.is_manual_entry,
-        };
-
-        setActivities((prev) => [...prev, newActivity]);
-        return newActivity;
-      }
-      return null;
-    } catch (error) {
-      console.error("Error saving activity:", error);
-      throw error;
+      // Small delay to ensure state propagates
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      return newActivity;
     }
-  };
+    return null;
+  } catch (error) {
+    console.error("Error saving activity:", error);
+    throw error;
+  }
+};
 
   const restartLocationTracking = async () => {
     try {

@@ -81,7 +81,7 @@ export default function OnboardingScreen() {
       } else {
         Alert.alert(
           'Location Required',
-          'ExplorAble needs location access to track your activities and save spots. You can enable this later in Settings.',
+          'explorAble needs location access to track your activities and save spots. You can enable this later in Settings.',
           [{ text: 'OK' }]
         );
         return false;
@@ -214,11 +214,47 @@ export default function OnboardingScreen() {
       ),
     },
     {
+      id: 'friends',
+      title: 'Connect with Friends',
+      subtitle: 'Share your adventures and discover new places together',
+      backgroundColor: theme.colors.burntOrange,
+      textColor: theme.colors.white,
+      customContent: (
+        <View style={styles.friendsPreview}>
+          <View style={styles.friendFeature}>
+            <Ionicons name="people-circle" size={50} color={theme.colors.white} />
+            <Text style={styles.friendFeatureTitle}>Friends Feed</Text>
+            <Text style={styles.friendFeatureText}>See what your friends are exploring</Text>
+          </View>
+          <View style={styles.friendFeatureRow}>
+            <View style={styles.friendFeatureSmall}>
+              <Ionicons name="heart" size={30} color="#FF4757" />
+              <Text style={styles.friendFeatureSmallText}>Like & Comment</Text>
+            </View>
+            <View style={styles.friendFeatureSmall}>
+              <Ionicons name="share-social" size={30} color="#4ECDC4" />
+              <Text style={styles.friendFeatureSmallText}>Share Activities</Text>
+            </View>
+          </View>
+          <View style={styles.friendFeatureRow}>
+            <View style={styles.friendFeatureSmall}>
+              <Ionicons name="location-sharp" size={30} color="#FFD700" />
+              <Text style={styles.friendFeatureSmallText}>Recommend Spots</Text>
+            </View>
+            <View style={styles.friendFeatureSmall}>
+              <Ionicons name="notifications" size={30} color="#9B59B6" />
+              <Text style={styles.friendFeatureSmallText}>Stay Updated</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
       id: 'wishlist',
       title: 'Plan Adventures',
       subtitle: 'Create a wishlist of places you want to explore',
       icon: 'heart',
-      backgroundColor: theme.colors.burntOrange,
+      backgroundColor: theme.colors.forest,
       textColor: theme.colors.white,
       customContent: (
         <View style={styles.wishlistPreview}>
@@ -306,7 +342,7 @@ export default function OnboardingScreen() {
       title: 'Enable Location',
       subtitle: 'We need location access to track your activities and save your spots',
       icon: 'navigate',
-      backgroundColor: theme.colors.forest,
+      backgroundColor: theme.colors.navy,
       textColor: theme.colors.white,
       action: requestLocationPermission,
       actionLabel: locationPermissionGranted ? '✓ Permission Granted' : 'Enable Location',
@@ -326,7 +362,7 @@ export default function OnboardingScreen() {
           </View>
           <View style={styles.permissionItem}>
             <Ionicons name="lock-closed" size={24} color={theme.colors.white} />
-            <Text style={styles.permissionText}>Your data stays on your device</Text>
+            <Text style={styles.permissionText}>Your data stays private</Text>
           </View>
         </View>
       ),
@@ -427,6 +463,13 @@ export default function OnboardingScreen() {
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleScroll}
         scrollEventThrottle={16}
+        decelerationRate="fast"
+        snapToInterval={width}
+        snapToAlignment="center"
+        bounces={false}
+        overScrollMode="never"
+        directionalLockEnabled={true}
+        scrollEnabled={true}
       >
         {slides.map((slide, index) => (
           <Animated.View
@@ -482,46 +525,89 @@ export default function OnboardingScreen() {
 
       {/* Bottom navigation */}
       <View style={styles.bottomNav}>
+        {/* Swipe hint - only show on first few slides */}
+        {currentIndex < 3 && (
+          <Text style={[styles.swipeHint, { color: currentSlide.textColor, opacity: 0.6 }]}>
+            Swipe left to continue →
+          </Text>
+        )}
+        
         {/* Page indicators */}
         <View style={styles.pagination}>
           {slides.map((_, index) => (
-            <View
+            <TouchableOpacity
               key={index}
-              style={[
-                styles.paginationDot,
-                {
-                  backgroundColor: index === currentIndex ? currentSlide.textColor : `${currentSlide.textColor}30`,
-                  width: index === currentIndex ? 24 : 8,
-                },
-              ]}
-            />
+              onPress={() => {
+                scrollViewRef.current?.scrollTo({ x: width * index, animated: true });
+                setCurrentIndex(index);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
+            >
+              <View
+                style={[
+                  styles.paginationDot,
+                  {
+                    backgroundColor: index === currentIndex ? currentSlide.textColor : `${currentSlide.textColor}30`,
+                    width: index === currentIndex ? 24 : 8,
+                  },
+                ]}
+              />
+            </TouchableOpacity>
           ))}
         </View>
 
-        {/* Next/Get Started button */}
-        <TouchableOpacity
-          style={[
-            styles.nextButton,
-            { 
-              backgroundColor: currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest,
-            }
-          ]}
-          onPress={handleNext}
-        >
-          <Text style={[
-            styles.nextButtonText,
-            { 
-              color: currentSlide.textColor === theme.colors.white ? theme.colors.forest : theme.colors.white,
-            }
-          ]}>
-            {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
-          </Text>
-          <Ionicons 
-            name={currentIndex === slides.length - 1 ? 'checkmark' : 'arrow-forward'} 
-            size={20} 
-            color={currentSlide.textColor === theme.colors.white ? theme.colors.forest : theme.colors.white}
-          />
-        </TouchableOpacity>
+        {/* Navigation buttons */}
+        <View style={styles.navigationButtons}>
+          {/* Back button - show after first slide */}
+          {currentIndex > 0 && (
+            <TouchableOpacity
+              style={[
+                styles.backButton,
+                { 
+                  borderColor: currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest,
+                }
+              ]}
+              onPress={() => {
+                const prevIndex = currentIndex - 1;
+                scrollViewRef.current?.scrollTo({ x: width * prevIndex, animated: true });
+                setCurrentIndex(prevIndex);
+              }}
+            >
+              <Ionicons 
+                name="arrow-back" 
+                size={20} 
+                color={currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest}
+              />
+            </TouchableOpacity>
+          )}
+          
+          {/* Next/Get Started button */}
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              { 
+                backgroundColor: currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest,
+                flex: currentIndex === 0 ? 1 : undefined,
+                marginLeft: currentIndex > 0 ? 10 : 0,
+              }
+            ]}
+            onPress={handleNext}
+          >
+            <Text style={[
+              styles.nextButtonText,
+              { 
+                color: currentSlide.textColor === theme.colors.white ? theme.colors.forest : theme.colors.white,
+              }
+            ]}>
+              {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
+            </Text>
+            <Ionicons 
+              name={currentIndex === slides.length - 1 ? 'checkmark' : 'arrow-forward'} 
+              size={20} 
+              color={currentSlide.textColor === theme.colors.white ? theme.colors.forest : theme.colors.white}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -625,6 +711,42 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     fontWeight: '500',
+  },
+  friendsPreview: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  friendFeature: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  friendFeatureTitle: {
+    color: theme.colors.white,
+    fontSize: 20,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+  friendFeatureText: {
+    color: theme.colors.white,
+    fontSize: 14,
+    opacity: 0.9,
+    marginTop: 5,
+  },
+  friendFeatureRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginBottom: 20,
+  },
+  friendFeatureSmall: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  friendFeatureSmallText: {
+    color: theme.colors.white,
+    fontSize: 12,
+    marginTop: 5,
+    textAlign: 'center',
   },
   wishlistPreview: {
     alignItems: 'center',
@@ -755,6 +877,12 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     paddingTop: 20,
   },
+  swipeHint: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 10,
+    fontStyle: 'italic',
+  },
   pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -766,12 +894,28 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginHorizontal: 4,
   },
+  navigationButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
   nextButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
+    paddingHorizontal: 30,
     borderRadius: 12,
+    minWidth: 120,
   },
   nextButtonText: {
     fontSize: 18,

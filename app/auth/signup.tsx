@@ -112,7 +112,7 @@ export default function SignupScreen() {
           <View style={styles.formContainer}>
             <Text style={styles.title}>Create Account</Text>
             <Text style={styles.subtitle}>
-              Join ExplorAble to track and share your adventures
+              Join explorAble to track and share your adventures
             </Text>
 
             {/* Display Name */}

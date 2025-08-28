@@ -70,6 +70,15 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [user]);
 
+  useEffect(() => {
+  if (!user) {
+    // Clear all location data immediately when user is null
+    setSavedSpots([]);
+    setLocation(null);
+    setError(null);
+  }
+}, [user]);
+
   // Subscribe to real-time changes
   useEffect(() => {
     if (!user) return;
@@ -197,60 +206,63 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     return finalUrls;
   };
 
-  const saveSpot = async (spot: Omit<SavedSpot, 'id' | 'timestamp'>): Promise<SavedSpot | null> => {
-    if (!user) {
-      setError('Please sign in to save locations');
-      return null;
+ const saveSpot = async (spot: Omit<SavedSpot, 'id' | 'timestamp'>): Promise<SavedSpot | null> => {
+  if (!user) {
+    setError('Please sign in to save locations');
+    return null;
+  }
+
+  try {
+    // Process photos first
+    const photoUrls = await processPhotosForUpload(spot.photos || []);
+
+    const { data, error: insertError } = await supabase
+      .from('locations')
+      .insert({
+        user_id: user.id,
+        name: spot.name,
+        latitude: spot.location.latitude,
+        longitude: spot.location.longitude,
+        description: spot.description || null,
+        category: spot.category || 'other',
+        rating: spot.rating || null,
+        photos: photoUrls,
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    if (data) {
+      const newSpot: SavedSpot = {
+        id: data.id,
+        name: data.name,
+        location: {
+          latitude: data.latitude,
+          longitude: data.longitude,
+        },
+        photos: data.photos || [],
+        timestamp: new Date(data.created_at),
+        description: data.description,
+        category: data.category as CategoryType || 'other',
+        rating: data.rating,
+      };
+      
+      // Update state immediately
+      setSavedSpots(prev => [newSpot, ...prev]);
+      
+      // Small delay to ensure state propagates
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      return newSpot;
     }
-
-    try {
-      // Process photos - upload new ones, keep existing URLs
-      console.log('Processing photos for upload:', spot.photos);
-      const photoUrls = await processPhotosForUpload(spot.photos || []);
-      console.log('Final photo URLs:', photoUrls);
-
-      const { data, error: insertError } = await supabase
-        .from('locations')
-        .insert({
-          user_id: user.id,
-          name: spot.name,
-          latitude: spot.location.latitude,
-          longitude: spot.location.longitude,
-          description: spot.description || null,
-          category: spot.category || 'other',
-          rating: spot.rating || null,
-          photos: photoUrls, // Save URLs, not base64 or file paths
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      if (data) {
-        const newSpot: SavedSpot = {
-          id: data.id,
-          name: data.name,
-          location: {
-            latitude: data.latitude,
-            longitude: data.longitude,
-          },
-          photos: data.photos || [],
-          timestamp: new Date(data.created_at),
-          description: data.description,
-          category: data.category as CategoryType || 'other',
-          rating: data.rating,
-        };
-        
-        setSavedSpots(prev => [newSpot, ...prev]);
-        return newSpot;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error saving spot:', error);
-      setError('Failed to save location');
-      throw error;
-    }
-  };
+    return null;
+  } catch (error) {
+    console.error('Error saving spot:', error);
+    setError('Failed to save location');
+    throw error;
+  }
+};
 
   const saveCurrentLocation = async (
     name: string,

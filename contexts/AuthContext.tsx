@@ -20,8 +20,7 @@ interface Profile {
     share_locations: boolean;
     allow_friend_requests: boolean;
   };
-    profile_picture?: string | null;  // Add this line
-
+  profile_picture?: string | null; // Add this line
 }
 
 interface AuthContextType {
@@ -305,7 +304,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem("userId", data.user.id);
 
       Alert.alert(
-        "Welcome to ExplorAble!",
+        "Welcome to explorAble!",
         "Your account has been created successfully!"
       );
 
@@ -374,45 +373,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
 
-      // Try to sign out from Supabase
-      const { error } = await supabase.auth.signOut();
+      // Clear state FIRST before async operations
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      setIsOfflineMode(false);
 
-      // Ignore "session missing" errors - that means we're already signed out
-      if (error && !error.message.includes("session")) {
-        console.error("Supabase signOut error:", error);
-        // Don't throw for session errors, continue with local cleanup
+      // Then attempt Supabase signout
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error && !error.message.includes("session")) {
+          console.error("Supabase signOut error:", error);
+        }
+      } catch (supabaseError) {
+        console.error("Supabase signout failed:", supabaseError);
+        // Continue with local cleanup even if Supabase fails
       }
 
-      // Clear local auth state regardless of Supabase result
+      // Clear only auth-related storage, NOT onboarding
       await AsyncStorage.multiRemove([
         "isAuthenticated",
         "userId",
         "userProfile",
         "lastSyncTime",
         "offlineMode",
+        // Don't clear "onboardingComplete" here
       ]);
 
-      // Reset state
+      console.log("Sign out completed");
+    } catch (error) {
+      console.error("Sign out error:", error);
+      // Still ensure state is cleared on error
       setUser(null);
       setProfile(null);
       setSession(null);
       setIsOfflineMode(false);
-
-      console.log("Sign out completed, local state cleared");
-    } catch (error: any) {
-      console.error("Sign out error:", error);
-      // Still clear local state even if there's an error
-      setUser(null);
-      setProfile(null);
-      setSession(null);
-
-      // Don't show alert here, let the settings screen handle it
-      throw error;
     } finally {
       setLoading(false);
     }
   };
-
   const updateProfile = async (updates: Partial<Profile>) => {
     try {
       if (!user) throw new Error("No user logged in");

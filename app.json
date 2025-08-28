@@ -4,11 +4,11 @@
     "slug": "explorable",
     "version": "1.0.5",
     "orientation": "portrait",
-    "icon": "./assets/adaptive-icon.png",
+    "icon": "./assets/adaptive-icon.svg",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#1e3a5f"
     },
     "updates": {

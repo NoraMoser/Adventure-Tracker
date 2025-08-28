@@ -40,7 +40,7 @@ export class ShareService {
       message += `\n📸 ${spot.photos.length} photo${spot.photos.length > 1 ? 's' : ''} attached`;
     }
     
-    message += `\n\nShared from ExplorAble 🌲`;
+    message += `\n\nShared from explorAble 🌲`;
     
     return message;
   }
@@ -231,7 +231,7 @@ export class ShareService {
     
     const date = new Date(activity.startTime).toLocaleDateString();
     message += `\n\n📅 ${date}`;
-    message += `\n\nShared from ExplorAble 🌲`;
+    message += `\n\nShared from explorAble 🌲`;
     
     return message;
   }
@@ -575,7 +575,7 @@ export class ShareService {
         message += `   🗺️ ${this.getGoogleMapsUrl(spot.location.latitude, spot.location.longitude, spot.name)}\n\n`;
       });
       
-      message += `Shared from ExplorAble 🌲`;
+      message += `Shared from explorAble 🌲`;
       
       // Copy to clipboard for easy pasting
       await Clipboard.setStringAsync(message);

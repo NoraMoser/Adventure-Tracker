@@ -347,7 +347,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({ children })
           avatar: u.avatar,
           profile_picture: u.profile_picture,
           mutualFriendsCount: 0,
-          suggestionReason: "Active on ExplorAble",
+          suggestionReason: "Active on explorAble",
         }));
 
         setSuggestions(suggestionsList);

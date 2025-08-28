@@ -403,8 +403,8 @@ export default function FriendsScreen() {
     if (!profile) return;
     
     Share.share({
-      message: `Join me on ExplorAble! Add me as a friend: @${profile.username}`,
-      title: 'Add me on ExplorAble',
+      message: `Join me on explorAble! Add me as a friend: @${profile.username}`,
+      title: 'Add me on explorAble',
     });
   };
   

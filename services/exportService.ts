@@ -45,15 +45,15 @@ export class ExportService {
    */
   static async exportToGPX(activities: Activity[]): Promise<string> {
     const gpxHeader = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="ExplorAble App"
+<gpx version="1.1" creator="explorAble App"
   xmlns="http://www.topografix.com/GPX/1/1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
   <metadata>
-    <name>ExplorAble Activities Export</name>
-    <desc>GPS tracks from ExplorAble adventure tracking app</desc>
+    <name>explorAble Activities Export</name>
+    <desc>GPS tracks from explorAble adventure tracking app</desc>
     <author>
-      <name>ExplorAble User</name>
+      <name>explorAble User</name>
     </author>
     <time>${new Date().toISOString()}</time>
   </metadata>`;
@@ -246,7 +246,7 @@ export class ExportService {
 
       await Sharing.shareAsync(fileUri, {
         mimeType,
-        dialogTitle: 'Export ExplorAble Data',
+        dialogTitle: 'Export explorAble Data',
         UTI: mimeType === 'application/json' ? 'public.json' : 'public.plain-text',
       });
     } catch (error) {
@@ -273,12 +273,12 @@ export class ExportService {
       }
 
       const options: MailComposer.MailComposerOptions = {
-        subject: `ExplorAble Backup - ${new Date().toLocaleDateString()}`,
+        subject: `explorAble Backup - ${new Date().toLocaleDateString()}`,
         body: `
           <html>
             <body>
-              <h2>ExplorAble Data Backup</h2>
-              <p>Attached is your ExplorAble data backup created on ${new Date().toLocaleString()}.</p>
+              <h2>explorAble Data Backup</h2>
+              <p>Attached is your explorAble data backup created on ${new Date().toLocaleString()}.</p>
               <p><strong>This backup includes:</strong></p>
               <ul>
                 <li>All saved locations</li>
@@ -288,7 +288,7 @@ export class ExportService {
               </ul>
               <p><strong>To restore this backup:</strong></p>
               <ol>
-                <li>Open ExplorAble app</li>
+                <li>Open explorAble app</li>
                 <li>Go to Settings > Data Management</li>
                 <li>Select "Import Backup"</li>
                 <li>Choose this file</li>
@@ -358,7 +358,7 @@ export class ExportService {
       return data;
     } catch (error) {
       console.error('Error importing backup:', error);
-      Alert.alert('Import Failed', 'Failed to import backup file. Please ensure it\'s a valid ExplorAble backup.');
+      Alert.alert('Import Failed', 'Failed to import backup file. Please ensure it\'s a valid explorAble backup.');
       return null;
     }
   }
