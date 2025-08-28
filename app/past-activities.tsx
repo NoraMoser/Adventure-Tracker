@@ -1,4 +1,4 @@
-// past-activities.tsx - Updated with Social Sharing Features
+// past-activities.tsx - Complete file with unit support
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -38,11 +38,13 @@ const ShareWithFriendsModal = ({
   onClose,
   activity,
   onShare,
+  formatDistance, // Pass formatDistance as prop
 }: {
   visible: boolean;
   onClose: () => void;
   activity: any;
   onShare: (selectedFriends: string[], message?: string) => void;
+  formatDistance: (meters: number) => string; // Add type
 }) => {
   const { friends } = useFriends();
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
@@ -93,11 +95,11 @@ const ShareWithFriendsModal = ({
             <View style={styles.previewStats}>
               <Text style={styles.previewStat}>
                 <Ionicons name="navigate" size={14} />{" "}
-                {(activity?.distance / 1000).toFixed(2)} km
+                {formatDistance(activity?.distance || 0)}
               </Text>
               <Text style={styles.previewStat}>
                 <Ionicons name="time" size={14} />{" "}
-                {Math.round(activity?.duration / 60)} min
+                {Math.round((activity?.duration || 0) / 60)} min
               </Text>
             </View>
           </View>
@@ -182,7 +184,7 @@ const ShareWithFriendsModal = ({
 export default function PastActivitiesScreen() {
   const { activities, deleteActivity } = useActivity();
   const { shareActivity, friends, privacySettings } = useFriends();
-  const { formatDistance, formatSpeed } = useSettings();
+  const { formatDistance, formatSpeed, settings } = useSettings();
   const router = useRouter();
 
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
@@ -294,10 +296,14 @@ export default function PastActivitiesScreen() {
 
   const handleShareActivity = async (activity: any) => {
     try {
+      const shareOptions = {
+        units: settings.units,
+      };
+      
       if (activity.route && activity.route.length > 0) {
-        await ShareService.shareActivityWithMap(activity);
+        await ShareService.shareActivityWithMap(activity, shareOptions);
       } else {
-        await ShareService.shareActivity(activity);
+        await ShareService.shareActivity(activity, shareOptions);
       }
     } catch (error) {
       console.error("Error sharing activity:", error);
@@ -337,7 +343,9 @@ export default function PastActivitiesScreen() {
 
   const handleCopyActivity = async (activity: any) => {
     try {
-      await ShareService.copyActivityToClipboard(activity);
+      await ShareService.copyActivityToClipboard(activity, {
+        units: settings.units,
+      });
       Alert.alert("Copied!", "Activity details copied to clipboard");
     } catch (error) {
       console.error("Error copying activity:", error);
@@ -356,11 +364,11 @@ export default function PastActivitiesScreen() {
         0
       );
 
-      let message = `🏃 My explorAble Adventure Summary\n\n`;
+      let message = `🏃 My ExplorAble Adventure Summary\n\n`;
       message += `📊 Total Stats:\n`;
       message += `• ${filteredActivities.length} activities completed\n`;
       message += `• ${formatDistance(totalDistance)} total distance\n`;
-      message += `• ${formatDuration(totalDuration)} total time\n\n`;
+      message += `• ${ShareService.formatDuration(totalDuration)} total time\n\n`;
 
       message += `🎯 Recent Activities:\n`;
       filteredActivities.slice(0, 5).forEach((activity, index) => {
@@ -376,7 +384,7 @@ export default function PastActivitiesScreen() {
         } more activities!\n`;
       }
 
-      message += `\nShared from explorAble 🌲`;
+      message += `\nShared from ExplorAble 🌲`;
 
       await Share.share({
         message,
@@ -695,7 +703,7 @@ export default function PastActivitiesScreen() {
               selectedType !== "all" || sortBy !== "recent"
                 ? theme.colors.burntOrange
                 : theme.colors.gray
-            } // ← ORANGE when filters active
+            }
           />
           {(selectedType !== "all" || sortBy !== "recent") && (
             <View style={styles.filterIndicatorDot} />
@@ -883,12 +891,13 @@ export default function PastActivitiesScreen() {
         <Ionicons name="add" size={30} color={theme.colors.white} />
       </TouchableOpacity>
 
-      {/* Share with Friends Modal */}
+      {/* Share with Friends Modal - Pass formatDistance */}
       <ShareWithFriendsModal
         visible={showShareModal}
         onClose={() => setShowShareModal(false)}
         activity={activityToShare}
         onShare={handleShareToFriends}
+        formatDistance={formatDistance}
       />
     </View>
   );
@@ -945,7 +954,7 @@ const styles = StyleSheet.create({
   },
   summaryContainer: {
     flexDirection: "row",
-    backgroundColor: theme.colors.forest, // ← Make it stand out with forest green
+    backgroundColor: theme.colors.forest,
     padding: 20,
     borderBottomWidth: 0,
   },
@@ -956,11 +965,11 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 24,
     fontWeight: "bold",
-    color: theme.colors.white, // ← White on green
+    color: theme.colors.white,
   },
   summaryLabel: {
     fontSize: 12,
-    color: theme.colors.white + "CC", // ← Slightly transparent white
+    color: theme.colors.white + "CC",
     marginTop: 4,
   },
   shareAllContainer: {
@@ -1133,7 +1142,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: theme.colors.burntOrange, // ← CHANGE from forest to orange
+    backgroundColor: theme.colors.burntOrange,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -1145,14 +1154,14 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: "row",
     padding: 15,
-    backgroundColor: theme.colors.navy, // ← Dark header
-    borderBottomWidth: 0, // Remove border since color contrast is enough
+    backgroundColor: theme.colors.navy,
+    borderBottomWidth: 0,
   },
   searchBar: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.white, // ← White on dark looks clean
+    backgroundColor: theme.colors.white,
     borderRadius: 8,
     paddingHorizontal: 12,
     marginRight: 10,
@@ -1167,13 +1176,13 @@ const styles = StyleSheet.create({
   filterButton: {
     width: 44,
     height: 44,
-    backgroundColor: theme.colors.white, // ← Match search bar
+    backgroundColor: theme.colors.white,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
   filterContainer: {
-    backgroundColor: theme.colors.navy + "F5", // ← Slightly lighter than header
+    backgroundColor: theme.colors.navy + "F5",
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.navy,
@@ -1181,7 +1190,7 @@ const styles = StyleSheet.create({
   filterTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: theme.colors.white, // ← White text on dark background
+    color: theme.colors.white,
     marginLeft: 15,
     marginBottom: 10,
   },

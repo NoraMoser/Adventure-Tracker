@@ -1,4 +1,4 @@
-// components/ActivityShareModal.tsx
+// components/ActivityShareModal.tsx - Complete file with unit support
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
@@ -15,6 +15,7 @@ import {
 import { theme } from '../constants/theme';
 import { Activity } from '../contexts/ActivityContext';
 import { useFriends } from '../contexts/FriendsContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { ShareService } from '../services/shareService';
 
 interface ActivityShareModalProps {
@@ -31,6 +32,7 @@ export const ActivityShareModal: React.FC<ActivityShareModalProps> = ({
   onShare,
 }) => {
   const { friends, addActivityToFeed, privacySettings, updatePrivacySettings } = useFriends();
+  const { settings } = useSettings(); // Get user's unit preference
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [shareMessage, setShareMessage] = useState("");
   const [shareToAll, setShareToAll] = useState(false);
@@ -68,6 +70,7 @@ export const ActivityShareModal: React.FC<ActivityShareModalProps> = ({
         shareToFriends: shareToFriends,
         friendIds: shareToAll ? acceptedFriends.map(f => f.id) : selectedFriends,
         message: shareMessage,
+        units: settings.units, // Pass units preference
       };
 
       // Remember privacy settings if requested
@@ -148,15 +151,21 @@ export const ActivityShareModal: React.FC<ActivityShareModalProps> = ({
               
               <View style={styles.statsRow}>
                 <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{(activity.distance / 1000).toFixed(2)} km</Text>
+                  <Text style={styles.statValue}>
+                    {ShareService.formatDistance(activity.distance, settings.units)}
+                  </Text>
                   <Text style={styles.statLabel}>Distance</Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{ShareService.formatDuration(activity.duration)}</Text>
+                  <Text style={styles.statValue}>
+                    {ShareService.formatDuration(activity.duration)}
+                  </Text>
                   <Text style={styles.statLabel}>Duration</Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{activity.averageSpeed.toFixed(1)} km/h</Text>
+                  <Text style={styles.statValue}>
+                    {ShareService.formatSpeed(activity.averageSpeed, settings.units)}
+                  </Text>
                   <Text style={styles.statLabel}>Avg Speed</Text>
                 </View>
               </View>
@@ -312,7 +321,7 @@ export const ActivityShareModal: React.FC<ActivityShareModalProps> = ({
             <TouchableOpacity
               style={[
                 styles.shareBtn,
-                (!shareToFriends && !shareToPublic) && styles.shareBtn
+                (!shareToFriends && !shareToPublic) && styles.shareBtnDisabled
               ]}
               onPress={handleShare}
               disabled={!shareToFriends && !shareToPublic}
@@ -534,6 +543,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     backgroundColor: theme.colors.forest,
+  },
+  shareBtnDisabled: {
+    opacity: 0.5,
   },
   shareText: {
     fontSize: 16,

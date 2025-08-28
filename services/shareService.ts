@@ -1,4 +1,4 @@
-// services/shareService.ts - Enhanced with activity sharing and privacy controls
+// services/shareService.ts - Fixed with unit preferences
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as Linking from 'expo-linking';
@@ -14,9 +14,50 @@ export interface ShareOptions {
   shareToFriends?: boolean;
   friendIds?: string[];
   message?: string;
+  units?: 'metric' | 'imperial'; // Add units option
 }
 
 export class ShareService {
+  /**
+   * Convert kilometers to miles
+   */
+  static kmToMiles(km: number): number {
+    return km * 0.621371;
+  }
+
+  /**
+   * Format distance based on units
+   */
+  static formatDistance(meters: number, units: 'metric' | 'imperial' = 'metric'): string {
+    if (units === 'imperial') {
+      const miles = (meters / 1000) * 0.621371;
+      return `${miles.toFixed(2)} mi`;
+    }
+    return `${(meters / 1000).toFixed(2)} km`;
+  }
+
+  /**
+   * Format speed based on units
+   */
+  static formatSpeed(kmh: number, units: 'metric' | 'imperial' = 'metric'): string {
+    if (units === 'imperial') {
+      const mph = kmh * 0.621371;
+      return `${mph.toFixed(1)} mph`;
+    }
+    return `${kmh.toFixed(1)} km/h`;
+  }
+
+  /**
+   * Format elevation based on units
+   */
+  static formatElevation(meters: number, units: 'metric' | 'imperial' = 'metric'): string {
+    if (units === 'imperial') {
+      const feet = meters * 3.28084;
+      return `${Math.round(feet)} ft`;
+    }
+    return `${Math.round(meters)} m`;
+  }
+
   /**
    * Create a shareable message for a location
    */
@@ -40,7 +81,7 @@ export class ShareService {
       message += `\n📸 ${spot.photos.length} photo${spot.photos.length > 1 ? 's' : ''} attached`;
     }
     
-    message += `\n\nShared from explorAble 🌲`;
+    message += `\n\nShared from ExplorAble 🌲`;
     
     return message;
   }
@@ -65,7 +106,94 @@ export class ShareService {
   }
 
   /**
-   * Create Google Maps URL
+   * Get emoji for activity type
+   */
+  static getActivityEmoji(type: string): string {
+    const emojiMap: Record<string, string> = {
+      bike: '🚴',
+      run: '🏃',
+      walk: '🚶',
+      hike: '🥾',
+      paddleboard: '🏄',
+      climb: '🧗',
+      other: '🏃',
+    };
+    return emojiMap[type] || '🏃';
+  }
+
+  /**
+   * Format duration from seconds
+   */
+  static formatDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes} minutes`;
+  }
+
+  /**
+   * Create a shareable message for an activity with privacy options and unit preferences
+   */
+  static createActivityMessage(activity: Activity, options: ShareOptions = {}): string {
+    const units = options.units || 'metric'; // Default to metric if not specified
+    const activityEmoji = this.getActivityEmoji(activity.type);
+    const distance = this.formatDistance(activity.distance, units);
+    const duration = this.formatDuration(activity.duration);
+    const avgSpeed = this.formatSpeed(activity.averageSpeed, units);
+    
+    let message = `${activityEmoji} ${activity.name}\n`;
+    message += `\n📊 Activity Stats:`;
+    message += `\n• Distance: ${distance}`;
+    message += `\n• Duration: ${duration}`;
+    message += `\n• Avg Speed: ${avgSpeed}`;
+    
+    if (activity.maxSpeed && activity.maxSpeed > 0) {
+      message += `\n• Max Speed: ${this.formatSpeed(activity.maxSpeed, units)}`;
+    }
+    
+    if (activity.elevationGain && activity.elevationGain > 0) {
+      message += `\n• Elevation Gain: ${this.formatElevation(activity.elevationGain, units)}`;
+    }
+    
+    if (activity.notes) {
+      message += `\n\n💭 ${activity.notes}`;
+    }
+    
+    // Add route information based on privacy settings
+    if (options.includeRoute && activity.route && activity.route.length > 0) {
+      const startPoint = activity.route[0];
+      const endPoint = activity.route[activity.route.length - 1];
+      
+      if (options.includeExactLocation) {
+        message += `\n\n📍 Route:`;
+        message += `\n• Start: ${startPoint.latitude.toFixed(4)}, ${startPoint.longitude.toFixed(4)}`;
+        message += `\n• End: ${endPoint.latitude.toFixed(4)}, ${endPoint.longitude.toFixed(4)}`;
+        
+        // Add Google Maps link for route
+        const routeUrl = this.createRouteUrl(activity.route);
+        if (routeUrl) {
+          message += `\n🗺️ View Route: ${routeUrl}`;
+        }
+      } else {
+        // Just show general area
+        message += `\n\n📍 General Area: ${this.getGeneralArea(startPoint.latitude, startPoint.longitude)}`;
+      }
+    } else if (!options.includeRoute) {
+      message += `\n\n🔒 Route details hidden for privacy`;
+    }
+    
+    const date = new Date(activity.startTime).toLocaleDateString();
+    message += `\n\n📅 ${date}`;
+    message += `\n\nShared from ExplorAble 🌲`;
+    
+    return message;
+  }
+
+  /**
+   * Get Google Maps URL
    */
   static getGoogleMapsUrl(latitude: number, longitude: number, name?: string): string {
     const label = name ? encodeURIComponent(name) : '';
@@ -73,7 +201,7 @@ export class ShareService {
   }
 
   /**
-   * Create Apple Maps URL
+   * Get Apple Maps URL
    */
   static getAppleMapsUrl(latitude: number, longitude: number, name?: string): string {
     const label = name ? encodeURIComponent(name) : '';
@@ -180,93 +308,8 @@ export class ShareService {
   }
 
   /**
-   * Create a shareable message for an activity with privacy options
-   */
-  static createActivityMessage(activity: Activity, options: ShareOptions = {}): string {
-    const activityEmoji = this.getActivityEmoji(activity.type);
-    const distance = (activity.distance / 1000).toFixed(2);
-    const duration = this.formatDuration(activity.duration);
-    const avgSpeed = activity.averageSpeed.toFixed(1);
-    
-    let message = `${activityEmoji} ${activity.name}\n`;
-    message += `\n📊 Activity Stats:`;
-    message += `\n• Distance: ${distance} km`;
-    message += `\n• Duration: ${duration}`;
-    message += `\n• Avg Speed: ${avgSpeed} km/h`;
-    
-    if (activity.maxSpeed && activity.maxSpeed > 0) {
-      message += `\n• Max Speed: ${activity.maxSpeed.toFixed(1)} km/h`;
-    }
-    
-    if (activity.elevationGain && activity.elevationGain > 0) {
-      message += `\n• Elevation Gain: ${Math.round(activity.elevationGain)}m`;
-    }
-    
-    if (activity.notes) {
-      message += `\n\n💭 ${activity.notes}`;
-    }
-    
-    // Add route information based on privacy settings
-    if (options.includeRoute && activity.route && activity.route.length > 0) {
-      const startPoint = activity.route[0];
-      const endPoint = activity.route[activity.route.length - 1];
-      
-      if (options.includeExactLocation) {
-        message += `\n\n📍 Route:`;
-        message += `\n• Start: ${startPoint.latitude.toFixed(4)}, ${startPoint.longitude.toFixed(4)}`;
-        message += `\n• End: ${endPoint.latitude.toFixed(4)}, ${endPoint.longitude.toFixed(4)}`;
-        
-        // Add Google Maps link for route
-        const routeUrl = this.createRouteUrl(activity.route);
-        if (routeUrl) {
-          message += `\n🗺️ View Route: ${routeUrl}`;
-        }
-      } else {
-        // Just show general area
-        message += `\n\n📍 General Area: ${this.getGeneralArea(startPoint.latitude, startPoint.longitude)}`;
-      }
-    } else if (!options.includeRoute) {
-      message += `\n\n📍 Route details hidden for privacy`;
-    }
-    
-    const date = new Date(activity.startTime).toLocaleDateString();
-    message += `\n\n📅 ${date}`;
-    message += `\n\nShared from explorAble 🌲`;
-    
-    return message;
-  }
-
-  /**
-   * Get emoji for activity type
-   */
-  static getActivityEmoji(type: string): string {
-    const emojiMap: Record<string, string> = {
-      bike: '🚴',
-      run: '🏃',
-      walk: '🚶',
-      hike: '🥾',
-      paddleboard: '🏄',
-      climb: '🧗',
-      other: '🏃',
-    };
-    return emojiMap[type] || '🏃';
-  }
-
-  /**
-   * Format duration from seconds
-   */
-  static formatDuration(seconds: number): string {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes} minutes`;
-  }
-
-  /**
    * Share activity with privacy options and user prompts
+   * Now accepts units in the options
    */
   static async shareActivity(activity: Activity, customOptions?: ShareOptions): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -372,7 +415,7 @@ export class ShareService {
   static async shareActivityWithMap(activity: Activity, options: ShareOptions = {}) {
     try {
       const includeRoute = options.includeRoute !== false; // default to true
-      const message = this.createActivityMessage(activity, { ...options, includeRoute });
+      const message = this.createActivityMessage(activity, options);
       
       // If there's a route and we're including it, add a static map preview
       if (includeRoute && activity.route && activity.route.length > 0 && options.includeExactLocation) {
@@ -476,6 +519,7 @@ export class ShareService {
           privacySettings: {
             includeRoute: options.includeRoute || false,
             includeExactLocation: options.includeExactLocation || false,
+            units: options.units || 'metric',
           }
         }
       };
@@ -544,7 +588,7 @@ export class ShareService {
   }
 
   /**
-   * Copy activity to clipboard
+   * Copy activity to clipboard with unit preferences
    */
   static async copyActivityToClipboard(activity: Activity, options: ShareOptions = {}) {
     try {
@@ -575,7 +619,7 @@ export class ShareService {
         message += `   🗺️ ${this.getGoogleMapsUrl(spot.location.latitude, spot.location.longitude, spot.name)}\n\n`;
       });
       
-      message += `Shared from explorAble 🌲`;
+      message += `Shared from ExplorAble 🌲`;
       
       // Copy to clipboard for easy pasting
       await Clipboard.setStringAsync(message);

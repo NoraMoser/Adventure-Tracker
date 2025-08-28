@@ -534,6 +534,8 @@ export default function DashboardScreen() {
     currentStreak: calculateStreak(),
   };
 
+  // Fixed calculateStreak function - use this in both index.tsx and statistics.tsx
+
   function calculateStreak() {
     if (activities.length === 0) return 0;
 
@@ -542,23 +544,41 @@ export default function DashboardScreen() {
         new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
 
+    // Get today's date at midnight
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Get the most recent activity date at midnight
+    const mostRecentActivity = new Date(sortedActivities[0].startTime);
+    mostRecentActivity.setHours(0, 0, 0, 0);
+
+    // Calculate days since most recent activity
+    const daysSinceLastActivity = Math.floor(
+      (today.getTime() - mostRecentActivity.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // If last activity was more than 1 day ago, streak is broken
+    if (daysSinceLastActivity > 1) {
+      return 0;
+    }
+
+    // Build a set of all activity dates (as date strings)
+    const activityDates = new Set(
+      activities.map((activity) => {
+        const date = new Date(activity.startTime);
+        date.setHours(0, 0, 0, 0);
+        return date.toDateString();
+      })
+    );
+
+    // Start counting from the most recent activity date
     let streak = 0;
-    let currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
+    let checkDate = new Date(mostRecentActivity);
 
-    for (const activity of sortedActivities) {
-      const actDate = new Date(activity.startTime);
-      actDate.setHours(0, 0, 0, 0);
-
-      const dayDiff = Math.floor(
-        (currentDate.getTime() - actDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      if (dayDiff === streak) {
-        streak++;
-      } else if (dayDiff > streak) {
-        break;
-      }
+    // Count consecutive days going backwards
+    while (activityDates.has(checkDate.toDateString())) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
     }
 
     return streak;
@@ -914,7 +934,10 @@ export default function DashboardScreen() {
                 <Ionicons name="flame" size={24} color="#FFB800" />
               </View>
               <Text style={styles.statNumber}>{stats.currentStreak}</Text>
-              <Text style={styles.statLabel}>Day Streak</Text>
+              <Text style={styles.statLabel}>Activity</Text>
+              <Text style={[styles.statLabel, { fontSize: 10 }]}>
+                Streak
+              </Text>
             </View>
           </View>
 
