@@ -48,7 +48,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+         [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow ExplorAble to use your location for tracking activities.",
+          "isBackgroundLocationEnabled": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
