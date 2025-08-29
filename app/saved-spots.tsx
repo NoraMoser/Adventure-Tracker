@@ -1,4 +1,4 @@
-// app/saved-spots.tsx - Updated with better colors
+// app/saved-spots.tsx - Updated without wishlist hearts
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -8,7 +8,6 @@ import {
     Animated,
     Dimensions,
     FlatList,
-    Image,
     Modal,
     Platform,
     RefreshControl,
@@ -17,14 +16,14 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
 import { WebView } from "react-native-webview";
+import { TouchableImage } from "../components/TouchableImage";
 import { categories, CategoryType } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { SavedSpot, useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
-import { useWishlist } from "../contexts/WishlistContext";
 import { ShareService } from "../services/shareService";
 
 const { width, height } = Dimensions.get("window");
@@ -222,10 +221,12 @@ const SpotDetailModal = ({
                 <Text style={detailStyles.sectionTitle}>Photos</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {spot.photos.map((photo, index) => (
-                    <Image
+                    <TouchableImage
                       key={index}
                       source={{ uri: photo }}
                       style={detailStyles.photo}
+                      images={spot.photos}
+                      imageIndex={index}
                     />
                   ))}
                 </ScrollView>
@@ -294,23 +295,19 @@ const SpotDetailModal = ({
   );
 };
 
-// Animated List Item Component - Updated with better colors
+// Animated List Item Component - Updated without wishlist heart
 const AnimatedListItem = ({
   item,
   index,
   onPress,
   onRate,
   onDelete,
-  onToggleWishlist,
-  isInWishlist,
 }: {
   item: SavedSpot;
   index: number;
   onPress: (item: SavedSpot) => void;
   onRate: (item: SavedSpot, rating: number) => void;
   onDelete: (item: SavedSpot) => void;
-  onToggleWishlist: (item: SavedSpot) => void;
-  isInWishlist: boolean;
 }) => {
   const animatedValue = useRef(new Animated.Value(0)).current;
   const category = categories[item.category] || categories.other;
@@ -365,16 +362,6 @@ const AnimatedListItem = ({
                 </View>
               </View>
             </View>
-            <TouchableOpacity
-              onPress={() => onToggleWishlist(item)}
-              style={styles.wishlistButton}
-            >
-              <Ionicons
-                name={isInWishlist ? "heart" : "heart-outline"}
-                size={24}
-                color={isInWishlist ? "#FF4757" : theme.colors.gray}
-              />
-            </TouchableOpacity>
           </View>
 
           {item.description && (
@@ -435,13 +422,12 @@ const AnimatedListItem = ({
 export default function SavedSpotsScreen() {
   const router = useRouter();
   const { savedSpots, deleteSpot, updateSpot, location } = useLocation();
-  const { wishlistItems, addWishlistItem, removeWishlistItem } = useWishlist();
   const { getMapTileUrl } = useSettings();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<
-    Set<CategoryType>
-  >(new Set(Object.keys(categories) as CategoryType[]));
+const [selectedCategories, setSelectedCategories] = useState<Set<CategoryType>>(
+  new Set(Object.keys(categories) as CategoryType[])
+);
   const [sortBy, setSortBy] = useState<"date" | "name" | "rating">("date");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -518,33 +504,6 @@ export default function SavedSpotsScreen() {
   const handleUpdateRating = async (spot: SavedSpot, rating: number) => {
     const updatedSpot = { ...spot, rating };
     await updateSpot(spot.id, updatedSpot);
-  };
-
-  const handleToggleWishlist = (spot: SavedSpot) => {
-    const wishlistItem = wishlistItems.find(
-      (item) =>
-        item.location &&
-        Math.abs(item.location.latitude - spot.location.latitude) < 0.0001 &&
-        Math.abs(item.location.longitude - spot.location.longitude) < 0.0001
-    );
-
-    if (wishlistItem) {
-      removeWishlistItem(wishlistItem.id);
-    } else {
-      addWishlistItem({
-        name: `Visit ${spot.name}`,
-        description:
-          spot.description ||
-          `Check out this ${categories[
-            spot.category
-          ].label.toLowerCase()} spot`,
-        location: spot.location,
-        category: spot.category,
-        priority: 2,
-        notes: spot.description,
-      });
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleShareSpot = async (spot: SavedSpot) => {
@@ -769,28 +728,15 @@ export default function SavedSpotsScreen() {
         <FlatList
           data={filteredSpots}
           keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => {
-            const isInWishlist = wishlistItems.some(
-              (w) =>
-                w.location &&
-                Math.abs(w.location.latitude - item.location.latitude) <
-                  0.0001 &&
-                Math.abs(w.location.longitude - item.location.longitude) <
-                  0.0001
-            );
-
-            return (
-              <AnimatedListItem
-                item={item}
-                index={index}
-                onPress={handleSpotPress}
-                onRate={handleUpdateRating}
-                onDelete={handleDeleteSpot}
-                onToggleWishlist={handleToggleWishlist}
-                isInWishlist={isInWishlist}
-              />
-            );
-          }}
+          renderItem={({ item, index }) => (
+            <AnimatedListItem
+              item={item}
+              index={index}
+              onPress={handleSpotPress}
+              onRate={handleUpdateRating}
+              onDelete={handleDeleteSpot}
+            />
+          )}
           contentContainerStyle={[
             styles.listContainer,
             filteredSpots.length === 0 && styles.emptyContainer,
@@ -1065,9 +1011,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "uppercase",
   },
-  wishlistButton: {
-    padding: 4,
-  },
   cardDescription: {
     fontSize: 14,
     color: theme.colors.gray,
@@ -1094,7 +1037,7 @@ const styles = StyleSheet.create({
   photoIndicator: {
     position: "absolute",
     top: 15,
-    right: 50, // Moved left to make room for heart
+    right: 15,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: theme.colors.navy + "90",
@@ -1147,7 +1090,9 @@ const styles = StyleSheet.create({
   },
 });
 
+// filterStyles and detailStyles remain the same as before
 const filterStyles = StyleSheet.create({
+  // ... same as before
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1234,6 +1179,7 @@ const filterStyles = StyleSheet.create({
 });
 
 const detailStyles = StyleSheet.create({
+  // ... same as before
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",

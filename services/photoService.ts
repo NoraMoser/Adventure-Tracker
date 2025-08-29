@@ -1,4 +1,4 @@
-// services/photoService.ts - Fixed to properly handle ImagePicker URIs
+// services/photoService.ts - Fixed with robust fetch handling
 import { decode } from "base64-arraybuffer";
 import * as ImageManipulator from "expo-image-manipulator";
 import { supabase } from "../lib/supabase";
@@ -63,7 +63,38 @@ export class PhotoService {
   }
 
   /**
-   * Convert URI to base64 - Fixed to handle file:// URIs properly
+   * Robust fetch with retry logic
+   */
+  static async fetchWithRetry(uri: string, maxRetries = 3): Promise<Response> {
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        
+        const response = await fetch(uri, {
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error: any) {
+        lastError = error;
+        console.log(`Fetch attempt ${i + 1} failed:`, error.message);
+        
+        if (i < maxRetries - 1) {
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+        }
+      }
+    }
+    
+    throw lastError || new Error('Failed to fetch after retries');
+  }
+
+  /**
+   * Convert URI to base64 - Fixed to handle file:// URIs properly with retry
    */
   static async uriToBase64(uri: string): Promise<string> {
     try {
@@ -72,8 +103,8 @@ export class PhotoService {
         return uri.split("base64,")[1];
       }
 
-      // For file:// URIs from ImagePicker, we need to fetch them properly
-      const response = await fetch(uri);
+      // For file:// URIs from ImagePicker, we need to fetch them properly with retry
+      const response = await this.fetchWithRetry(uri);
       const blob = await response.blob();
 
       return new Promise((resolve, reject) => {
@@ -97,73 +128,88 @@ export class PhotoService {
   }
 
   /**
-   * Upload a single photo to Supabase Storage
+   * Upload a single photo to Supabase Storage with retry logic
    */
   static async uploadPhoto(
     photoUri: string,
     bucket: "location-photos" | "activity-photos" | "profile-avatars",
-    userId: string
+    userId: string,
+    maxRetries = 3
   ): Promise<string | null> {
-    try {
-      console.log(`Starting upload for photo to ${bucket}...`);
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`Upload attempt ${attempt + 1} for photo to ${bucket}...`);
 
-      // Don't skip file:// URIs - they're valid from ImagePicker!
-      if (!photoUri) {
-        console.log("No photo URI provided");
-        return null;
+        // Don't skip file:// URIs - they're valid from ImagePicker!
+        if (!photoUri) {
+          console.log("No photo URI provided");
+          return null;
+        }
+
+        // If it's already a URL, return it
+        if (photoUri.startsWith("http://") || photoUri.startsWith("https://")) {
+          console.log("Photo is already a URL, returning:", photoUri);
+          return photoUri;
+        }
+
+        // Compress the image first
+        console.log("Compressing image...");
+        const compressedUri = await this.compressImage(photoUri);
+
+        // Generate unique filename
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(7);
+        const fileName = `${userId}/${timestamp}_${random}.jpg`;
+
+        // Convert to base64
+        console.log("Converting to base64...");
+        const base64Data = await this.uriToBase64(compressedUri);
+
+        if (!base64Data) {
+          console.error("Failed to convert image to base64");
+          return null;
+        }
+
+        console.log("Base64 data length:", base64Data.length);
+
+        // Upload to Supabase Storage
+        console.log("Uploading to Supabase Storage...");
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .upload(fileName, decode(base64Data), {
+            contentType: "image/jpeg",
+            upsert: true,
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from(bucket)
+          .getPublicUrl(fileName);
+
+        console.log("Photo uploaded successfully:", urlData.publicUrl);
+        return urlData.publicUrl;
+        
+      } catch (error: any) {
+        lastError = error;
+        console.error(`Upload attempt ${attempt + 1} failed:`, error);
+        
+        if (attempt < maxRetries - 1) {
+          // Wait before retrying (exponential backoff)
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.log(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
       }
-
-      // If it's already a URL, return it
-      if (photoUri.startsWith("http://") || photoUri.startsWith("https://")) {
-        console.log("Photo is already a URL, returning:", photoUri);
-        return photoUri;
-      }
-
-      // Compress the image first
-      console.log("Compressing image...");
-      const compressedUri = await this.compressImage(photoUri);
-
-      // Generate unique filename
-      const timestamp = Date.now();
-      const random = Math.random().toString(36).substring(7);
-      const fileName = `${userId}/${timestamp}_${random}.jpg`;
-
-      // Convert to base64
-      console.log("Converting to base64...");
-      const base64Data = await this.uriToBase64(compressedUri);
-
-      if (!base64Data) {
-        console.error("Failed to convert image to base64");
-        return null;
-      }
-
-      console.log("Base64 data length:", base64Data.length);
-
-      // Upload to Supabase Storage
-      console.log("Uploading to Supabase Storage...");
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(fileName, decode(base64Data), {
-          contentType: "image/jpeg",
-          upsert: true,
-        });
-
-      if (error) {
-        console.error("Supabase upload error:", error);
-        return null;
-      }
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(fileName);
-
-      console.log("Photo uploaded successfully:", urlData.publicUrl);
-      return urlData.publicUrl;
-    } catch (error) {
-      console.error("Error in uploadPhoto:", error);
-      return null;
     }
+    
+    console.error("All upload attempts failed:", lastError);
+    return null;
   }
 
   /**

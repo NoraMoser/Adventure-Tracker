@@ -1,9 +1,9 @@
-// app/_layout.tsx - Updated with Friends Provider
+// app/_layout.tsx - Updated with app state handling
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, AppStateStatus, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { theme } from '../constants/theme';
 import { ActivityProvider } from '../contexts/ActivityContext';
@@ -12,6 +12,7 @@ import { FriendsProvider } from '../contexts/FriendsContext';
 import { LocationProvider } from '../contexts/LocationContext';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { WishlistProvider } from '../contexts/WishlistContext';
+import { supabase } from '../lib/supabase';
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -35,6 +36,46 @@ export default function RootLayout() {
     }
 
     prepare();
+  }, []);
+
+  // Handle app state changes to refresh connections when app resumes
+  useEffect(() => {
+    let isSubscribed = true;
+    
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active' && isSubscribed) {
+        console.log('App resumed - refreshing connections');
+        
+        try {
+          // Refresh Supabase auth session
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error('Error refreshing session:', error);
+            // Attempt to recover the session
+            await supabase.auth.refreshSession();
+          } else if (session) {
+            console.log('Session refreshed successfully');
+          }
+          
+          // Reset any realtime subscriptions
+          const channels = supabase.getChannels();
+          if (channels.length > 0) {
+            console.log('Resetting realtime subscriptions');
+            await supabase.removeAllChannels();
+            // Channels will be re-established by the contexts
+          }
+        } catch (err) {
+          console.error('Error handling app resume:', err);
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      isSubscribed = false;
+      subscription.remove();
+    };
   }, []);
 
   const onLayoutRootView = useCallback(async () => {
