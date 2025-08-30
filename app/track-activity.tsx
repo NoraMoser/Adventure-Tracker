@@ -1,4 +1,4 @@
-// app/track-activity.tsx - Complete version
+// app/track-activity.tsx
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from 'expo-location';
 import { useRouter } from "expo-router";
@@ -41,6 +41,7 @@ export default function TrackActivityScreen() {
     currentSpeed,
     currentRoute,
     location: currentLocation,
+    gpsStatus,
     startTracking,
     pauseTracking,
     resumeTracking,
@@ -58,20 +59,20 @@ export default function TrackActivityScreen() {
   const [showPermissionScreen, setShowPermissionScreen] = useState(false);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   const [manualLoading, setManualLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Store final values when stopping
   const [finalDistance, setFinalDistance] = useState(0);
   const [finalDuration, setFinalDuration] = useState(0);
   const [finalSpeed, setFinalSpeed] = useState(0);
 
-  // Set up loading timeout
   useEffect(() => {
     if (loading || manualLoading) {
       loadingTimeoutRef.current = setTimeout(() => {
         setLoadingTimeout(true);
-      }, 8000); // 8 second timeout
+      }, 8000);
     } else {
       setLoadingTimeout(false);
       if (loadingTimeoutRef.current) {
@@ -98,7 +99,6 @@ export default function TrackActivityScreen() {
       setManualLoading(true);
       setLoadingTimeout(false);
       
-      // Check if location services are enabled
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
         setManualLoading(false);
@@ -113,14 +113,12 @@ export default function TrackActivityScreen() {
         return;
       }
 
-      // Check permission status
       const { status } = await Location.getForegroundPermissionsAsync();
       
       if (status !== 'granted') {
         setManualLoading(false);
         setShowPermissionScreen(true);
       } else {
-        // Add a small delay to prevent race conditions
         setTimeout(async () => {
           try {
             await startTracking(selectedActivity);
@@ -144,7 +142,6 @@ export default function TrackActivityScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       
       if (status === 'granted') {
-        // Add delay here too
         setTimeout(async () => {
           try {
             await startTracking(selectedActivity);
@@ -172,7 +169,6 @@ export default function TrackActivityScreen() {
   const handleRetry = () => {
     setLoadingTimeout(false);
     setManualLoading(false);
-    // Force a small delay before retrying
     setTimeout(() => {
       handleStart();
     }, 500);
@@ -203,14 +199,40 @@ export default function TrackActivityScreen() {
   };
 
   const handleSaveActivity = async () => {
-    const name = activityName.trim() || `${selectedActivity} activity`;
-    await stopTracking(name, activityNotes);
-    setActivityName("");
-    setActivityNotes("");
-    setShowSaveDialog(false);
-    Alert.alert("Success", "Activity saved!", [
-      { text: "OK", onPress: () => router.back() },
-    ]);
+    setIsSaving(true);
+    setSaveError(null);
+    
+    try {
+      const name = activityName.trim() || `${selectedActivity} activity`;
+      
+      console.log('Saving activity...', { name, distance: finalDistance, duration: finalDuration });
+      
+      await stopTracking(name, activityNotes);
+      
+      setActivityName("");
+      setActivityNotes("");
+      setShowSaveDialog(false);
+      setIsSaving(false);
+      
+      Alert.alert(
+        "Success", 
+        "Activity saved successfully!", 
+        [{ text: "OK", onPress: () => router.back() }]
+      );
+    } catch (error) {
+      console.error('Save error:', error);
+      setIsSaving(false);
+      setSaveError('Failed to save activity. Please try again.');
+      
+      Alert.alert(
+        "Save Failed",
+        "There was an error saving your activity. Would you like to try again?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Try Again", onPress: handleSaveActivity }
+        ]
+      );
+    }
   };
 
   const handleDiscardActivity = () => {
@@ -251,7 +273,6 @@ export default function TrackActivityScreen() {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Permission Screen
   if (showPermissionScreen) {
     return (
       <View style={styles.permissionContainer}>
@@ -306,7 +327,6 @@ export default function TrackActivityScreen() {
     );
   }
 
-  // Loading Screen with timeout handling
   if (loading || manualLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -344,7 +364,6 @@ export default function TrackActivityScreen() {
     );
   }
 
-  // Save Dialog
   if (showSaveDialog) {
     return (
       <ScrollView style={styles.container}>
@@ -382,7 +401,20 @@ export default function TrackActivityScreen() {
                 {formatSpeed(finalSpeed)}
               </Text>
             </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>GPS Points:</Text>
+              <Text style={styles.summaryValue}>
+                {currentRoute.length}
+              </Text>
+            </View>
           </View>
+
+          {saveError && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={20} color="#FF4757" />
+              <Text style={styles.errorText}>{saveError}</Text>
+            </View>
+          )}
 
           <Text style={styles.label}>Activity Name</Text>
           <TextInput
@@ -391,6 +423,7 @@ export default function TrackActivityScreen() {
             onChangeText={setActivityName}
             placeholder={`${selectedActivity} activity`}
             placeholderTextColor={theme.colors.lightGray}
+            editable={!isSaving}
           />
 
           <Text style={styles.label}>Notes (Optional)</Text>
@@ -403,29 +436,42 @@ export default function TrackActivityScreen() {
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+            editable={!isSaving}
           />
 
           <TouchableOpacity
-            style={styles.saveButton}
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
             onPress={handleSaveActivity}
+            disabled={isSaving}
           >
-            <Ionicons name="save" size={20} color="white" />
-            <Text style={styles.saveButtonText}>Save Activity</Text>
+            {isSaving ? (
+              <>
+                <ActivityIndicator size="small" color="white" />
+                <Text style={styles.saveButtonText}>Saving...</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="save" size={20} color="white" />
+                <Text style={styles.saveButtonText}>Save Activity</Text>
+              </>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.continueButton} 
+            style={[styles.continueButton, isSaving && styles.buttonDisabled]} 
             onPress={() => {
               resumeTracking();
               setShowSaveDialog(false);
             }}
+            disabled={isSaving}
           >
             <Text style={styles.continueButtonText}>Continue Recording</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.discardButton} 
+            style={[styles.discardButton, isSaving && styles.buttonDisabled]} 
             onPress={handleDiscardActivity}
+            disabled={isSaving}
           >
             <Text style={styles.discardButtonText}>Discard Activity</Text>
           </TouchableOpacity>
@@ -434,7 +480,6 @@ export default function TrackActivityScreen() {
     );
   }
 
-  // Tracking View
   if (isTracking) {
     return (
       <View style={styles.container}>
@@ -467,13 +512,30 @@ export default function TrackActivityScreen() {
           </View>
 
           <View style={styles.gpsStatus}>
-            <View style={[styles.gpsIndicator, currentLocation ? styles.gpsActive : styles.gpsSearching]} />
+            <View style={[
+              styles.gpsIndicator,
+              gpsStatus === 'active' && styles.gpsActive,
+              gpsStatus === 'searching' && styles.gpsSearching,
+              gpsStatus === 'stale' && styles.gpsStale,
+              gpsStatus === 'error' && styles.gpsError,
+            ]} />
             <Text style={styles.gpsStatusText}>
-              {currentLocation 
-                ? `GPS Active (±${currentLocation.accuracy?.toFixed(0) || '?'}m)`
-                : 'Acquiring GPS...'}
+              {gpsStatus === 'active' && `GPS Active${currentLocation?.accuracy ? ` (±${currentLocation.accuracy.toFixed(0)}m)` : ''}`}
+              {gpsStatus === 'searching' && 'Searching for GPS...'}
+              {gpsStatus === 'stale' && 'GPS signal lost - move to open area'}
+              {gpsStatus === 'error' && 'GPS error - check settings'}
             </Text>
           </View>
+
+          {gpsStatus === 'stale' && (
+            <TouchableOpacity 
+              style={styles.gpsRetryButton}
+              onPress={() => resumeTracking()}
+            >
+              <Ionicons name="refresh" size={20} color={theme.colors.forest} />
+              <Text style={styles.gpsRetryText}>Retry GPS</Text>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.controlsContainer}>
             {!isPaused ? (
@@ -498,7 +560,6 @@ export default function TrackActivityScreen() {
     );
   }
 
-  // Activity Selection View (default)
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -570,8 +631,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
   },
-  
-  // Permission Screen Styles
   permissionContainer: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
@@ -651,24 +710,6 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     fontSize: 14,
   },
-  permissionDeniedNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.burntOrange + '15',
-    padding: 15,
-    margin: 20,
-    marginTop: 0,
-    borderRadius: 8,
-  },
-  permissionDeniedText: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 14,
-    color: theme.colors.navy,
-    lineHeight: 20,
-  },
-  
-  // Activity Selection Styles
   header: {
     padding: 20,
     backgroundColor: 'white',
@@ -727,8 +768,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginLeft: 10,
   },
-  
-  // Tracking View Styles
   trackingContainer: {
     flex: 1,
     backgroundColor: 'white',
@@ -809,9 +848,29 @@ const styles = StyleSheet.create({
   gpsSearching: {
     backgroundColor: theme.colors.burntOrange,
   },
+  gpsStale: {
+    backgroundColor: theme.colors.burntOrange,
+  },
+  gpsError: {
+    backgroundColor: '#FF4757',
+  },
   gpsStatusText: {
     fontSize: 14,
     color: theme.colors.gray,
+  },
+  gpsRetryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: theme.colors.forest + '20',
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  gpsRetryText: {
+    marginLeft: 8,
+    color: theme.colors.forest,
+    fontWeight: '600',
   },
   controlsContainer: {
     flexDirection: "row",
@@ -856,8 +915,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: "600",
   },
-  
-  // Save Dialog Styles
   saveDialog: {
     padding: 20,
   },
@@ -910,6 +967,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF4757' + '20',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  errorText: {
+    color: '#FF4757',
+    marginLeft: 8,
+    flex: 1,
+  },
   label: {
     fontSize: 16,
     fontWeight: "600",
@@ -938,6 +1008,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 10,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
   },
   saveButtonText: {
     color: 'white',
@@ -968,39 +1041,44 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     textAlign: 'center',
   },
-    timeoutContainer: {
-      marginTop: 30,
-      alignItems: 'center',
-    },
-    timeoutText: {
-      fontSize: 14,
-      color: theme.colors.burntOrange,
-      marginBottom: 20,
-    },
-    timeoutButtons: {
-      flexDirection: 'row',
-      gap: 15,
-    },
-    retryButton: {
-      backgroundColor: theme.colors.forest,
-      paddingHorizontal: 30,
-      paddingVertical: 12,
-      borderRadius: 8,
-    },
-    retryButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    cancelButton: {
-      backgroundColor: theme.colors.gray,
-      paddingHorizontal: 30,
-      paddingVertical: 12,
-      borderRadius: 8,
-    },
-    cancelButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: '600',
-    },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  timeoutContainer: {
+    marginTop: 30,
+    alignItems: 'center',
+  },
+  timeoutText: {
+    fontSize: 14,
+    color: theme.colors.burntOrange,
+    marginBottom: 20,
+  },
+  timeoutButtons: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  retryButton: {
+    backgroundColor: theme.colors.forest,
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 5,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    backgroundColor: theme.colors.gray,
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 5,
+  },
+  cancelButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });

@@ -1,4 +1,7 @@
+// contexts/ActivityContext.tsx
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from "expo-location";
+import * as TaskManager from 'expo-task-manager';
 import React, {
     createContext,
     ReactNode,
@@ -7,9 +10,12 @@ import React, {
     useRef,
     useState,
 } from "react";
-import { AppState, AppStateStatus } from "react-native";
+import { AppState, AppStateStatus, Platform } from "react-native";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
+
+const LOCATION_TASK_NAME = 'explorable-background-location';
+const PENDING_LOCATIONS_KEY = 'pending_location_updates';
 
 export type ActivityType =
   | "bike"
@@ -34,19 +40,18 @@ interface Activity {
   name: string;
   startTime: Date;
   endTime: Date;
-  duration: number; // in seconds
-  distance: number; // in meters
+  duration: number;
+  distance: number;
   route: LocationPoint[];
-  averageSpeed: number; // km/h
-  maxSpeed: number; // km/h
-  elevationGain?: number; // in meters
+  averageSpeed: number;
+  maxSpeed: number;
+  elevationGain?: number;
   notes?: string;
   photos?: string[];
   isManualEntry: boolean;
 }
 
 interface ActivityContextType {
-  // Current tracking state
   isTracking: boolean;
   isPaused: boolean;
   currentActivity: ActivityType;
@@ -55,37 +60,63 @@ interface ActivityContextType {
   currentDuration: number;
   currentSpeed: number;
   location: LocationPoint | null;
-
-  // Saved activities
+  gpsStatus: 'active' | 'searching' | 'stale' | 'error';
   activities: Activity[];
-
-  // Actions
   startTracking: (activityType: ActivityType) => Promise<void>;
   pauseTracking: () => void;
   resumeTracking: () => void;
   stopTracking: (name: string, notes?: string) => Promise<void>;
   deleteActivity: (activityId: string) => Promise<void>;
   addManualActivity: (activity: Omit<Activity, "id">) => Promise<void>;
-
-  // Utils
   loading: boolean;
   error: string | null;
 }
 
 export type { Activity };
 
-const ActivityContext = createContext<ActivityContextType | undefined>(
-  undefined
-);
+const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
-// Improved distance calculation with GPS accuracy considerations
+// Define background task outside component
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
+  if (error) {
+    console.error('Background location task error:', error);
+    return;
+  }
+  
+  if (data) {
+    const { locations } = data as { locations: Location.LocationObject[] };
+    if (!locations || locations.length === 0) return;
+    
+    try {
+      const stored = await AsyncStorage.getItem(PENDING_LOCATIONS_KEY);
+      const pending = stored ? JSON.parse(stored) : [];
+      
+      const newLocations = locations.map((loc: Location.LocationObject) => ({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        timestamp: loc.timestamp,
+        altitude: loc.coords.altitude,
+        accuracy: loc.coords.accuracy,
+      }));
+      
+      pending.push(...newLocations);
+      const trimmed = pending.slice(-1000);
+      
+      await AsyncStorage.setItem(PENDING_LOCATIONS_KEY, JSON.stringify(trimmed));
+      console.log(`Stored ${newLocations.length} background locations`);
+    } catch (err) {
+      console.error('Error storing background locations:', err);
+    }
+  }
+});
+
 const calculateDistance = (
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ): number => {
-  const R = 6371000; // Earth's radius in meters
+  const R = 6371000;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -99,50 +130,6 @@ const calculateDistance = (
   return R * c;
 };
 
-// Smooth GPS data using a simple moving average
-const smoothGPSData = (points: LocationPoint[], windowSize: number = 3): LocationPoint[] => {
-  if (points.length <= windowSize) return points;
-  
-  const smoothed: LocationPoint[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const currentPoint = points[i];
-    if (!currentPoint) continue;
-    
-    if (i < windowSize - 1) {
-      smoothed.push(currentPoint);
-    } else {
-      let sumLat = 0, sumLon = 0, sumAlt = 0;
-      let altCount = 0;
-      let validPoints = 0;
-      
-      for (let j = i - windowSize + 1; j <= i; j++) {
-        const point = points[j];
-        if (point) {
-          sumLat += point.latitude;
-          sumLon += point.longitude;
-          validPoints++;
-          if (point.altitude) {
-            sumAlt += point.altitude;
-            altCount++;
-          }
-        }
-      }
-      
-      if (validPoints > 0) {
-        smoothed.push({
-          latitude: sumLat / validPoints,
-          longitude: sumLon / validPoints,
-          timestamp: currentPoint.timestamp,
-          altitude: altCount > 0 ? sumAlt / altCount : undefined,
-          accuracy: currentPoint.accuracy,
-        });
-      }
-    }
-  }
-  
-  return smoothed;
-};
-
 export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
@@ -153,53 +140,88 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentDuration, setCurrentDuration] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
-  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(
-    null
-  );
+  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'active' | 'searching' | 'stale' | 'error'>('searching');
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  const locationSubscription = useRef<Location.LocationSubscription | null>(
-    null
-  );
+  const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const pausedTimeRef = useRef<number>(0);
   const pauseStartRef = useRef<number | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const appStateSubscription = useRef<any>(null);
-  const lastValidPoint = useRef<LocationPoint | null>(null);
-  const speedBuffer = useRef<number[]>([]);
+  const lastUpdateTime = useRef<number>(Date.now());
+  const staleCheckInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const maxSpeedRef = useRef<number>(0);
 
-  // Handle app state changes to maintain tracking in background
+  // Check for stale GPS
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      console.log("App state changed to:", nextAppState);
-      
-      if (nextAppState === "active" && isTracking && !isPaused) {
-        // App came to foreground, ensure tracking is still working
-        console.log("Resuming active tracking");
-        
-        // Re-establish location subscription if needed
-        if (!locationSubscription.current && startTimeRef.current) {
-          restartLocationTracking();
+    if (isTracking && !isPaused) {
+      staleCheckInterval.current = setInterval(() => {
+        const timeSinceUpdate = Date.now() - lastUpdateTime.current;
+        if (timeSinceUpdate > 15000) {
+          setGpsStatus('stale');
+        } else if (timeSinceUpdate > 10000) {
+          setGpsStatus('searching');
         }
+      }, 5000);
+    } else {
+      if (staleCheckInterval.current) {
+        clearInterval(staleCheckInterval.current);
       }
-    };
-
-    appStateSubscription.current = AppState.addEventListener(
-      "change",
-      handleAppStateChange
-    );
+    }
 
     return () => {
-      if (appStateSubscription.current) {
-        appStateSubscription.current.remove();
+      if (staleCheckInterval.current) {
+        clearInterval(staleCheckInterval.current);
       }
     };
   }, [isTracking, isPaused]);
 
+  // Process pending locations when app becomes active
+  useEffect(() => {
+    const processPendingLocations = async () => {
+      if (!isTracking || isPaused) return;
+
+      try {
+        const stored = await AsyncStorage.getItem(PENDING_LOCATIONS_KEY);
+        if (stored) {
+          const locations = JSON.parse(stored);
+          console.log(`Processing ${locations.length} pending locations`);
+          
+          locations.forEach((loc: LocationPoint) => {
+            processLocationUpdate(loc);
+          });
+          
+          await AsyncStorage.removeItem(PENDING_LOCATIONS_KEY);
+        }
+      } catch (err) {
+        console.error('Error processing pending locations:', err);
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        processPendingLocations();
+        
+        if (isTracking && !isPaused && !locationSubscription.current) {
+          startForegroundTracking();
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    if (AppState.currentState === 'active') {
+      processPendingLocations();
+    }
+
+    return () => subscription.remove();
+  }, [isTracking, isPaused]);
+
+  // Load activities on user change
   useEffect(() => {
     if (user) {
       loadActivities();
@@ -208,19 +230,14 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, [user]);
 
+  // Cleanup on user logout
   useEffect(() => {
-  if (!user) {
-    // Clear all activity data immediately
-    setActivities([]);
-    setIsTracking(false);
-    setIsPaused(false);
-    setCurrentRoute([]);
-    setCurrentDistance(0);
-    setCurrentDuration(0);
-    setCurrentSpeed(0);
-    setCurrentLocation(null);
-    
-    // Clear any active tracking
+    if (!user) {
+      cleanupTracking();
+    }
+  }, [user]);
+
+  const cleanupTracking = async () => {
     if (locationSubscription.current) {
       locationSubscription.current.remove();
       locationSubscription.current = null;
@@ -229,27 +246,35 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       clearInterval(durationInterval.current);
       durationInterval.current = null;
     }
-  }
-}, [user]);
-
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (locationSubscription.current) {
-        locationSubscription.current.remove();
+    if (staleCheckInterval.current) {
+      clearInterval(staleCheckInterval.current);
+      staleCheckInterval.current = null;
+    }
+    try {
+      const hasTask = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
+      if (hasTask) {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
       }
-      if (durationInterval.current) {
-        clearInterval(durationInterval.current);
-      }
-    };
-  }, []);
+    } catch (err) {
+      console.log('Error stopping location task:', err);
+    }
+    
+    setIsTracking(false);
+    setIsPaused(false);
+    setCurrentRoute([]);
+    setCurrentDistance(0);
+    setCurrentDuration(0);
+    setCurrentSpeed(0);
+    setCurrentLocation(null);
+    setGpsStatus('searching');
+    startTimeRef.current = null;
+    pausedTimeRef.current = 0;
+    pauseStartRef.current = null;
+    maxSpeedRef.current = 0;
+  };
 
   const loadActivities = async () => {
-    if (!user) {
-      setActivities([]);
-      return;
-    }
+    if (!user) return;
 
     try {
       setLoading(true);
@@ -288,181 +313,72 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
- const saveActivity = async (activity: Activity): Promise<Activity | null> => {
-  if (!user) {
-    console.error("No user logged in");
-    return null;
-  }
+  const processLocationUpdate = (location: LocationPoint) => {
+    if (pauseStartRef.current) return;
 
-  try {
-    const smoothedRoute = smoothGPSData(activity.route);
-    
-    let recalculatedDistance = 0;
-    for (let i = 1; i < smoothedRoute.length; i++) {
-      const dist = calculateDistance(
-        smoothedRoute[i - 1].latitude,
-        smoothedRoute[i - 1].longitude,
-        smoothedRoute[i].latitude,
-        smoothedRoute[i].longitude
-      );
-      recalculatedDistance += dist;
-    }
+    lastUpdateTime.current = Date.now();
+    setGpsStatus('active');
+    setCurrentLocation(location);
 
-    const { data, error } = await supabase
-      .from("activities")
-      .insert({
-        user_id: user.id,
-        type: activity.type,
-        name: activity.name,
-        start_time: activity.startTime.toISOString(),
-        end_time: activity.endTime.toISOString(),
-        duration: activity.duration,
-        distance: recalculatedDistance,
-        route: smoothedRoute,
-        average_speed: activity.averageSpeed,
-        max_speed: activity.maxSpeed,
-        elevation_gain: activity.elevationGain,
-        notes: activity.notes,
-        photos: activity.photos,
-        is_manual_entry: activity.isManualEntry,
-      })
-      .select()
-      .single();
+    if (!location.accuracy || location.accuracy <= 30) {
+      setCurrentRoute((prev) => {
+        if (prev.length === 0) return [location];
 
-    if (error) throw error;
+        const lastPoint = prev[prev.length - 1];
+        const distance = calculateDistance(
+          lastPoint.latitude,
+          lastPoint.longitude,
+          location.latitude,
+          location.longitude
+        );
 
-    if (data) {
-      const newActivity: Activity = {
-        id: data.id,
-        type: data.type as ActivityType,
-        name: data.name,
-        startTime: new Date(data.start_time),
-        endTime: new Date(data.end_time),
-        duration: data.duration,
-        distance: data.distance,
-        route: data.route || [],
-        averageSpeed: data.average_speed,
-        maxSpeed: data.max_speed,
-        elevationGain: data.elevation_gain,
-        notes: data.notes,
-        photos: data.photos,
-        isManualEntry: data.is_manual_entry,
-      };
+        if (distance < 2 || distance > 500) {
+          return prev;
+        }
 
-      // Update state immediately
-      setActivities((prev) => [newActivity, ...prev]);
-      
-      // Small delay to ensure state propagates
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      return newActivity;
-    }
-    return null;
-  } catch (error) {
-    console.error("Error saving activity:", error);
-    throw error;
-  }
-};
+        const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
+        if (timeDiff > 0) {
+          const speed = (distance / 1000) / (timeDiff / 3600);
+          if (speed < 100 && speed > maxSpeedRef.current) {
+            maxSpeedRef.current = speed;
+          }
+        }
 
-  const restartLocationTracking = async () => {
-    try {
-      console.log("Restarting location tracking...");
-      
-      // Remove existing subscription
-      if (locationSubscription.current) {
-        locationSubscription.current.remove();
-        locationSubscription.current = null;
-      }
-
-      // Start new subscription
-      locationSubscription.current = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 2000, // Update every 2 seconds
-          distanceInterval: 5, // Update every 5 meters
-          mayShowUserSettingsDialog: true,
-        },
-        handleLocationUpdate
-      );
-      
-      console.log("Location tracking restarted successfully");
-    } catch (err) {
-      console.error("Error restarting location tracking:", err);
+        setCurrentDistance((d) => d + distance);
+        return [...prev, location];
+      });
     }
   };
 
   const handleLocationUpdate = (location: Location.LocationObject) => {
-    console.log("Location update received, accuracy:", location.coords.accuracy);
-    
-    if (!pauseStartRef.current) {
-      const newPoint: LocationPoint = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        timestamp: location.timestamp,
-        altitude: location.coords.altitude || undefined,
-        accuracy: location.coords.accuracy || undefined,
-      };
+    const point: LocationPoint = {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      timestamp: location.timestamp,
+      altitude: location.coords.altitude || undefined,
+      accuracy: location.coords.accuracy || undefined,
+    };
 
-      // Filter out poor accuracy readings
-      if (location.coords.accuracy && location.coords.accuracy > 50) {
-        console.log("Skipping low accuracy point:", location.coords.accuracy);
-        return;
-      }
+    processLocationUpdate(point);
 
-      setCurrentLocation(newPoint);
-      
-      setCurrentRoute((prev) => {
-        // GPS jitter and error filtering
-        if (prev.length > 0) {
-          const lastPoint = prev[prev.length - 1];
-          const distance = calculateDistance(
-            lastPoint.latitude,
-            lastPoint.longitude,
-            newPoint.latitude,
-            newPoint.longitude
-          );
-          
-          // Calculate time difference
-          const timeDiff = (newPoint.timestamp - lastPoint.timestamp) / 1000; // seconds
-          
-          // Skip if no significant movement (GPS jitter)
-          if (distance < 2) {
-            console.log("Skipping point - too close to last:", distance);
-            return prev;
-          }
-          
-          // Skip if unrealistic speed (> 120 km/h for most activities)
-          const speed = (distance / 1000) / (timeDiff / 3600); // km/h
-          if (speed > 120) {
-            console.log("Skipping point - unrealistic speed:", speed);
-            return prev;
-          }
-          
-          // Update distance
-          setCurrentDistance((prevDist) => prevDist + distance);
-          
-          // Update speed with smoothing
-          if (location.coords.speed && location.coords.speed > 0) {
-            speedBuffer.current.push(location.coords.speed * 3.6);
-            if (speedBuffer.current.length > 5) {
-              speedBuffer.current.shift();
-            }
-            const avgSpeed = speedBuffer.current.reduce((a, b) => a + b, 0) / speedBuffer.current.length;
-            setCurrentSpeed(avgSpeed);
-          }
-        }
-        
-        lastValidPoint.current = newPoint;
-        
-        // Limit stored points to prevent memory issues
-        const updatedRoute = [...prev, newPoint];
-        if (updatedRoute.length > 5000) {
-          // Keep every nth point when we have too many
-          return updatedRoute.filter((_, index) => index % 2 === 0 || index === updatedRoute.length - 1);
-        }
-        
-        return updatedRoute;
-      });
+    if (location.coords.speed !== null && location.coords.speed >= 0) {
+      setCurrentSpeed(location.coords.speed * 3.6);
+    }
+  };
+
+  const startForegroundTracking = async () => {
+    try {
+      locationSubscription.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 3000,
+          distanceInterval: 5,
+        },
+        handleLocationUpdate
+      );
+    } catch (err) {
+      console.error('Error starting foreground tracking:', err);
+      setGpsStatus('error');
     }
   };
 
@@ -472,43 +388,52 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       setLoading(true);
       setError(null);
 
-      // Request permissions
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-      console.log("Foreground permission:", foregroundStatus);
-      
       if (foregroundStatus !== "granted") {
-        setError("Location permission is required for tracking");
-        setLoading(false);
-        return;
+        throw new Error("Location permission is required for tracking");
       }
 
-      // Request background permission for continuous tracking
-      try {
-        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-        console.log("Background permission:", backgroundStatus);
-        
-        if (backgroundStatus !== "granted") {
-          console.log("Background permission not granted - tracking may pause when app is backgrounded");
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        try {
+          const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+          console.log("Background permission:", backgroundStatus);
+        } catch (e) {
+          console.log("Background permission error:", e);
         }
-      } catch (e) {
-        console.log("Background permission not available:", e);
       }
 
-      // Initialize tracking state
+      try {
+        const initialLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.BestForNavigation,
+        });
+
+        const initialPoint: LocationPoint = {
+          latitude: initialLocation.coords.latitude,
+          longitude: initialLocation.coords.longitude,
+          timestamp: Date.now(),
+          accuracy: initialLocation.coords.accuracy || undefined,
+        };
+
+        setCurrentLocation(initialPoint);
+        setCurrentRoute([initialPoint]);
+        setGpsStatus('active');
+      } catch (err) {
+        console.log("Could not get initial location:", err);
+        setGpsStatus('searching');
+      }
+
       setCurrentActivity(activityType);
       setIsTracking(true);
       setIsPaused(false);
-      setCurrentRoute([]);
       setCurrentDistance(0);
       setCurrentDuration(0);
       setCurrentSpeed(0);
       startTimeRef.current = Date.now();
       pausedTimeRef.current = 0;
       pauseStartRef.current = null;
-      lastValidPoint.current = null;
-      speedBuffer.current = [];
+      lastUpdateTime.current = Date.now();
+      maxSpeedRef.current = 0;
 
-      // Start duration timer
       durationInterval.current = setInterval(() => {
         if (startTimeRef.current && !pauseStartRef.current) {
           const elapsed = Math.floor(
@@ -518,25 +443,36 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         }
       }, 1000);
 
-      console.log("Starting location watch...");
-      
-      // Start location tracking with enhanced options
-      locationSubscription.current = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 2000, // Update every 2 seconds
-          distanceInterval: 5, // Update every 5 meters
-          mayShowUserSettingsDialog: true,
-        },
-        handleLocationUpdate
-      );
+      await startForegroundTracking();
+
+      const hasTask = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
+      if (hasTask) {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      }
+
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 5000,
+        distanceInterval: 10,
+        pausesUpdatesAutomatically: false,
+        activityType: Location.ActivityType.Fitness,
+        showsBackgroundLocationIndicator: true,
+        ...(Platform.OS === 'android' && {
+          foregroundService: {
+            notificationTitle: 'ExplorAble',
+            notificationBody: 'Tracking your activity',
+            notificationColor: '#2E5A3E',
+          },
+        }),
+      });
 
       console.log("Tracking started successfully");
       setLoading(false);
     } catch (err) {
       console.error("Error starting tracking:", err);
-      setError("Failed to start tracking");
+      setError(err instanceof Error ? err.message : "Failed to start tracking");
       setLoading(false);
+      cleanupTracking();
     }
   };
 
@@ -545,14 +481,20 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setIsPaused(true);
     pauseStartRef.current = Date.now();
 
-    // Stop the duration timer
     if (durationInterval.current) {
       clearInterval(durationInterval.current);
       durationInterval.current = null;
     }
+
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+    
+    Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(console.error);
   };
 
-  const resumeTracking = () => {
+  const resumeTracking = async () => {
     console.log("Resuming tracking");
     if (pauseStartRef.current) {
       pausedTimeRef.current += Date.now() - pauseStartRef.current;
@@ -560,7 +502,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
     setIsPaused(false);
 
-    // Restart the duration timer
     durationInterval.current = setInterval(() => {
       if (startTimeRef.current) {
         const elapsed = Math.floor(
@@ -570,128 +511,128 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       }
     }, 1000);
 
-    // Ensure location tracking is still active
-    if (!locationSubscription.current && startTimeRef.current) {
-      restartLocationTracking();
+    await startForegroundTracking();
+    
+    try {
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 5000,
+        distanceInterval: 10,
+        pausesUpdatesAutomatically: false,
+        activityType: Location.ActivityType.Fitness,
+        showsBackgroundLocationIndicator: true,
+      });
+    } catch (err) {
+      console.error('Error resuming background tracking:', err);
     }
   };
 
   const stopTracking = async (name: string, notes?: string) => {
     try {
-      console.log("Stopping tracking");
+      console.log("Stopping tracking, route points:", currentRoute.length);
       
-      // Clean up tracking resources
-      if (locationSubscription.current) {
-        locationSubscription.current.remove();
-        locationSubscription.current = null;
-      }
-
-      if (durationInterval.current) {
-        clearInterval(durationInterval.current);
-        durationInterval.current = null;
-      }
-
-      // Check if this is a discard action
       if (name === "" && notes === "DISCARD_ACTIVITY") {
-        console.log("Discarding activity - not saving");
-        // Reset tracking state without saving
-        setIsTracking(false);
-        setIsPaused(false);
-        setCurrentRoute([]);
-        setCurrentDistance(0);
-        setCurrentDuration(0);
-        setCurrentSpeed(0);
-        setCurrentLocation(null);
-        startTimeRef.current = null;
-        pausedTimeRef.current = 0;
-        pauseStartRef.current = null;
-        lastValidPoint.current = null;
-        speedBuffer.current = [];
+        console.log("Discarding activity");
+        await cleanupTracking();
         return;
       }
 
-      // Only save if we have meaningful data
-      if (name || currentDistance > 0) {
-        console.log("Saving activity:", name);
-
-        // Calculate final duration
-        let finalDuration = currentDuration;
-        if (!pauseStartRef.current && startTimeRef.current) {
-          finalDuration = Math.floor(
-            (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-          );
-        }
-
-        // Calculate final stats
-        const endTime = new Date();
-        const startTime = new Date(startTimeRef.current || Date.now());
-        const avgSpeed =
-          currentDistance > 0
-            ? (currentDistance / 1000) / (finalDuration / 3600)
-            : 0;
-
-        // Find max speed from route
-        let maxSpeed = 0;
-        for (let i = 1; i < currentRoute.length; i++) {
-          const timeDiff =
-            (currentRoute[i].timestamp - currentRoute[i - 1].timestamp) / 1000;
-          if (timeDiff > 0) {
-            const dist = calculateDistance(
-              currentRoute[i - 1].latitude,
-              currentRoute[i - 1].longitude,
-              currentRoute[i].latitude,
-              currentRoute[i].longitude
-            );
-            const speed = (dist / 1000) / (timeDiff / 3600);
-            if (speed < 120) { // Filter out unrealistic speeds
-              maxSpeed = Math.max(maxSpeed, speed);
-            }
-          }
-        }
-
-        const newActivity: Activity = {
-          id: Date.now().toString(),
-          type: currentActivity,
-          name: name || `${currentActivity} activity`,
-          startTime,
-          endTime,
-          duration: finalDuration,
-          distance: currentDistance,
-          route: currentRoute,
-          averageSpeed: avgSpeed,
-          maxSpeed,
-          notes: notes && notes !== "DISCARD_ACTIVITY" ? notes : undefined,
-          isManualEntry: false,
-        };
-
-        await saveActivity(newActivity);
-        console.log("Activity saved successfully");
+      if (!startTimeRef.current || (currentDistance === 0 && currentRoute.length === 0)) {
+        throw new Error("No activity data to save");
       }
 
-      // Reset tracking state
-      setIsTracking(false);
-      setIsPaused(false);
-      setCurrentRoute([]);
-      setCurrentDistance(0);
-      setCurrentDuration(0);
-      setCurrentSpeed(0);
-      setCurrentLocation(null);
-      startTimeRef.current = null;
-      pausedTimeRef.current = 0;
-      pauseStartRef.current = null;
-      lastValidPoint.current = null;
-      speedBuffer.current = [];
+      const finalDuration = Math.floor(
+        (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
+      );
+
+      const avgSpeed = currentDistance > 0
+        ? (currentDistance / 1000) / (finalDuration / 3600)
+        : 0;
+
+      let routeToSave = currentRoute;
+      if (currentRoute.length > 500) {
+        const nth = Math.ceil(currentRoute.length / 500);
+        routeToSave = currentRoute.filter((_, index) => index % nth === 0);
+        console.log(`Simplified route from ${currentRoute.length} to ${routeToSave.length} points`);
+      }
+
+      const activityData = {
+        id: Date.now().toString(),
+        type: currentActivity,
+        name: name || `${currentActivity} activity`,
+        startTime: new Date(startTimeRef.current),
+        endTime: new Date(),
+        duration: finalDuration,
+        distance: currentDistance,
+        route: routeToSave,
+        averageSpeed: avgSpeed,
+        maxSpeed: maxSpeedRef.current,
+        notes: notes && notes !== "DISCARD_ACTIVITY" ? notes : undefined,
+        isManualEntry: false,
+      };
+
+      console.log("Saving activity to database...");
+      const saved = await saveActivity(activityData);
+      
+      if (!saved) {
+        throw new Error("Failed to save to database");
+      }
+
+      console.log("Activity saved successfully:", saved.id);
+      await cleanupTracking();
+      
     } catch (err) {
-      console.error("Error stopping tracking:", err);
-      setError("Failed to stop tracking");
+      console.error("Error in stopTracking:", err);
+      throw err;
+    }
+  };
+
+  const saveActivity = async (activity: Activity): Promise<Activity | null> => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("activities")
+        .insert({
+          user_id: user.id,
+          type: activity.type,
+          name: activity.name,
+          start_time: activity.startTime.toISOString(),
+          end_time: activity.endTime.toISOString(),
+          duration: activity.duration,
+          distance: activity.distance,
+          route: activity.route,
+          average_speed: activity.averageSpeed,
+          max_speed: activity.maxSpeed,
+          elevation_gain: activity.elevationGain,
+          notes: activity.notes,
+          photos: activity.photos,
+          is_manual_entry: activity.isManualEntry,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const newActivity: Activity = {
+          ...activity,
+          id: data.id,
+        };
+        setActivities((prev) => [newActivity, ...prev]);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return newActivity;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error saving activity:", error);
+      throw error;
     }
   };
 
   const deleteActivity = async (activityId: string) => {
-    if (!user) {
-      console.error("No user logged in");
-      return;
-    }
+    if (!user) return;
+    
     try {
       const { error } = await supabase
         .from("activities")
@@ -708,10 +649,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const addManualActivity = async (activity: Omit<Activity, "id">) => {
-    if (!user) {
-      console.error("No user logged in");
-      return;
-    }
+    if (!user) return;
+    
     try {
       const newActivity: Activity = {
         ...activity,
@@ -720,7 +659,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       };
 
       await saveActivity(newActivity);
-      console.log("Manual activity added successfully");
     } catch (err) {
       console.error("Error adding manual activity:", err);
       setError("Failed to add activity");
@@ -736,6 +674,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     currentDuration,
     currentSpeed,
     location: currentLocation,
+    gpsStatus,
     activities,
     startTracking,
     pauseTracking,

@@ -2,7 +2,7 @@
   "expo": {
     "name": "explorAble",
     "slug": "explorable",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -24,7 +24,8 @@
         "NSLocationWhenInUseUsageDescription": "explorAble needs access to your location to track your activities and save your favorite spots.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "explorAble needs access to your location to track your activities in the background.",
         "NSCameraUsageDescription": "explorAble needs access to your camera to take photos of your adventure spots.",
-        "NSPhotoLibraryUsageDescription": "explorAble needs access to your photo library to add photos to your saved locations."
+        "NSPhotoLibraryUsageDescription": "explorAble needs access to your photo library to add photos to your saved locations.",
+        "UIBackgroundModes": ["location", "fetch", "processing"]
       }
     },
     "scheme": "explorable",
@@ -34,7 +35,7 @@
         "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
-      "versionCode": 8,
+      "versionCode": 9,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -49,13 +50,15 @@
     },
     "plugins": [
       "expo-font",
-         [
+      [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow ExplorAble to use your location for tracking activities.",
+          "locationAlwaysAndWhenInUsePermission": "Allow ExplorAble to track your activities in the background for accurate route recording.",
+          "isAndroidBackgroundLocationEnabled": true,
           "isBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-task-manager"
     ],
     "extra": {
       "eas": {
