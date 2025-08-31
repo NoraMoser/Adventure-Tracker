@@ -1,37 +1,37 @@
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Linking,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { categoryList, CategoryType } from '../constants/categories';
-import { useAuth } from '../contexts/AuthContext';
-import { useLocation } from '../contexts/LocationContext';
-import { PhotoService } from '../services/photoService';
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { categoryList, CategoryType } from "../constants/categories";
+import { useAuth } from "../contexts/AuthContext";
+import { useLocation } from "../contexts/LocationContext";
+import { PhotoService } from "../services/photoService";
 
 // Theme colors
 const theme = {
   colors: {
-    navy: '#1e3a5f',
-    forest: '#2d5a3d',
-    offWhite: '#faf8f5',
-    burntOrange: '#cc5500',
-    white: '#ffffff',
-    gray: '#666666',
-    lightGray: '#999999',
-    borderGray: '#e0e0e0',
-  }
+    navy: "#1e3a5f",
+    forest: "#2d5a3d",
+    offWhite: "#faf8f5",
+    burntOrange: "#cc5500",
+    white: "#ffffff",
+    gray: "#666666",
+    lightGray: "#999999",
+    borderGray: "#e0e0e0",
+  },
 };
 
 export default function EditLocationScreen() {
@@ -39,28 +39,28 @@ export default function EditLocationScreen() {
   const { savedSpots, updateSpot, deleteSpot } = useLocation();
   const { user } = useAuth();
   const router = useRouter();
-  
+
   const [spot, setSpot] = useState<any>(null);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
-  const [category, setCategory] = useState<CategoryType>('other');
+  const [category, setCategory] = useState<CategoryType>("other");
   const [loading, setLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     // Load the spot data
-    const currentSpot = savedSpots.find(s => s.id === spotId);
+    const currentSpot = savedSpots.find((s) => s.id === spotId);
     if (currentSpot) {
       setSpot(currentSpot);
       setName(currentSpot.name);
-      setDescription(currentSpot.description || '');
+      setDescription(currentSpot.description || "");
       setPhotos(currentSpot.photos || []);
-      setCategory(currentSpot.category || 'other');
+      setCategory(currentSpot.category || "other");
     } else {
-      Alert.alert('Error', 'Location not found', [
-        { text: 'OK', onPress: () => router.back() }
+      Alert.alert("Error", "Location not found", [
+        { text: "OK", onPress: () => router.back() },
       ]);
     }
     setLoading(false);
@@ -69,10 +69,10 @@ export default function EditLocationScreen() {
   useEffect(() => {
     // Check if any changes were made
     if (spot) {
-      const changed = 
+      const changed =
         name !== spot.name ||
-        description !== (spot.description || '') ||
-        category !== (spot.category || 'other') ||
+        description !== (spot.description || "") ||
+        category !== (spot.category || "other") ||
         photos.length !== (spot.photos || []).length ||
         photos.some((photo, index) => photo !== (spot.photos || [])[index]);
       setHasChanges(changed);
@@ -81,68 +81,69 @@ export default function EditLocationScreen() {
 
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera permission is required to take photos');
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Denied",
+        "Camera permission is required to take photos"
+      );
       return;
     }
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
+      allowsMultipleSelection: true,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhotos([...photos, result.assets[0].uri]);
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
     }
   };
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Media library permission is required');
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "Media library permission is required");
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
+      allowsMultipleSelection: true,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setPhotos([...photos, result.assets[0].uri]);
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
     }
   };
 
   const handleRemovePhoto = (index: number) => {
-    Alert.alert(
-      'Remove Photo',
-      'Are you sure you want to remove this photo?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            const newPhotos = photos.filter((_, i) => i !== index);
-            setPhotos(newPhotos);
-          }
-        }
-      ]
-    );
+    Alert.alert("Remove Photo", "Are you sure you want to remove this photo?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => {
+          const newPhotos = photos.filter((_, i) => i !== index);
+          setPhotos(newPhotos);
+        },
+      },
+    ]);
   };
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Error', 'Location name is required');
+      Alert.alert("Error", "Location name is required");
       return;
     }
 
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to edit locations');
+      Alert.alert("Error", "You must be logged in to edit locations");
       return;
     }
 
@@ -152,12 +153,12 @@ export default function EditLocationScreen() {
       // Process photos - separate new local photos from existing URLs
       const existingUrls: string[] = [];
       const newLocalPhotos: string[] = [];
-      
+
       for (const photo of photos) {
-        if (photo.startsWith('http')) {
+        if (photo.startsWith("http")) {
           // This is an existing URL from storage
           existingUrls.push(photo);
-        } else if (photo.startsWith('file://') || photo.startsWith('data:')) {
+        } else if (photo.startsWith("file://") || photo.startsWith("data:")) {
           // This is a new local photo that needs to be uploaded
           newLocalPhotos.push(photo);
         }
@@ -166,13 +167,13 @@ export default function EditLocationScreen() {
       // Upload new photos if any
       let newUploadedUrls: string[] = [];
       if (newLocalPhotos.length > 0) {
-        console.log('Uploading new photos...');
+        console.log("Uploading new photos...");
         newUploadedUrls = await PhotoService.uploadPhotos(
           newLocalPhotos,
-          'location-photos',
+          "location-photos",
           user.id
         );
-        console.log('New photos uploaded:', newUploadedUrls);
+        console.log("New photos uploaded:", newUploadedUrls);
       }
 
       // Combine existing URLs with newly uploaded URLs
@@ -185,14 +186,14 @@ export default function EditLocationScreen() {
         photos: finalPhotoUrls,
         category,
       };
-      
+
       await updateSpot(spotId as string, updatedSpot);
-      
-      Alert.alert('Success', 'Location updated successfully!', [
-        { text: 'OK', onPress: () => router.back() }
+
+      Alert.alert("Success", "Location updated successfully!", [
+        { text: "OK", onPress: () => router.back() },
       ]);
     } catch (error) {
-      Alert.alert('Error', 'Failed to update location');
+      Alert.alert("Error", "Failed to update location");
     } finally {
       setIsSaving(false);
     }
@@ -200,22 +201,22 @@ export default function EditLocationScreen() {
 
   const handleDelete = () => {
     Alert.alert(
-      'Delete Location',
+      "Delete Location",
       `Are you sure you want to delete "${name}"? This action cannot be undone.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               await deleteSpot(spotId as string);
               router.back();
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete location');
+              Alert.alert("Error", "Failed to delete location");
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
@@ -223,11 +224,11 @@ export default function EditLocationScreen() {
   const handleCancel = () => {
     if (hasChanges) {
       Alert.alert(
-        'Unsaved Changes',
-        'You have unsaved changes. Are you sure you want to leave?',
+        "Unsaved Changes",
+        "You have unsaved changes. Are you sure you want to leave?",
         [
-          { text: 'Stay', style: 'cancel' },
-          { text: 'Leave', style: 'destructive', onPress: () => router.back() }
+          { text: "Stay", style: "cancel" },
+          { text: "Leave", style: "destructive", onPress: () => router.back() },
         ]
       );
     } else {
@@ -237,31 +238,33 @@ export default function EditLocationScreen() {
 
   const handleGetDirections = () => {
     if (!spot) return;
-    
+
     const { latitude, longitude } = spot.location;
     const label = encodeURIComponent(spot.name);
-    
+
     const appleMapsUrl = `maps:0,0?q=${label}@${latitude},${longitude}`;
     const googleMapsUrl = `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`;
     const webUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-    
+
     let url = webUrl;
-    
-    if (Platform.OS === 'ios') {
+
+    if (Platform.OS === "ios") {
       url = appleMapsUrl;
-    } else if (Platform.OS === 'android') {
+    } else if (Platform.OS === "android") {
       url = googleMapsUrl;
     }
-    
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
-        Linking.openURL(webUrl);
-      }
-    }).catch(err => {
-      Alert.alert('Error', 'Unable to open maps');
-    });
+
+    Linking.canOpenURL(url)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(url);
+        } else {
+          Linking.openURL(webUrl);
+        }
+      })
+      .catch((err) => {
+        Alert.alert("Error", "Unable to open maps");
+      });
   };
 
   if (loading) {
@@ -279,16 +282,17 @@ export default function EditLocationScreen() {
         <View style={styles.coordinatesBox}>
           <Ionicons name="pin" size={20} color={theme.colors.burntOrange} />
           <Text style={styles.coordinates}>
-            {spot?.location.latitude.toFixed(6)}, {spot?.location.longitude.toFixed(6)}
+            {spot?.location.latitude.toFixed(6)},{" "}
+            {spot?.location.longitude.toFixed(6)}
           </Text>
         </View>
         <Text style={styles.savedDate}>
           Saved on {new Date(spot?.timestamp).toLocaleDateString()}
         </Text>
-        
+
         {/* Get Directions Button */}
-        <TouchableOpacity 
-          style={styles.directionsButton} 
+        <TouchableOpacity
+          style={styles.directionsButton}
           onPress={handleGetDirections}
         >
           <Ionicons name="navigate" size={18} color={theme.colors.white} />
@@ -299,8 +303,8 @@ export default function EditLocationScreen() {
       {/* Form */}
       <View style={styles.form}>
         <Text style={styles.label}>Category</Text>
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.categoryScroll}
         >
@@ -309,19 +313,19 @@ export default function EditLocationScreen() {
               key={cat.id}
               style={[
                 styles.categoryChip,
-                category === cat.id && { backgroundColor: cat.color }
+                category === cat.id && { backgroundColor: cat.color },
               ]}
               onPress={() => setCategory(cat.id)}
             >
-              <Ionicons 
-                name={cat.icon} 
-                size={16} 
-                color={category === cat.id ? 'white' : cat.color} 
+              <Ionicons
+                name={cat.icon}
+                size={16}
+                color={category === cat.id ? "white" : cat.color}
               />
-              <Text 
+              <Text
                 style={[
                   styles.categoryChipText,
-                  category === cat.id && { color: 'white' }
+                  category === cat.id && { color: "white" },
                 ]}
               >
                 {cat.label}
@@ -353,32 +357,42 @@ export default function EditLocationScreen() {
 
         {/* Photos Section */}
         <Text style={styles.label}>Photos ({photos.length})</Text>
-        
+
         <View style={styles.photoActions}>
-          <TouchableOpacity style={styles.photoButton} onPress={handleTakePhoto}>
+          <TouchableOpacity
+            style={styles.photoButton}
+            onPress={handleTakePhoto}
+          >
             <Ionicons name="camera" size={20} color={theme.colors.forest} />
             <Text style={styles.photoButtonText}>Take Photo</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.photoButton} onPress={handlePickImage}>
+          <TouchableOpacity
+            style={styles.photoButton}
+            onPress={handlePickImage}
+          >
             <Ionicons name="images" size={20} color={theme.colors.forest} />
             <Text style={styles.photoButtonText}>Add from Gallery</Text>
           </TouchableOpacity>
         </View>
 
         {photos.length > 0 && (
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
             style={styles.photoList}
           >
             {photos.map((photo, index) => (
               <View key={index} style={styles.photoContainer}>
                 <Image source={{ uri: photo }} style={styles.photo} />
-                <TouchableOpacity 
-                  style={styles.removePhotoButton} 
+                <TouchableOpacity
+                  style={styles.removePhotoButton}
                   onPress={() => handleRemovePhoto(index)}
                 >
-                  <Ionicons name="close-circle" size={24} color={theme.colors.burntOrange} />
+                  <Ionicons
+                    name="close-circle"
+                    size={24}
+                    color={theme.colors.burntOrange}
+                  />
                 </TouchableOpacity>
               </View>
             ))}
@@ -386,8 +400,11 @@ export default function EditLocationScreen() {
         )}
 
         {/* Action Buttons */}
-        <TouchableOpacity 
-          style={[styles.saveButton, (!hasChanges || isSaving) && styles.saveButtonDisabled]}
+        <TouchableOpacity
+          style={[
+            styles.saveButton,
+            (!hasChanges || isSaving) && styles.saveButtonDisabled,
+          ]}
           onPress={handleSave}
           disabled={!hasChanges || isSaving}
         >
@@ -400,7 +417,7 @@ export default function EditLocationScreen() {
             <>
               <Ionicons name="save" size={20} color={theme.colors.white} />
               <Text style={styles.saveButtonText}>
-                {hasChanges ? 'Save Changes' : 'No Changes'}
+                {hasChanges ? "Save Changes" : "No Changes"}
               </Text>
             </>
           )}
@@ -412,7 +429,11 @@ export default function EditLocationScreen() {
 
         {/* Delete Button */}
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={20} color={theme.colors.burntOrange} />
+          <Ionicons
+            name="trash-outline"
+            size={20}
+            color={theme.colors.burntOrange}
+          />
           <Text style={styles.deleteButtonText}>Delete Location</Text>
         </TouchableOpacity>
       </View>
@@ -427,8 +448,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
   },
   header: {
@@ -438,15 +459,15 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.borderGray,
   },
   coordinatesBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 8,
   },
   coordinates: {
     marginLeft: 10,
     fontSize: 14,
     color: theme.colors.gray,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   savedDate: {
     fontSize: 12,
@@ -454,18 +475,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   directionsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.navy,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   directionsButtonText: {
     color: theme.colors.white,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     marginLeft: 6,
   },
   form: {
@@ -473,7 +494,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 8,
   },
@@ -489,16 +510,16 @@ const styles = StyleSheet.create({
   },
   textArea: {
     height: 100,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   photoActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     marginBottom: 15,
   },
   photoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.white,
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -510,14 +531,14 @@ const styles = StyleSheet.create({
     color: theme.colors.forest,
     marginLeft: 8,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   photoList: {
     marginBottom: 20,
   },
   photoContainer: {
     marginRight: 10,
-    position: 'relative',
+    position: "relative",
   },
   photo: {
     width: 100,
@@ -525,7 +546,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   removePhotoButton: {
-    position: 'absolute',
+    position: "absolute",
     top: -8,
     right: -8,
     backgroundColor: theme.colors.white,
@@ -533,9 +554,9 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: theme.colors.forest,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 15,
     borderRadius: 8,
     marginBottom: 10,
@@ -546,14 +567,14 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: theme.colors.white,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   cancelButton: {
     backgroundColor: theme.colors.white,
     paddingVertical: 15,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 10,
     borderWidth: 1,
     borderColor: theme.colors.borderGray,
@@ -563,9 +584,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 15,
     marginTop: 20,
   },
@@ -579,8 +600,8 @@ const styles = StyleSheet.create({
     maxHeight: 40,
   },
   categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 6,
     backgroundColor: theme.colors.offWhite,
@@ -592,7 +613,7 @@ const styles = StyleSheet.create({
   categoryChipText: {
     marginLeft: 4,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
     color: theme.colors.gray,
   },
 });
