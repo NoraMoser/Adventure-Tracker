@@ -1,7 +1,13 @@
 // contexts/AuthContext.tsx - Fixed version
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Session, User } from "@supabase/supabase-js";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
 import { syncService } from "../services/syncService";
@@ -41,6 +47,7 @@ interface AuthContextType {
   syncLocalData: () => Promise<void>;
   setOfflineMode: (enabled: boolean) => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -51,6 +58,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const lastRefresh = useRef<Date>(new Date());
+
+  // Simple refresh that doesn't interfere with other operations
+  const refreshSession = async (): Promise<boolean> => {
+    try {
+      // Only refresh if it's been more than 30 seconds
+      const now = new Date();
+      const timeSince = now.getTime() - lastRefresh.current.getTime();
+      if (timeSince < 30000) {
+        return true; // Session is fresh enough
+      }
+
+      const { data, error } = await supabase.auth.refreshSession();
+
+      if (error) {
+        console.error("Session refresh error:", error);
+        return false;
+      }
+
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+        lastRefresh.current = new Date();
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error refreshing session:", error);
+      return false;
+    }
+  };
 
   useEffect(() => {
     console.log("🔍 AuthContext: Starting initialization...");
@@ -496,6 +535,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshProfile,
     syncLocalData,
     setOfflineMode,
+    refreshSession
   };
 
   console.log("🔍 AuthContext: Current state:", {

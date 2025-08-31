@@ -1,21 +1,21 @@
-// contexts/ActivityContext.tsx
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// contexts/ActivityContext.tsx - Complete working version with debugging
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
-import * as TaskManager from 'expo-task-manager';
+import * as TaskManager from "expo-task-manager";
 import React, {
-    createContext,
-    ReactNode,
-    useContext,
-    useEffect,
-    useRef,
-    useState,
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
 } from "react";
-import { AppState, AppStateStatus, Platform } from "react-native";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
-const LOCATION_TASK_NAME = 'explorable-background-location';
-const PENDING_LOCATIONS_KEY = 'pending_location_updates';
+const LOCATION_TASK_NAME = "explorable-background-location";
+const PENDING_LOCATIONS_KEY = "pending_location_updates";
+const MAX_ROUTE_POINTS_MEMORY = 1000;
 
 export type ActivityType =
   | "bike"
@@ -60,7 +60,7 @@ interface ActivityContextType {
   currentDuration: number;
   currentSpeed: number;
   location: LocationPoint | null;
-  gpsStatus: 'active' | 'searching' | 'stale' | 'error';
+  gpsStatus: "active" | "searching" | "stale" | "error";
   activities: Activity[];
   startTracking: (activityType: ActivityType) => Promise<void>;
   pauseTracking: () => void;
@@ -70,27 +70,30 @@ interface ActivityContextType {
   addManualActivity: (activity: Omit<Activity, "id">) => Promise<void>;
   loading: boolean;
   error: string | null;
+  refreshActivities: () => Promise<void>;
 }
 
 export type { Activity };
 
-const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
+const ActivityContext = createContext<ActivityContextType | undefined>(
+  undefined
+);
 
-// Define background task outside component
+// Background task
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
-    console.error('Background location task error:', error);
+    console.error("Background location task error:", error);
     return;
   }
-  
+
   if (data) {
     const { locations } = data as { locations: Location.LocationObject[] };
     if (!locations || locations.length === 0) return;
-    
+
     try {
       const stored = await AsyncStorage.getItem(PENDING_LOCATIONS_KEY);
       const pending = stored ? JSON.parse(stored) : [];
-      
+
       const newLocations = locations.map((loc: Location.LocationObject) => ({
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
@@ -98,14 +101,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
         altitude: loc.coords.altitude,
         accuracy: loc.coords.accuracy,
       }));
-      
+
       pending.push(...newLocations);
-      const trimmed = pending.slice(-1000);
-      
-      await AsyncStorage.setItem(PENDING_LOCATIONS_KEY, JSON.stringify(trimmed));
-      console.log(`Stored ${newLocations.length} background locations`);
+      const trimmed = pending.slice(-500);
+
+      await AsyncStorage.setItem(
+        PENDING_LOCATIONS_KEY,
+        JSON.stringify(trimmed)
+      );
     } catch (err) {
-      console.error('Error storing background locations:', err);
+      console.error("Error storing background locations:", err);
     }
   }
 });
@@ -140,102 +145,143 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentDuration, setCurrentDuration] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
-  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<'active' | 'searching' | 'stale' | 'error'>('searching');
+  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(
+    null
+  );
+  const [gpsStatus, setGpsStatus] = useState<
+    "active" | "searching" | "stale" | "error"
+  >("searching");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, session, refreshSession } = useAuth();
 
-  const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const locationSubscription = useRef<Location.LocationSubscription | null>(
+    null
+  );
   const startTimeRef = useRef<number | null>(null);
   const pausedTimeRef = useRef<number>(0);
   const pauseStartRef = useRef<number | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastUpdateTime = useRef<number>(Date.now());
-  const staleCheckInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const staleCheckInterval = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
   const maxSpeedRef = useRef<number>(0);
 
-  // Check for stale GPS
+  // Load activities when user/session changes
+  // Simplified useEffect for loading
   useEffect(() => {
-    if (isTracking && !isPaused) {
-      staleCheckInterval.current = setInterval(() => {
-        const timeSinceUpdate = Date.now() - lastUpdateTime.current;
-        if (timeSinceUpdate > 15000) {
-          setGpsStatus('stale');
-        } else if (timeSinceUpdate > 10000) {
-          setGpsStatus('searching');
-        }
-      }, 5000);
-    } else {
-      if (staleCheckInterval.current) {
-        clearInterval(staleCheckInterval.current);
-      }
-    }
-
-    return () => {
-      if (staleCheckInterval.current) {
-        clearInterval(staleCheckInterval.current);
-      }
-    };
-  }, [isTracking, isPaused]);
-
-  // Process pending locations when app becomes active
-  useEffect(() => {
-    const processPendingLocations = async () => {
-      if (!isTracking || isPaused) return;
-
-      try {
-        const stored = await AsyncStorage.getItem(PENDING_LOCATIONS_KEY);
-        if (stored) {
-          const locations = JSON.parse(stored);
-          console.log(`Processing ${locations.length} pending locations`);
-          
-          locations.forEach((loc: LocationPoint) => {
-            processLocationUpdate(loc);
-          });
-          
-          await AsyncStorage.removeItem(PENDING_LOCATIONS_KEY);
-        }
-      } catch (err) {
-        console.error('Error processing pending locations:', err);
-      }
-    };
-
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        processPendingLocations();
-        
-        if (isTracking && !isPaused && !locationSubscription.current) {
-          startForegroundTracking();
-        }
-      }
-    };
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    
-    if (AppState.currentState === 'active') {
-      processPendingLocations();
-    }
-
-    return () => subscription.remove();
-  }, [isTracking, isPaused]);
-
-  // Load activities on user change
-  useEffect(() => {
-    if (user) {
+    if (user?.id) {
       loadActivities();
     } else {
       setActivities([]);
     }
-  }, [user]);
+  }, [user?.id]);
 
-  // Cleanup on user logout
-  useEffect(() => {
-    if (!user) {
-      cleanupTracking();
+  const testSupabaseConnection = async () => {
+    try {
+      console.log("🔍 Testing Supabase connection...");
+
+      // First test if we can reach Supabase at all
+      const {
+        data: { user: currentUser },
+        error: userError,
+      } = await supabase.auth.getUser();
+      console.log("Auth test:", { hasUser: !!currentUser, error: userError });
+
+      if (!currentUser) {
+        console.error("❌ No authenticated user found");
+        return;
+      }
+
+      // Try a simple count query
+      const { count, error: countError } = await supabase
+        .from("activities")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", currentUser.id);
+
+      console.log("Count query result:", { count, error: countError });
+    } catch (err) {
+      console.error("❌ Supabase connection test failed:", err);
     }
-  }, [user]);
+  };
+
+  // Add this debug version to your ActivityContext to see what's failing:
+
+  // In ActivityContext.tsx
+  const loadActivities = async () => {
+    if (!user) {
+      console.log("loadActivities: No user");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log("📋 Loading activities for user:", user.id);
+
+      // Force get a fresh session
+      const {
+        data: { session: freshSession },
+      } = await supabase.auth.getSession();
+      if (!freshSession) {
+        throw new Error("No valid session");
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from("activities")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("start_time", { ascending: false });
+
+      console.log("Query result:", {
+        success: !fetchError,
+        dataCount: data?.length || 0,
+        error: fetchError?.message,
+      });
+
+      if (fetchError) throw fetchError;
+
+      if (data && data.length > 0) {
+        const transformedActivities = data.map((act) => ({
+          id: act.id,
+          type: act.type as ActivityType,
+          name: act.name,
+          startTime: new Date(act.start_time),
+          endTime: new Date(act.end_time),
+          duration: act.duration || 0,
+          distance: act.distance || 0,
+          route: act.route || [],
+          averageSpeed: act.average_speed || 0,
+          maxSpeed: act.max_speed || 0,
+          elevationGain: act.elevation_gain,
+          notes: act.notes,
+          photos: act.photos,
+          isManualEntry: act.is_manual_entry || false,
+        }));
+
+        setActivities(transformedActivities);
+        console.log(
+          "✅ Set",
+          transformedActivities.length,
+          "activities in state"
+        );
+      } else {
+        setActivities([]);
+      }
+    } catch (err: any) {
+      console.error("❌ Error loading activities:", err);
+      setError(err.message || "Failed to load activities");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshActivities = async () => {
+    await loadActivities();
+  };
 
   const cleanupTracking = async () => {
     if (locationSubscription.current) {
@@ -250,15 +296,18 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       clearInterval(staleCheckInterval.current);
       staleCheckInterval.current = null;
     }
+
     try {
-      const hasTask = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
+      const hasTask = await TaskManager.isTaskRegisteredAsync(
+        LOCATION_TASK_NAME
+      );
       if (hasTask) {
         await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
       }
     } catch (err) {
-      console.log('Error stopping location task:', err);
+      console.log("Error stopping location task:", err);
     }
-    
+
     setIsTracking(false);
     setIsPaused(false);
     setCurrentRoute([]);
@@ -266,58 +315,18 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setCurrentDuration(0);
     setCurrentSpeed(0);
     setCurrentLocation(null);
-    setGpsStatus('searching');
+    setGpsStatus("searching");
     startTimeRef.current = null;
     pausedTimeRef.current = 0;
     pauseStartRef.current = null;
     maxSpeedRef.current = 0;
   };
 
-  const loadActivities = async () => {
-    if (!user) return;
-
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("activities")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("start_time", { ascending: false });
-
-      if (error) throw error;
-
-      if (data) {
-        const transformedActivities = data.map((act) => ({
-          id: act.id,
-          type: act.type as ActivityType,
-          name: act.name,
-          startTime: new Date(act.start_time),
-          endTime: new Date(act.end_time),
-          duration: act.duration,
-          distance: act.distance,
-          route: act.route || [],
-          averageSpeed: act.average_speed,
-          maxSpeed: act.max_speed,
-          elevationGain: act.elevation_gain,
-          notes: act.notes,
-          photos: act.photos,
-          isManualEntry: act.is_manual_entry,
-        }));
-        setActivities(transformedActivities);
-      }
-    } catch (err) {
-      console.error("Error loading activities:", err);
-      setError("Failed to load activities");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const processLocationUpdate = (location: LocationPoint) => {
     if (pauseStartRef.current) return;
 
     lastUpdateTime.current = Date.now();
-    setGpsStatus('active');
+    setGpsStatus("active");
     setCurrentLocation(location);
 
     if (!location.accuracy || location.accuracy <= 30) {
@@ -338,14 +347,27 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
         const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
         if (timeDiff > 0) {
-          const speed = (distance / 1000) / (timeDiff / 3600);
+          const speed = distance / 1000 / (timeDiff / 3600);
           if (speed < 100 && speed > maxSpeedRef.current) {
             maxSpeedRef.current = speed;
           }
         }
 
         setCurrentDistance((d) => d + distance);
-        return [...prev, location];
+
+        let newRoute = [...prev, location];
+        if (newRoute.length > MAX_ROUTE_POINTS_MEMORY) {
+          const first = newRoute[0];
+          const recent = newRoute.slice(-100);
+          const middle = newRoute.slice(1, -100);
+          const sampleRate = Math.ceil(
+            middle.length / (MAX_ROUTE_POINTS_MEMORY - 101)
+          );
+          const sampled = middle.filter((_, index) => index % sampleRate === 0);
+          newRoute = [first, ...sampled, ...recent];
+        }
+
+        return newRoute;
       });
     }
   };
@@ -366,62 +388,31 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const startForegroundTracking = async () => {
-    try {
-      locationSubscription.current = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 3000,
-          distanceInterval: 5,
-        },
-        handleLocationUpdate
-      );
-    } catch (err) {
-      console.error('Error starting foreground tracking:', err);
-      setGpsStatus('error');
-    }
-  };
-
   const startTracking = async (activityType: ActivityType) => {
     try {
       console.log("Starting tracking for:", activityType);
       setLoading(true);
       setError(null);
 
-      const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-      if (foregroundStatus !== "granted") {
-        throw new Error("Location permission is required for tracking");
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        throw new Error("Location permission is required");
       }
 
-      if (Platform.OS === 'ios' || Platform.OS === 'android') {
-        try {
-          const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-          console.log("Background permission:", backgroundStatus);
-        } catch (e) {
-          console.log("Background permission error:", e);
-        }
-      }
+      const initialLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
 
-      try {
-        const initialLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.BestForNavigation,
-        });
+      const initialPoint: LocationPoint = {
+        latitude: initialLocation.coords.latitude,
+        longitude: initialLocation.coords.longitude,
+        timestamp: Date.now(),
+        accuracy: initialLocation.coords.accuracy || undefined,
+      };
 
-        const initialPoint: LocationPoint = {
-          latitude: initialLocation.coords.latitude,
-          longitude: initialLocation.coords.longitude,
-          timestamp: Date.now(),
-          accuracy: initialLocation.coords.accuracy || undefined,
-        };
-
-        setCurrentLocation(initialPoint);
-        setCurrentRoute([initialPoint]);
-        setGpsStatus('active');
-      } catch (err) {
-        console.log("Could not get initial location:", err);
-        setGpsStatus('searching');
-      }
-
+      setCurrentLocation(initialPoint);
+      setCurrentRoute([initialPoint]);
+      setGpsStatus("active");
       setCurrentActivity(activityType);
       setIsTracking(true);
       setIsPaused(false);
@@ -434,6 +425,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       lastUpdateTime.current = Date.now();
       maxSpeedRef.current = 0;
 
+      // Start duration timer
       durationInterval.current = setInterval(() => {
         if (startTimeRef.current && !pauseStartRef.current) {
           const elapsed = Math.floor(
@@ -443,59 +435,39 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         }
       }, 1000);
 
-      await startForegroundTracking();
+      // Start location tracking
+      locationSubscription.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 3000,
+          distanceInterval: 5,
+        },
+        handleLocationUpdate
+      );
 
-      const hasTask = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
-      if (hasTask) {
-        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-      }
-
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 5000,
-        distanceInterval: 10,
-        pausesUpdatesAutomatically: false,
-        activityType: Location.ActivityType.Fitness,
-        showsBackgroundLocationIndicator: true,
-        ...(Platform.OS === 'android' && {
-          foregroundService: {
-            notificationTitle: 'ExplorAble',
-            notificationBody: 'Tracking your activity',
-            notificationColor: '#2E5A3E',
-          },
-        }),
-      });
-
-      console.log("Tracking started successfully");
       setLoading(false);
     } catch (err) {
       console.error("Error starting tracking:", err);
-      setError(err instanceof Error ? err.message : "Failed to start tracking");
+      setError(err instanceof Error ? err.message : "Failed to start");
       setLoading(false);
       cleanupTracking();
     }
   };
 
   const pauseTracking = () => {
-    console.log("Pausing tracking");
     setIsPaused(true);
     pauseStartRef.current = Date.now();
-
     if (durationInterval.current) {
       clearInterval(durationInterval.current);
       durationInterval.current = null;
     }
-
     if (locationSubscription.current) {
       locationSubscription.current.remove();
       locationSubscription.current = null;
     }
-    
-    Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME).catch(console.error);
   };
 
   const resumeTracking = async () => {
-    console.log("Resuming tracking");
     if (pauseStartRef.current) {
       pausedTimeRef.current += Date.now() - pauseStartRef.current;
       pauseStartRef.current = null;
@@ -503,7 +475,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setIsPaused(false);
 
     durationInterval.current = setInterval(() => {
-      if (startTimeRef.current) {
+      if (startTimeRef.current && !pauseStartRef.current) {
         const elapsed = Math.floor(
           (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
         );
@@ -511,52 +483,37 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       }
     }, 1000);
 
-    await startForegroundTracking();
-    
-    try {
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+    locationSubscription.current = await Location.watchPositionAsync(
+      {
         accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 5000,
-        distanceInterval: 10,
-        pausesUpdatesAutomatically: false,
-        activityType: Location.ActivityType.Fitness,
-        showsBackgroundLocationIndicator: true,
-      });
-    } catch (err) {
-      console.error('Error resuming background tracking:', err);
-    }
+        timeInterval: 3000,
+        distanceInterval: 5,
+      },
+      handleLocationUpdate
+    );
   };
 
   const stopTracking = async (name: string, notes?: string) => {
     try {
-      console.log("Stopping tracking, route points:", currentRoute.length);
-      
       if (name === "" && notes === "DISCARD_ACTIVITY") {
-        console.log("Discarding activity");
         await cleanupTracking();
         return;
       }
 
-      if (!startTimeRef.current || (currentDistance === 0 && currentRoute.length === 0)) {
-        throw new Error("No activity data to save");
+      if (!startTimeRef.current) {
+        throw new Error("No activity data");
       }
 
       const finalDuration = Math.floor(
         (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
       );
 
-      const avgSpeed = currentDistance > 0
-        ? (currentDistance / 1000) / (finalDuration / 3600)
-        : 0;
+      const avgSpeed =
+        currentDistance > 0
+          ? currentDistance / 1000 / (finalDuration / 3600)
+          : 0;
 
-      let routeToSave = currentRoute;
-      if (currentRoute.length > 500) {
-        const nth = Math.ceil(currentRoute.length / 500);
-        routeToSave = currentRoute.filter((_, index) => index % nth === 0);
-        console.log(`Simplified route from ${currentRoute.length} to ${routeToSave.length} points`);
-      }
-
-      const activityData = {
+      const activity = {
         id: Date.now().toString(),
         type: currentActivity,
         name: name || `${currentActivity} activity`,
@@ -564,105 +521,97 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         endTime: new Date(),
         duration: finalDuration,
         distance: currentDistance,
-        route: routeToSave,
+        route: currentRoute,
         averageSpeed: avgSpeed,
         maxSpeed: maxSpeedRef.current,
-        notes: notes && notes !== "DISCARD_ACTIVITY" ? notes : undefined,
+        notes: notes,
         isManualEntry: false,
       };
 
-      console.log("Saving activity to database...");
-      const saved = await saveActivity(activityData);
-      
-      if (!saved) {
-        throw new Error("Failed to save to database");
-      }
-
-      console.log("Activity saved successfully:", saved.id);
+      await saveActivity(activity);
       await cleanupTracking();
-      
     } catch (err) {
-      console.error("Error in stopTracking:", err);
+      console.error("Error stopping:", err);
       throw err;
     }
   };
 
-  const saveActivity = async (activity: Activity): Promise<Activity | null> => {
-    if (!user) return null;
+  const saveActivity = async (activity: Activity): Promise<void> => {
+    if (!user) throw new Error("No user");
 
-    try {
-      const { data, error } = await supabase
-        .from("activities")
-        .insert({
-          user_id: user.id,
-          type: activity.type,
-          name: activity.name,
-          start_time: activity.startTime.toISOString(),
-          end_time: activity.endTime.toISOString(),
-          duration: activity.duration,
-          distance: activity.distance,
-          route: activity.route,
-          average_speed: activity.averageSpeed,
-          max_speed: activity.maxSpeed,
-          elevation_gain: activity.elevationGain,
-          notes: activity.notes,
-          photos: activity.photos,
-          is_manual_entry: activity.isManualEntry,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        const newActivity: Activity = {
-          ...activity,
-          id: data.id,
-        };
-        setActivities((prev) => [newActivity, ...prev]);
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return newActivity;
+    if (refreshSession) {
+      const sessionValid = await refreshSession();
+      if (!sessionValid) {
+        throw new Error("Session expired. Please sign in again.");
       }
-      return null;
-    } catch (error) {
-      console.error("Error saving activity:", error);
+    }
+
+    const { data, error } = await supabase
+      .from("activities")
+      .insert({
+        user_id: user.id,
+        type: activity.type,
+        name: activity.name,
+        start_time: activity.startTime.toISOString(),
+        end_time: activity.endTime.toISOString(),
+        duration: activity.duration,
+        distance: activity.distance,
+        route: activity.route,
+        average_speed: activity.averageSpeed,
+        max_speed: activity.maxSpeed,
+        notes: activity.notes,
+        is_manual_entry: activity.isManualEntry,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      // If auth error, try refresh and retry once
+      if (error.message.includes("JWT") || error.message.includes("token")) {
+        const retrySession = await refreshSession?.();
+        if (retrySession) {
+          // Retry the insert
+          const { data: retryData, error: retryError } = await supabase
+            .from("activities")
+            .insert({
+              /* same data */
+            })
+            .select()
+            .single();
+
+          if (!retryError && retryData) {
+            setActivities((prev) => [
+              { ...activity, id: retryData.id },
+              ...prev,
+            ]);
+            return;
+          }
+        }
+      }
       throw error;
+    }
+    if (data) {
+      const newActivity = { ...activity, id: data.id };
+      setActivities((prev) => [newActivity, ...prev]);
     }
   };
 
   const deleteActivity = async (activityId: string) => {
     if (!user) return;
-    
-    try {
-      const { error } = await supabase
-        .from("activities")
-        .delete()
-        .eq("id", activityId)
-        .eq("user_id", user.id);
 
-      if (error) throw error;
-      setActivities((prev) => prev.filter((a) => a.id !== activityId));
-    } catch (err) {
-      console.error("Error deleting activity:", err);
-      setError("Failed to delete activity");
-    }
+    const { error } = await supabase
+      .from("activities")
+      .delete()
+      .eq("id", activityId)
+      .eq("user_id", user.id);
+
+    if (error) throw error;
+    setActivities((prev) => prev.filter((a) => a.id !== activityId));
   };
 
   const addManualActivity = async (activity: Omit<Activity, "id">) => {
-    if (!user) return;
-    
-    try {
-      const newActivity: Activity = {
-        ...activity,
-        id: "",
-        isManualEntry: true,
-      };
-
-      await saveActivity(newActivity);
-    } catch (err) {
-      console.error("Error adding manual activity:", err);
-      setError("Failed to add activity");
-    }
+    const newActivity = { ...activity, id: "" };
+    await saveActivity(newActivity as Activity);
   };
 
   const value: ActivityContextType = {
@@ -684,6 +633,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     addManualActivity,
     loading,
     error,
+    refreshActivities,
   };
 
   return (

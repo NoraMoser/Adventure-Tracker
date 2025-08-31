@@ -8,17 +8,17 @@ import { Stack, useRouter } from "expo-router";
 import * as Sharing from 'expo-sharing';
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
@@ -665,7 +665,7 @@ export default function SettingsScreen() {
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <Ionicons name="star-outline" size={22} color={theme.colors.gray} />
-              <Text style={styles.settingLabel}>Rate ExplorAble</Text>
+              <Text style={styles.settingLabel}>Rate explorAble</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
           </TouchableOpacity>
@@ -690,7 +690,7 @@ export default function SettingsScreen() {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Made with ❤️ for adventurers</Text>
-          <Text style={styles.footerSubtext}>© 2024 ExplorAble</Text>
+          <Text style={styles.footerSubtext}>© 2025 explorAble</Text>
         </View>
       </ScrollView>
 
