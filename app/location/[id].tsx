@@ -3,18 +3,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { categories } from "../../constants/categories";
@@ -73,82 +73,81 @@ export default function LocationDetailScreen() {
   }, [id]);
 
   const loadLocationDetails = async () => {
-  try {
-    // Load location with owner info
-    const { data: locationData, error: locationError } = await supabase
-      .from('locations')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (locationError) throw locationError;
-
-    // Load owner profile separately
-    if (locationData.user_id) {
-      const { data: ownerProfile } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar')
-        .eq('id', locationData.user_id)
+    try {
+      // Load location with owner info
+      const { data: locationData, error: locationError } = await supabase
+        .from("locations")
+        .select("*")
+        .eq("id", id)
         .single();
 
-      locationData.user = ownerProfile;
+      if (locationError) throw locationError;
+
+      // Load owner profile separately
+      if (locationData.user_id) {
+        const { data: ownerProfile } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar")
+          .eq("id", locationData.user_id)
+          .single();
+
+        locationData.user = ownerProfile;
+      }
+
+      setLocation(locationData);
+
+      // Load comments
+      const { data: commentsData, error: commentsError } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("location_id", id)
+        .order("created_at", { ascending: false });
+
+      if (commentsError) throw commentsError;
+
+      // Load comment authors
+      if (commentsData && commentsData.length > 0) {
+        const userIds = [...new Set(commentsData.map((c) => c.user_id))];
+
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar")
+          .in("id", userIds);
+
+        const profileMap: Record<string, any> = {};
+        profiles?.forEach((p) => {
+          profileMap[p.id] = p;
+        });
+
+        const commentsWithUsers = commentsData.map((comment) => ({
+          ...comment,
+          user: profileMap[comment.user_id] || {
+            id: comment.user_id,
+            username: "Unknown",
+            display_name: "Unknown User",
+          },
+        }));
+
+        setComments(commentsWithUsers);
+      } else {
+        setComments([]);
+      }
+
+      // Load like count
+      const { count } = await supabase
+        .from("likes")
+        .select("*", { count: "exact", head: true })
+        .eq("location_id", id);
+
+      setLikeCount(count || 0);
+    } catch (error) {
+      console.error("Error loading location details:", error);
+      Alert.alert("Error", "Failed to load location details");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    setLocation(locationData);
-
-    // Load comments
-    const { data: commentsData, error: commentsError } = await supabase
-      .from('comments')
-      .select('*')
-      .eq('location_id', id)
-      .order('created_at', { ascending: false });
-
-    if (commentsError) throw commentsError;
-
-    // Load comment authors
-    if (commentsData && commentsData.length > 0) {
-      const userIds = [...new Set(commentsData.map(c => c.user_id))];
-      
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar')
-        .in('id', userIds);
-
-      const profileMap: Record<string, any> = {};
-      profiles?.forEach(p => {
-        profileMap[p.id] = p;
-      });
-
-      const commentsWithUsers = commentsData.map(comment => ({
-        ...comment,
-        user: profileMap[comment.user_id] || {
-          id: comment.user_id,
-          username: 'Unknown',
-          display_name: 'Unknown User'
-        }
-      }));
-
-      setComments(commentsWithUsers);
-    } else {
-      setComments([]);
-    }
-
-    // Load like count
-    const { count } = await supabase
-      .from('likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('location_id', id);
-
-    setLikeCount(count || 0);
-
-  } catch (error) {
-    console.error('Error loading location details:', error);
-    Alert.alert('Error', 'Failed to load location details');
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+  };
 
   const checkIfLiked = async () => {
     if (!user) return;
@@ -448,6 +447,20 @@ export default function LocationDetailScreen() {
                   </Text>
                 </View>
                 <Text style={styles.commentText}>{comment.text}</Text>
+
+                {/* Add Reply button here */}
+                <TouchableOpacity
+                  style={styles.replyButton}
+                  onPress={() => {
+                    setNewComment(
+                      `@${comment.user.display_name || comment.user.username} `
+                    );
+                    // You'll need to add state for tracking who you're replying to
+                  }}
+                >
+                  <Text style={styles.replyButtonText}>Reply</Text>
+                </TouchableOpacity>
+
                 {user && comment.user.id === user.id && (
                   <TouchableOpacity
                     style={styles.deleteButton}
@@ -462,7 +475,6 @@ export default function LocationDetailScreen() {
                 )}
               </View>
             ))}
-
             {comments.length === 0 && (
               <Text style={styles.noComments}>
                 No comments yet. Be the first!
@@ -724,5 +736,16 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: theme.colors.lightGray,
+  },
+  replyButton: {
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    alignSelf: "flex-start",
+  },
+  replyButtonText: {
+    fontSize: 13,
+    color: theme.colors.forest,
+    fontWeight: "500",
   },
 });

@@ -3,20 +3,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { WebView } from 'react-native-webview';
+import { WebView } from "react-native-webview";
 import { theme } from "../../constants/theme";
 import { useAuth } from "../../contexts/AuthContext";
 import { useSettings } from "../../contexts/SettingsContext";
@@ -295,11 +295,13 @@ export default function ActivityDetailScreen() {
   };
 
   const generateRouteMapHTML = (route: any[]) => {
-    if (!route || route.length === 0) return '';
-    
+    if (!route || route.length === 0) return "";
+
     const center = route[Math.floor(route.length / 2)];
-    const coordinates = route.map(p => `[${p.latitude}, ${p.longitude}]`).join(',');
-    
+    const coordinates = route
+      .map((p) => `[${p.latitude}, ${p.longitude}]`)
+      .join(",");
+
     return `
       <!DOCTYPE html>
       <html>
@@ -549,6 +551,20 @@ export default function ActivityDetailScreen() {
                   </Text>
                 </View>
                 <Text style={styles.commentText}>{comment.text}</Text>
+
+                {/* Add Reply button here */}
+                <TouchableOpacity
+                  style={styles.replyButton}
+                  onPress={() => {
+                    setNewComment(
+                      `@${comment.user.display_name || comment.user.username} `
+                    );
+                    // You'll need to add state for tracking who you're replying to
+                  }}
+                >
+                  <Text style={styles.replyButtonText}>Reply</Text>
+                </TouchableOpacity>
+
                 {user && comment.user.id === user.id && (
                   <TouchableOpacity
                     style={styles.deleteButton}
@@ -842,5 +858,16 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: theme.colors.lightGray,
+  },
+  replyButton: {
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    alignSelf: "flex-start",
+  },
+  replyButtonText: {
+    fontSize: 13,
+    color: theme.colors.forest,
+    fontWeight: "500",
   },
 });

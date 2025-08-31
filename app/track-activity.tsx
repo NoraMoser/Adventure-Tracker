@@ -1,6 +1,6 @@
 // app/track-activity.tsx
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from 'expo-location';
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -12,22 +12,29 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useSettings } from "../contexts/SettingsContext";
 
-type ActivityType = 'bike' | 'run' | 'walk' | 'hike' | 'paddleboard' | 'climb' | 'other';
+type ActivityType =
+  | "bike"
+  | "run"
+  | "walk"
+  | "hike"
+  | "paddleboard"
+  | "climb"
+  | "other";
 
 const ACTIVITY_TYPES = [
-  { type: 'bike' as ActivityType, label: 'Bike', icon: 'bicycle' },
-  { type: 'run' as ActivityType, label: 'Run', icon: 'walk' },
-  { type: 'walk' as ActivityType, label: 'Walk', icon: 'footsteps' },
-  { type: 'hike' as ActivityType, label: 'Hike', icon: 'trail-sign' },
-  { type: 'paddleboard' as ActivityType, label: 'Paddle', icon: 'boat' },
-  { type: 'climb' as ActivityType, label: 'Climb', icon: 'trending-up' },
-  { type: 'other' as ActivityType, label: 'Other', icon: 'fitness' },
+  { type: "bike" as ActivityType, label: "Bike", icon: "bicycle" },
+  { type: "run" as ActivityType, label: "Run", icon: "walk" },
+  { type: "walk" as ActivityType, label: "Walk", icon: "footsteps" },
+  { type: "hike" as ActivityType, label: "Hike", icon: "trail-sign" },
+  { type: "paddleboard" as ActivityType, label: "Paddle", icon: "boat" },
+  { type: "climb" as ActivityType, label: "Climb", icon: "trending-up" },
+  { type: "other" as ActivityType, label: "Other", icon: "fitness" },
 ];
 
 export default function TrackActivityScreen() {
@@ -51,7 +58,7 @@ export default function TrackActivityScreen() {
   } = useActivity();
 
   const [selectedActivity, setSelectedActivity] = useState<ActivityType>(
-    settings.defaultActivityType || 'bike'
+    settings.defaultActivityType || "bike"
   );
   const [activityName, setActivityName] = useState("");
   const [activityNotes, setActivityNotes] = useState("");
@@ -61,9 +68,9 @@ export default function TrackActivityScreen() {
   const [manualLoading, setManualLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  
+
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const [finalDistance, setFinalDistance] = useState(0);
   const [finalDuration, setFinalDuration] = useState(0);
   const [finalSpeed, setFinalSpeed] = useState(0);
@@ -98,24 +105,24 @@ export default function TrackActivityScreen() {
     try {
       setManualLoading(true);
       setLoadingTimeout(false);
-      
+
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
         setManualLoading(false);
         Alert.alert(
-          'Location Services Off',
-          'ExplorAble needs location services to track your activities. Please enable them in settings.',
+          "Location Services Off",
+          "ExplorAble needs location services to track your activities. Please enable them in settings.",
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+            { text: "Cancel", style: "cancel" },
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
           ]
         );
         return;
       }
 
       const { status } = await Location.getForegroundPermissionsAsync();
-      
-      if (status !== 'granted') {
+
+      if (status !== "granted") {
         setManualLoading(false);
         setShowPermissionScreen(true);
       } else {
@@ -129,19 +136,19 @@ export default function TrackActivityScreen() {
       }
     } catch (err) {
       setManualLoading(false);
-      console.error('Error starting activity:', err);
-      Alert.alert('Error', 'Failed to start tracking. Please try again.');
+      console.error("Error starting activity:", err);
+      Alert.alert("Error", "Failed to start tracking. Please try again.");
     }
   };
 
   const handleRequestPermission = async () => {
     setShowPermissionScreen(false);
     setManualLoading(true);
-    
+
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      
-      if (status === 'granted') {
+
+      if (status === "granted") {
         setTimeout(async () => {
           try {
             await startTracking(selectedActivity);
@@ -152,17 +159,17 @@ export default function TrackActivityScreen() {
       } else {
         setManualLoading(false);
         Alert.alert(
-          'Permission Required',
-          'Location permission is required to track activities. You can enable it in Settings.',
+          "Permission Required",
+          "Location permission is required to track activities. You can enable it in Settings.",
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+            { text: "Cancel", style: "cancel" },
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
           ]
         );
       }
     } catch (err) {
       setManualLoading(false);
-      console.error('Permission error:', err);
+      console.error("Permission error:", err);
     }
   };
 
@@ -190,8 +197,12 @@ export default function TrackActivityScreen() {
   const handleStop = () => {
     setFinalDistance(currentDistance);
     setFinalDuration(currentDuration);
-    setFinalSpeed(currentDistance > 0 ? (currentDistance / 1000) / (currentDuration / 3600) : 0);
-    
+    setFinalSpeed(
+      currentDistance > 0
+        ? currentDistance / 1000 / (currentDuration / 3600)
+        : 0
+    );
+
     if (!isPaused) {
       pauseTracking();
     }
@@ -201,35 +212,37 @@ export default function TrackActivityScreen() {
   const handleSaveActivity = async () => {
     setIsSaving(true);
     setSaveError(null);
-    
+
     try {
       const name = activityName.trim() || `${selectedActivity} activity`;
-      
-      console.log('Saving activity...', { name, distance: finalDistance, duration: finalDuration });
-      
+
+      console.log("Saving activity...", {
+        name,
+        distance: finalDistance,
+        duration: finalDuration,
+      });
+
       await stopTracking(name, activityNotes);
-      
+
       setActivityName("");
       setActivityNotes("");
       setShowSaveDialog(false);
       setIsSaving(false);
-      
-      Alert.alert(
-        "Success", 
-        "Activity saved successfully!", 
-        [{ text: "OK", onPress: () => router.back() }]
-      );
+
+      Alert.alert("Success", "Activity saved successfully!", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (error) {
-      console.error('Save error:', error);
+      console.error("Save error:", error);
       setIsSaving(false);
-      setSaveError('Failed to save activity. Please try again.');
-      
+      setSaveError("Failed to save activity. Please try again.");
+
       Alert.alert(
         "Save Failed",
         "There was an error saving your activity. Would you like to try again?",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Try Again", onPress: handleSaveActivity }
+          { text: "Try Again", onPress: handleSaveActivity },
         ]
       );
     }
@@ -280,40 +293,59 @@ export default function TrackActivityScreen() {
           <View style={styles.permissionIconContainer}>
             <Ionicons name="location" size={60} color={theme.colors.forest} />
           </View>
-          
+
           <Text style={styles.permissionTitle}>Enable Location Access</Text>
-          
+
           <Text style={styles.permissionDescription}>
             ExplorAble needs to access your location to:
           </Text>
-          
+
           <View style={styles.permissionList}>
             <View style={styles.permissionItem}>
-              <Ionicons name="checkmark-circle" size={24} color={theme.colors.forest} />
-              <Text style={styles.permissionItemText}>Track your activities in real-time</Text>
+              <Ionicons
+                name="checkmark-circle"
+                size={24}
+                color={theme.colors.forest}
+              />
+              <Text style={styles.permissionItemText}>
+                Track your activities in real-time
+              </Text>
             </View>
             <View style={styles.permissionItem}>
-              <Ionicons name="checkmark-circle" size={24} color={theme.colors.forest} />
-              <Text style={styles.permissionItemText}>Calculate distance and speed</Text>
+              <Ionicons
+                name="checkmark-circle"
+                size={24}
+                color={theme.colors.forest}
+              />
+              <Text style={styles.permissionItemText}>
+                Calculate distance and speed
+              </Text>
             </View>
             <View style={styles.permissionItem}>
-              <Ionicons name="checkmark-circle" size={24} color={theme.colors.forest} />
-              <Text style={styles.permissionItemText}>Map your adventure routes</Text>
+              <Ionicons
+                name="checkmark-circle"
+                size={24}
+                color={theme.colors.forest}
+              />
+              <Text style={styles.permissionItemText}>
+                Map your adventure routes
+              </Text>
             </View>
           </View>
-          
+
           <Text style={styles.permissionNote}>
-            Your location data is only used during activities and is never shared without your permission.
+            Your location data is only used during activities and is never
+            shared without your permission.
           </Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.permissionButton}
             onPress={handleRequestPermission}
           >
             <Text style={styles.permissionButtonText}>Continue</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.permissionSkipButton}
             onPress={() => {
               setShowPermissionScreen(false);
@@ -332,23 +364,21 @@ export default function TrackActivityScreen() {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.forest} />
         <Text style={styles.loadingText}>Starting activity tracking...</Text>
-        <Text style={styles.loadingSubtext}>
-          Acquiring GPS signal...
-        </Text>
-        
+        <Text style={styles.loadingSubtext}>Acquiring GPS signal...</Text>
+
         {loadingTimeout && (
           <View style={styles.timeoutContainer}>
             <Text style={styles.timeoutText}>
               This is taking longer than expected
             </Text>
             <View style={styles.timeoutButtons}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.retryButton}
                 onPress={handleRetry}
               >
                 <Text style={styles.retryButtonText}>Try Again</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => {
                   handleCancelLoading();
@@ -369,15 +399,20 @@ export default function TrackActivityScreen() {
       <ScrollView style={styles.container}>
         <View style={styles.saveDialog}>
           <Text style={styles.saveTitle}>Save Activity</Text>
-          
+
           <View style={styles.activityTypeIndicator}>
-            <Ionicons 
-              name={ACTIVITY_TYPES.find(a => a.type === selectedActivity)?.icon as any} 
-              size={24} 
-              color={theme.colors.forest} 
+            <Ionicons
+              name={
+                ACTIVITY_TYPES.find((a) => a.type === selectedActivity)
+                  ?.icon as any
+              }
+              size={24}
+              color={theme.colors.forest}
             />
             <Text style={styles.activityTypeText}>
-              {selectedActivity.charAt(0).toUpperCase() + selectedActivity.slice(1)} Activity
+              {selectedActivity.charAt(0).toUpperCase() +
+                selectedActivity.slice(1)}{" "}
+              Activity
             </Text>
           </View>
 
@@ -397,15 +432,11 @@ export default function TrackActivityScreen() {
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Avg Speed:</Text>
-              <Text style={styles.summaryValue}>
-                {formatSpeed(finalSpeed)}
-              </Text>
+              <Text style={styles.summaryValue}>{formatSpeed(finalSpeed)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>GPS Points:</Text>
-              <Text style={styles.summaryValue}>
-                {currentRoute.length}
-              </Text>
+              <Text style={styles.summaryValue}>{currentRoute.length}</Text>
             </View>
           </View>
 
@@ -457,8 +488,8 @@ export default function TrackActivityScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.continueButton, isSaving && styles.buttonDisabled]} 
+          <TouchableOpacity
+            style={[styles.continueButton, isSaving && styles.buttonDisabled]}
             onPress={() => {
               resumeTracking();
               setShowSaveDialog(false);
@@ -468,8 +499,8 @@ export default function TrackActivityScreen() {
             <Text style={styles.continueButtonText}>Continue Recording</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.discardButton, isSaving && styles.buttonDisabled]} 
+          <TouchableOpacity
+            style={[styles.discardButton, isSaving && styles.buttonDisabled]}
             onPress={handleDiscardActivity}
             disabled={isSaving}
           >
@@ -490,7 +521,7 @@ export default function TrackActivityScreen() {
               <Text style={styles.pausedBannerText}>PAUSED</Text>
             </View>
           )}
-          
+
           <View style={styles.primaryStat}>
             <Text style={styles.primaryStatLabel}>Distance</Text>
             <Text style={styles.primaryStatValue}>
@@ -512,23 +543,30 @@ export default function TrackActivityScreen() {
           </View>
 
           <View style={styles.gpsStatus}>
-            <View style={[
-              styles.gpsIndicator,
-              gpsStatus === 'active' && styles.gpsActive,
-              gpsStatus === 'searching' && styles.gpsSearching,
-              gpsStatus === 'stale' && styles.gpsStale,
-              gpsStatus === 'error' && styles.gpsError,
-            ]} />
+            <View
+              style={[
+                styles.gpsIndicator,
+                gpsStatus === "active" && styles.gpsActive,
+                gpsStatus === "searching" && styles.gpsSearching,
+                gpsStatus === "stale" && styles.gpsStale,
+                gpsStatus === "error" && styles.gpsError,
+              ]}
+            />
             <Text style={styles.gpsStatusText}>
-              {gpsStatus === 'active' && `GPS Active${currentLocation?.accuracy ? ` (±${currentLocation.accuracy.toFixed(0)}m)` : ''}`}
-              {gpsStatus === 'searching' && 'Searching for GPS...'}
-              {gpsStatus === 'stale' && 'GPS signal lost - move to open area'}
-              {gpsStatus === 'error' && 'GPS error - check settings'}
+              {gpsStatus === "active" &&
+                `GPS Active${
+                  currentLocation?.accuracy
+                    ? ` (±${currentLocation.accuracy.toFixed(0)}m)`
+                    : ""
+                }`}
+              {gpsStatus === "searching" && "Searching for GPS..."}
+              {gpsStatus === "stale" && "GPS signal lost - move to open area"}
+              {gpsStatus === "error" && "GPS error - check settings"}
             </Text>
           </View>
 
-          {gpsStatus === 'stale' && (
-            <TouchableOpacity 
+          {gpsStatus === "stale" && (
+            <TouchableOpacity
               style={styles.gpsRetryButton}
               onPress={() => resumeTracking()}
             >
@@ -539,12 +577,18 @@ export default function TrackActivityScreen() {
 
           <View style={styles.controlsContainer}>
             {!isPaused ? (
-              <TouchableOpacity style={styles.pauseButton} onPress={handlePause}>
+              <TouchableOpacity
+                style={styles.pauseButton}
+                onPress={handlePause}
+              >
                 <Ionicons name="pause" size={32} color="white" />
                 <Text style={styles.controlButtonText}>Pause</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.resumeButton} onPress={handleResume}>
+              <TouchableOpacity
+                style={styles.resumeButton}
+                onPress={handleResume}
+              >
                 <Ionicons name="play" size={32} color="white" />
                 <Text style={styles.controlButtonText}>Resume</Text>
               </TouchableOpacity>
@@ -588,7 +632,8 @@ export default function TrackActivityScreen() {
             <Text
               style={[
                 styles.activityLabel,
-                selectedActivity === activity.type && styles.activityLabelSelected,
+                selectedActivity === activity.type &&
+                  styles.activityLabelSelected,
               ]}
             >
               {activity.label}
@@ -597,13 +642,21 @@ export default function TrackActivityScreen() {
         ))}
       </View>
 
-      <TouchableOpacity 
-        style={styles.startButton} 
+      <TouchableOpacity
+        style={styles.startButton}
         onPress={handleStart}
         disabled={manualLoading}
       >
         <Ionicons name="play" size={24} color="white" />
         <Text style={styles.startButtonText}>Start Tracking</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.manualEntryButton}
+        onPress={() => router.push("/add-activity")}
+      >
+        <Ionicons name="create-outline" size={24} color={theme.colors.forest} />
+        <Text style={styles.manualEntryText}>Add Past Activity</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -620,6 +673,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: theme.colors.offWhite,
   },
+  manualEntryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.colors.forest,
+  },
+  manualEntryText: {
+    color: theme.colors.forest,
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
   loadingText: {
     marginTop: 20,
     fontSize: 16,
@@ -634,15 +705,15 @@ const styles = StyleSheet.create({
   permissionContainer: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 20,
   },
   permissionContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 16,
     padding: 30,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -652,30 +723,30 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: theme.colors.forest + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: theme.colors.forest + "15",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 20,
   },
   permissionTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: theme.colors.navy,
     marginBottom: 15,
   },
   permissionDescription: {
     fontSize: 16,
     color: theme.colors.gray,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
   },
   permissionList: {
-    width: '100%',
+    width: "100%",
     marginBottom: 20,
   },
   permissionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 15,
   },
   permissionItemText: {
@@ -687,9 +758,9 @@ const styles = StyleSheet.create({
   permissionNote: {
     fontSize: 12,
     color: theme.colors.lightGray,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 25,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   permissionButton: {
     backgroundColor: theme.colors.forest,
@@ -699,9 +770,9 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   permissionButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   permissionSkipButton: {
     padding: 10,
@@ -712,7 +783,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
@@ -731,7 +802,7 @@ const styles = StyleSheet.create({
   activityCard: {
     width: "30%",
     aspectRatio: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     margin: 5,
@@ -751,7 +822,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   activityLabelSelected: {
-    color: 'white',
+    color: "white",
   },
   startButton: {
     backgroundColor: theme.colors.forest,
@@ -763,14 +834,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   startButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
     fontWeight: "bold",
     marginLeft: 10,
   },
   trackingContainer: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 20,
   },
   pausedBanner: {
@@ -783,7 +854,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   pausedBannerText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
     fontWeight: "bold",
     marginLeft: 8,
@@ -852,25 +923,25 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.burntOrange,
   },
   gpsError: {
-    backgroundColor: '#FF4757',
+    backgroundColor: "#FF4757",
   },
   gpsStatusText: {
     fontSize: 14,
     color: theme.colors.gray,
   },
   gpsRetryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 12,
-    backgroundColor: theme.colors.forest + '20',
+    backgroundColor: theme.colors.forest + "20",
     borderRadius: 8,
     marginTop: 10,
   },
   gpsRetryText: {
     marginLeft: 8,
     color: theme.colors.forest,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   controlsContainer: {
     flexDirection: "row",
@@ -879,11 +950,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
   pauseButton: {
     backgroundColor: theme.colors.burntOrange,
@@ -910,7 +981,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   controlButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
     marginTop: 4,
     fontWeight: "600",
@@ -930,7 +1001,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 15,
     padding: 10,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 8,
   },
   activityTypeText: {
@@ -940,7 +1011,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   summaryCard: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 15,
     borderRadius: 8,
     marginBottom: 20,
@@ -968,15 +1039,15 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
   },
   errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FF4757' + '20',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FF4757" + "20",
     padding: 12,
     borderRadius: 8,
     marginBottom: 15,
   },
   errorText: {
-    color: '#FF4757',
+    color: "#FF4757",
     marginLeft: 8,
     flex: 1,
   },
@@ -987,7 +1058,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderWidth: 1,
     borderColor: theme.colors.borderGray,
     borderRadius: 8,
@@ -1013,7 +1084,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   saveButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
     fontWeight: "bold",
     marginLeft: 8,
@@ -1024,13 +1095,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.forest,
     borderRadius: 8,
     marginBottom: 10,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
   continueButtonText: {
     color: theme.colors.forest,
     fontSize: 16,
     fontWeight: "600",
-    textAlign: 'center',
+    textAlign: "center",
   },
   discardButton: {
     padding: 16,
@@ -1039,14 +1110,14 @@ const styles = StyleSheet.create({
     color: theme.colors.burntOrange,
     fontSize: 16,
     fontWeight: "500",
-    textAlign: 'center',
+    textAlign: "center",
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   timeoutContainer: {
     marginTop: 30,
-    alignItems: 'center',
+    alignItems: "center",
   },
   timeoutText: {
     fontSize: 14,
@@ -1054,7 +1125,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   timeoutButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 15,
   },
   retryButton: {
@@ -1065,9 +1136,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   retryButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   cancelButton: {
     backgroundColor: theme.colors.gray,
@@ -1077,8 +1148,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   cancelButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

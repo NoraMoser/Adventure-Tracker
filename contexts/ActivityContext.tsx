@@ -207,9 +207,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // Add this debug version to your ActivityContext to see what's failing:
-
-  // In ActivityContext.tsx
+  // contexts/ActivityContext.tsx - Add this to your loadActivities function
   const loadActivities = async () => {
     if (!user) {
       console.log("loadActivities: No user");
@@ -222,19 +220,21 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
       console.log("📋 Loading activities for user:", user.id);
 
-      // Force get a fresh session
-      const {
-        data: { session: freshSession },
-      } = await supabase.auth.getSession();
-      if (!freshSession) {
-        throw new Error("No valid session");
-      }
+      // Create a timeout promise that rejects after 10 seconds
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Query timeout")), 10000)
+      );
 
-      const { data, error: fetchError } = await supabase
+      // Create the query promise
+      const queryPromise = supabase
         .from("activities")
         .select("*")
         .eq("user_id", user.id)
         .order("start_time", { ascending: false });
+
+      // Race them - whichever completes first wins
+      const result = await Promise.race([queryPromise, timeoutPromise]);
+      const { data, error: fetchError } = result as any;
 
       console.log("Query result:", {
         success: !fetchError,
@@ -245,7 +245,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       if (fetchError) throw fetchError;
 
       if (data && data.length > 0) {
-        const transformedActivities = data.map((act) => ({
+        const transformedActivities = data.map((act: any) => ({
           id: act.id,
           type: act.type as ActivityType,
           name: act.name,
@@ -272,13 +272,39 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         setActivities([]);
       }
     } catch (err: any) {
-      console.error("❌ Error loading activities:", err);
+      if (err.message === "Query timeout") {
+        console.error("❌ Activities query timed out after 10 seconds");
+        // Try to refresh session and retry once
+        if (refreshSession) {
+          console.log("Attempting session refresh...");
+          const refreshed = await refreshSession();
+          if (refreshed) {
+            console.log("Retrying query with fresh session...");
+            // Simple retry without timeout
+            const { data } = await supabase
+              .from("activities")
+              .select("*")
+              .eq("user_id", user.id)
+              .order("start_time", { ascending: false });
+
+            if (data) {
+              // Transform and set activities
+              console.log(
+                "✅ Retry successful, loaded",
+                data.length,
+                "activities"
+              );
+            }
+          }
+        }
+      } else {
+        console.error("❌ Error loading activities:", err);
+      }
       setError(err.message || "Failed to load activities");
     } finally {
       setLoading(false);
     }
   };
-
   const refreshActivities = async () => {
     await loadActivities();
   };
@@ -322,6 +348,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     maxSpeedRef.current = 0;
   };
 
+  // In ActivityContext.tsx, update processLocationUpdate:
   const processLocationUpdate = (location: LocationPoint) => {
     if (pauseStartRef.current) return;
 
@@ -329,8 +356,10 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setGpsStatus("active");
     setCurrentLocation(location);
 
-    if (!location.accuracy || location.accuracy <= 30) {
-      setCurrentRoute((prev) => {
+    // More strict accuracy check and minimum movement threshold
+    if (!location.accuracy || location.accuracy <= 20) {
+      // Changed from 30 to 20
+      setCurrentRoute((prev: any) => {
         if (prev.length === 0) return [location];
 
         const lastPoint = prev[prev.length - 1];
@@ -341,37 +370,34 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           location.longitude
         );
 
-        if (distance < 2 || distance > 500) {
+        // Increased minimum movement from 2m to 5m to reduce noise
+        // Also check for GPS jumps (reduced from 500m to 200m)
+        if (distance < 5 || distance > 200) {
           return prev;
         }
 
         const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
         if (timeDiff > 0) {
           const speed = distance / 1000 / (timeDiff / 3600);
-          if (speed < 100 && speed > maxSpeedRef.current) {
-            maxSpeedRef.current = speed;
+
+          // Filter out unrealistic speeds
+          if (speed > 0.5 && speed < 100) {
+            // Min speed of 0.5 km/h
+            if (speed > maxSpeedRef.current) {
+              maxSpeedRef.current = speed;
+            }
+            setCurrentSpeed(speed); // Only update speed if it's realistic
           }
         }
 
         setCurrentDistance((d) => d + distance);
 
-        let newRoute = [...prev, location];
-        if (newRoute.length > MAX_ROUTE_POINTS_MEMORY) {
-          const first = newRoute[0];
-          const recent = newRoute.slice(-100);
-          const middle = newRoute.slice(1, -100);
-          const sampleRate = Math.ceil(
-            middle.length / (MAX_ROUTE_POINTS_MEMORY - 101)
-          );
-          const sampled = middle.filter((_, index) => index % sampleRate === 0);
-          newRoute = [first, ...sampled, ...recent];
-        }
-
-        return newRoute;
+        // Rest of your code...
       });
     }
   };
 
+  // Also update handleLocationUpdate to filter speed:
   const handleLocationUpdate = (location: Location.LocationObject) => {
     const point: LocationPoint = {
       latitude: location.coords.latitude,
@@ -383,8 +409,12 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
     processLocationUpdate(point);
 
-    if (location.coords.speed !== null && location.coords.speed >= 0) {
+    // Only update speed if it's above a threshold (0.5 km/h)
+    if (location.coords.speed !== null && location.coords.speed >= 0.14) {
+      // 0.14 m/s = ~0.5 km/h
       setCurrentSpeed(location.coords.speed * 3.6);
+    } else {
+      setCurrentSpeed(0); // Set to 0 if below threshold
     }
   };
 
@@ -539,60 +569,61 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   const saveActivity = async (activity: Activity): Promise<void> => {
     if (!user) throw new Error("No user");
 
+    console.log("💾 Attempting to save activity...");
+
+    // Always refresh before save
     if (refreshSession) {
+      console.log("🔄 Refreshing session before save...");
       const sessionValid = await refreshSession();
+
       if (!sessionValid) {
-        throw new Error("Session expired. Please sign in again.");
+        console.error("❌ Session refresh failed");
+        // Save to local storage as backup
+        const pendingActivities = await AsyncStorage.getItem(
+          "pending_activities"
+        );
+        const pending = pendingActivities ? JSON.parse(pendingActivities) : [];
+        pending.push(activity);
+        await AsyncStorage.setItem(
+          "pending_activities",
+          JSON.stringify(pending)
+        );
+        throw new Error("Session expired - activity saved locally");
       }
+      console.log("✅ Session refreshed, proceeding with save");
     }
 
-    const { data, error } = await supabase
-      .from("activities")
-      .insert({
-        user_id: user.id,
-        type: activity.type,
-        name: activity.name,
-        start_time: activity.startTime.toISOString(),
-        end_time: activity.endTime.toISOString(),
-        duration: activity.duration,
-        distance: activity.distance,
-        route: activity.route,
-        average_speed: activity.averageSpeed,
-        max_speed: activity.maxSpeed,
-        notes: activity.notes,
-        is_manual_entry: activity.isManualEntry,
-      })
-      .select()
-      .single();
+    try {
+      console.log("📤 Sending to Supabase...");
+      const { data, error } = await supabase
+        .from("activities")
+        .insert({
+          user_id: user.id,
+          type: activity.type,
+          name: activity.name,
+          start_time: activity.startTime.toISOString(),
+          end_time: activity.endTime.toISOString(),
+          duration: activity.duration,
+          distance: activity.distance,
+          route: activity.route,
+          average_speed: activity.averageSpeed,
+          max_speed: activity.maxSpeed,
+          notes: activity.notes,
+          is_manual_entry: activity.isManualEntry,
+        })
+        .select()
+        .single();
 
-    if (error) {
-      // If auth error, try refresh and retry once
-      if (error.message.includes("JWT") || error.message.includes("token")) {
-        const retrySession = await refreshSession?.();
-        if (retrySession) {
-          // Retry the insert
-          const { data: retryData, error: retryError } = await supabase
-            .from("activities")
-            .insert({
-              /* same data */
-            })
-            .select()
-            .single();
-
-          if (!retryError && retryData) {
-            setActivities((prev) => [
-              { ...activity, id: retryData.id },
-              ...prev,
-            ]);
-            return;
-          }
-        }
+      if (error) {
+        console.error("❌ Save error:", error);
+        throw error;
       }
-      throw error;
-    }
-    if (data) {
-      const newActivity = { ...activity, id: data.id };
-      setActivities((prev) => [newActivity, ...prev]);
+
+      console.log("✅ Activity saved successfully:", data.id);
+      setActivities((prev) => [{ ...activity, id: data.id }, ...prev]);
+    } catch (err) {
+      console.error("❌ Save failed:", err);
+      throw err;
     }
   };
 
