@@ -275,9 +275,12 @@ export default function TrackActivityScreen() {
   };
 
   const formatDuration = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return "0:00";
+
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
         .toString()
@@ -511,7 +514,17 @@ export default function TrackActivityScreen() {
     );
   }
 
+  // In the tracking view section
   if (isTracking) {
+    console.log("Tracking state:", {
+      currentDistance,
+      currentDuration,
+      currentSpeed,
+      isPaused,
+      gpsStatus,
+      formatDistance: typeof formatDistance,
+      formatSpeed: typeof formatSpeed,
+    });
     return (
       <View style={styles.container}>
         <View style={styles.trackingContainer}>
@@ -525,7 +538,7 @@ export default function TrackActivityScreen() {
           <View style={styles.primaryStat}>
             <Text style={styles.primaryStatLabel}>Distance</Text>
             <Text style={styles.primaryStatValue}>
-              {formatDistance(currentDistance)}
+              {formatDistance ? formatDistance(currentDistance || 0) : "0 km"}
             </Text>
           </View>
 
@@ -533,12 +546,14 @@ export default function TrackActivityScreen() {
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Duration</Text>
               <Text style={styles.statValue}>
-                {formatDuration(currentDuration)}
+                {formatDuration(currentDuration || 0)}
               </Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Speed</Text>
-              <Text style={styles.statValue}>{formatSpeed(currentSpeed)}</Text>
+              <Text style={styles.statValue}>
+                {formatSpeed ? formatSpeed(currentSpeed || 0) : "0 km/h"}
+              </Text>
             </View>
           </View>
 
