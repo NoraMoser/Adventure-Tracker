@@ -1,24 +1,100 @@
 // app/friends.tsx - Complete file with unfriend and block options
-import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { theme } from '../constants/theme';
-import { useAuth } from '../contexts/AuthContext';
-import { Friend, FriendRequest, FriendSuggestion, useFriends } from '../contexts/FriendsContext';
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { theme } from "../constants/theme";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  Friend,
+  FriendRequest,
+  FriendSuggestion,
+  useFriends,
+} from "../contexts/FriendsContext";
+
+const UserAvatar = ({
+  user,
+  size = 40,
+  style = {},
+}: {
+  user: any;
+  size?: number;
+  style?: any;
+}) => {
+  if (user?.profile_picture) {
+    return (
+      <Image
+        source={{ uri: user.profile_picture }}
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: "#f0f0f0",
+          },
+          style,
+        ]}
+        onError={(e) => {
+          console.log("Error loading profile picture:", e.nativeEvent.error);
+        }}
+      />
+    );
+  }
+
+  if (user?.avatar) {
+    return (
+      <View
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: "white",
+            justifyContent: "center",
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: theme.colors.borderGray,
+          },
+          style,
+        ]}
+      >
+        <Text style={{ fontSize: size * 0.6 }}>{user.avatar}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: theme.colors.lightGray + "30",
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        style,
+      ]}
+    >
+      <Ionicons name="person" size={size * 0.6} color={theme.colors.gray} />
+    </View>
+  );
+};
 
 // Friend Options Modal Component
 const FriendOptionsModal = ({
@@ -49,7 +125,7 @@ const FriendOptionsModal = ({
         <View style={optionStyles.container}>
           <View style={optionStyles.header}>
             <View style={optionStyles.headerInfo}>
-              <Text style={optionStyles.avatar}>{friend.avatar || '👤'}</Text>
+              <UserAvatar user={friend} size={32} style={{ marginRight: 12 }} />
               <View>
                 <Text style={optionStyles.name}>{friend.displayName}</Text>
                 <Text style={optionStyles.username}>@{friend.username}</Text>
@@ -65,20 +141,38 @@ const FriendOptionsModal = ({
               style={optionStyles.option}
               onPress={onViewProfile}
             >
-              <Ionicons name="person-outline" size={24} color={theme.colors.navy} />
+              <Ionicons
+                name="person-outline"
+                size={24}
+                color={theme.colors.navy}
+              />
               <Text style={optionStyles.optionText}>View Profile</Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={optionStyles.option}
-              onPress={onUnfriend}
-            >
-              <Ionicons name="person-remove-outline" size={24} color={theme.colors.burntOrange} />
-              <Text style={[optionStyles.optionText, { color: theme.colors.burntOrange }]}>
+            <TouchableOpacity style={optionStyles.option} onPress={onUnfriend}>
+              <Ionicons
+                name="person-remove-outline"
+                size={24}
+                color={theme.colors.burntOrange}
+              />
+              <Text
+                style={[
+                  optionStyles.optionText,
+                  { color: theme.colors.burntOrange },
+                ]}
+              >
                 Unfriend
               </Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -89,12 +183,17 @@ const FriendOptionsModal = ({
               <Text style={[optionStyles.optionText, { color: "#FF4757" }]}>
                 Block User
               </Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
             </TouchableOpacity>
           </View>
 
           <Text style={optionStyles.warning}>
-            Blocking will remove this person from your friends and prevent them from sending you requests.
+            Blocking will remove this person from your friends and prevent them
+            from sending you requests.
           </Text>
         </View>
       </View>
@@ -109,43 +208,49 @@ const FriendItem: React.FC<{
   onOptions: () => void;
 }> = ({ friend, onPress, onOptions }) => {
   const getLastActiveText = (lastActive?: Date) => {
-    if (!lastActive) return 'Offline';
-    
+    if (!lastActive) return "Offline";
+
     const now = new Date();
     const diff = now.getTime() - lastActive.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
-    
-    if (minutes < 5) return 'Online now';
+
+    if (minutes < 5) return "Online now";
     if (hours < 1) return `${minutes}m ago`;
     if (days < 1) return `${hours}h ago`;
-    if (days === 1) return 'Yesterday';
+    if (days === 1) return "Yesterday";
     return `${days}d ago`;
   };
-  
-  const isOnline = friend.lastActive && 
-    (new Date().getTime() - friend.lastActive.getTime()) < 300000;
-  
+
+  const isOnline =
+    friend.lastActive &&
+    new Date().getTime() - friend.lastActive.getTime() < 300000;
+
   return (
     <TouchableOpacity style={styles.friendCard} onPress={onPress}>
       <View style={styles.friendAvatar}>
-        <Text style={styles.friendAvatarText}>{friend.avatar || '👤'}</Text>
+        <UserAvatar user={friend} size={50} />
         {isOnline && <View style={styles.onlineIndicator} />}
       </View>
-      
       <View style={styles.friendInfo}>
         <Text style={styles.friendName}>{friend.displayName}</Text>
         <Text style={styles.friendUsername}>@{friend.username}</Text>
-        <Text style={styles.lastActive}>{getLastActiveText(friend.lastActive)}</Text>
+        <Text style={styles.lastActive}>
+          {getLastActiveText(friend.lastActive)}
+        </Text>
       </View>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.moreButton}
         onPress={onOptions}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="ellipsis-vertical" size={20} color={theme.colors.gray} />
+        <Ionicons
+          name="ellipsis-vertical"
+          size={20}
+          color={theme.colors.gray}
+        />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -154,17 +259,17 @@ const FriendItem: React.FC<{
 // Request Item Component
 const RequestItem: React.FC<{
   request: FriendRequest;
-  type: 'incoming' | 'outgoing';
+  type: "incoming" | "outgoing";
   onAccept?: () => void;
   onDecline?: () => void;
   onCancel?: () => void;
 }> = ({ request, type, onAccept, onDecline, onCancel }) => {
   let user: any = null;
-  let displayName = '';
-  let username = '';
-  let avatar = '';
-  
-  if (type === 'incoming') {
+  let displayName = "";
+  let username = "";
+  let avatar = "";
+
+  if (type === "incoming") {
     if (request.from) {
       user = request.from;
       displayName = user.displayName;
@@ -172,38 +277,38 @@ const RequestItem: React.FC<{
       avatar = user.avatar;
     } else if (request.from_user) {
       user = request.from_user;
-      displayName = user.displayName || user.display_name || 'Unknown';
+      displayName = user.displayName || user.display_name || "Unknown";
       username = user.username;
       avatar = user.avatar;
     }
   } else {
-    username = request.to || 'Unknown';
+    username = request.to || "Unknown";
     displayName = username;
   }
-  
-  const sentAt = request.sentAt || (request.sent_at ? new Date(request.sent_at) : new Date());
-  
+
+  const sentAt =
+    request.sentAt ||
+    (request.sent_at ? new Date(request.sent_at) : new Date());
+
   return (
     <View style={styles.requestCard}>
       <View style={styles.requestHeader}>
         <View style={styles.requestAvatar}>
-          <Text style={styles.requestAvatarText}>{avatar || '👤'}</Text>
+          <UserAvatar user={user} size={45} />
         </View>
         <View style={styles.requestInfo}>
           <Text style={styles.requestName}>{displayName}</Text>
           <Text style={styles.requestUsername}>@{username}</Text>
-          <Text style={styles.requestTime}>
-            {sentAt.toLocaleDateString()}
-          </Text>
+          <Text style={styles.requestTime}>{sentAt.toLocaleDateString()}</Text>
         </View>
       </View>
-      
+
       {request.message && (
         <Text style={styles.requestMessage}>&quot;{request.message}&quot;</Text>
       )}
-      
+
       <View style={styles.requestActions}>
-        {type === 'incoming' ? (
+        {type === "incoming" ? (
           <>
             <TouchableOpacity
               style={[styles.actionButton, styles.acceptButton]}
@@ -212,7 +317,7 @@ const RequestItem: React.FC<{
               <Ionicons name="checkmark" size={18} color="white" />
               <Text style={styles.acceptText}>Accept</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[styles.actionButton, styles.declineButton]}
               onPress={onDecline}
@@ -242,11 +347,9 @@ const SuggestionCard: React.FC<{
   return (
     <View style={styles.suggestionCard}>
       <View style={styles.suggestionAvatar}>
-        <Text style={styles.suggestionAvatarText}>
-          {suggestion.avatar || '👤'}
-        </Text>
+        <UserAvatar user={suggestion} size={50} />
       </View>
-      
+
       <Text style={styles.suggestionName} numberOfLines={1}>
         {suggestion.displayName}
       </Text>
@@ -256,7 +359,7 @@ const SuggestionCard: React.FC<{
       <Text style={styles.suggestionReason} numberOfLines={2}>
         {suggestion.suggestionReason}
       </Text>
-      
+
       <TouchableOpacity
         style={styles.suggestionAddButton}
         onPress={onAddFriend}
@@ -287,73 +390,75 @@ export default function FriendsScreen() {
     refreshFriends,
     refreshSuggestions,
   } = useFriends();
-  
-  const [selectedTab, setSelectedTab] = useState<'friends' | 'requests' | 'find'>('friends');
-  const [searchQuery, setSearchQuery] = useState('');
+
+  const [selectedTab, setSelectedTab] = useState<
+    "friends" | "requests" | "find"
+  >("friends");
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Friend[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addUsername, setAddUsername] = useState('');
-  const [addMessage, setAddMessage] = useState('');
+  const [addUsername, setAddUsername] = useState("");
+  const [addMessage, setAddMessage] = useState("");
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
-  
+
   useEffect(() => {
     if (refreshFriends) {
       refreshFriends();
     }
   }, []);
-  
+
   const handleRefresh = async () => {
     setRefreshing(true);
     if (refreshFriends) {
       await refreshFriends();
     }
-    if (selectedTab === 'find' && refreshSuggestions) {
+    if (selectedTab === "find" && refreshSuggestions) {
       await refreshSuggestions();
     }
     setRefreshing(false);
   };
-  
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
-    
+
     setIsSearching(true);
     const results = await searchUsers(searchQuery);
     setSearchResults(results);
     setIsSearching(false);
-    
+
     if (results.length === 0) {
-      Alert.alert('No Results', 'No users found matching your search');
+      Alert.alert("No Results", "No users found matching your search");
     }
   };
-  
+
   const handleSendRequest = async (username: string, message?: string) => {
     await sendFriendRequest(username, message);
-    setAddUsername('');
-    setAddMessage('');
+    setAddUsername("");
+    setAddMessage("");
     setShowAddModal(false);
-    setSearchQuery('');
+    setSearchQuery("");
     setSearchResults([]);
   };
-  
+
   const handleFriendOptions = (friend: Friend) => {
     setSelectedFriend(friend);
     setShowOptionsModal(true);
   };
-  
+
   const handleUnfriend = () => {
     if (!selectedFriend) return;
-    
+
     Alert.alert(
-      'Unfriend',
+      "Unfriend",
       `Remove ${selectedFriend.displayName} from your friends?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Unfriend',
-          style: 'destructive',
+          text: "Unfriend",
+          style: "destructive",
           onPress: () => {
             removeFriend(selectedFriend.id);
             setShowOptionsModal(false);
@@ -363,18 +468,18 @@ export default function FriendsScreen() {
       ]
     );
   };
-  
+
   const handleBlockUser = () => {
     if (!selectedFriend) return;
-    
+
     Alert.alert(
-      'Block User',
+      "Block User",
       `Block ${selectedFriend.displayName}? They won't be able to send you friend requests or see your shared content.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Block',
-          style: 'destructive',
+          text: "Block",
+          style: "destructive",
           onPress: () => {
             blockUser(selectedFriend.id);
             setShowOptionsModal(false);
@@ -384,13 +489,13 @@ export default function FriendsScreen() {
       ]
     );
   };
-  
+
   const handleViewProfile = () => {
     if (!selectedFriend) return;
     setShowOptionsModal(false);
     router.push(`/friend-profile/${selectedFriend.id}` as any);
   };
-  
+
   const handleCancelRequest = async (requestId: string) => {
     if (cancelFriendRequest) {
       await cancelFriendRequest(requestId);
@@ -398,16 +503,16 @@ export default function FriendsScreen() {
       await declineFriendRequest(requestId);
     }
   };
-  
+
   const handleShareUsername = () => {
     if (!profile) return;
-    
+
     Share.share({
       message: `Join me on explorAble! Add me as a friend: @${profile.username}`,
-      title: 'Add me on explorAble',
+      title: "Add me on explorAble",
     });
   };
-  
+
   const renderFriendsTab = () => (
     <FlatList
       data={friends}
@@ -428,23 +533,29 @@ export default function FriendsScreen() {
       }
       ListEmptyComponent={
         <View style={styles.emptyState}>
-          <Ionicons name="people-outline" size={60} color={theme.colors.lightGray} />
+          <Ionicons
+            name="people-outline"
+            size={60}
+            color={theme.colors.lightGray}
+          />
           <Text style={styles.emptyTitle}>No Friends Yet</Text>
           <Text style={styles.emptyText}>
             Add friends to share your adventures!
           </Text>
           <TouchableOpacity
             style={styles.addFirstButton}
-            onPress={() => setSelectedTab('find')}
+            onPress={() => setSelectedTab("find")}
           >
             <Text style={styles.addFirstText}>Find Friends</Text>
           </TouchableOpacity>
         </View>
       }
-      contentContainerStyle={friends.length === 0 ? styles.emptyContainer : styles.listContainer}
+      contentContainerStyle={
+        friends.length === 0 ? styles.emptyContainer : styles.listContainer
+      }
     />
   );
-  
+
   const renderRequestsTab = () => (
     <ScrollView
       style={styles.requestsContainer}
@@ -472,7 +583,7 @@ export default function FriendsScreen() {
           ))}
         </View>
       )}
-      
+
       {pendingRequests.length > 0 && (
         <View style={styles.requestSection}>
           <Text style={styles.requestSectionTitle}>
@@ -488,10 +599,14 @@ export default function FriendsScreen() {
           ))}
         </View>
       )}
-      
+
       {friendRequests.length === 0 && pendingRequests.length === 0 && (
         <View style={styles.emptyState}>
-          <Ionicons name="mail-outline" size={60} color={theme.colors.lightGray} />
+          <Ionicons
+            name="mail-outline"
+            size={60}
+            color={theme.colors.lightGray}
+          />
           <Text style={styles.emptyTitle}>No Friend Requests</Text>
           <Text style={styles.emptyText}>
             When someone sends you a friend request, it will appear here
@@ -500,7 +615,7 @@ export default function FriendsScreen() {
       )}
     </ScrollView>
   );
-  
+
   const renderFindTab = () => (
     <ScrollView
       style={styles.findContainer}
@@ -532,11 +647,15 @@ export default function FriendsScreen() {
             {isSearching ? (
               <ActivityIndicator size="small" color={theme.colors.forest} />
             ) : (
-              <Ionicons name="arrow-forward" size={20} color={theme.colors.forest} />
+              <Ionicons
+                name="arrow-forward"
+                size={20}
+                color={theme.colors.forest}
+              />
             )}
           </TouchableOpacity>
         </View>
-        
+
         {searchResults.length > 0 && (
           <View style={styles.searchResults}>
             {searchResults.map((user) => (
@@ -547,20 +666,28 @@ export default function FriendsScreen() {
               >
                 <View style={styles.searchResultInfo}>
                   <Text style={styles.searchResultAvatar}>
-                    {user.avatar || '👤'}
+                    {user.avatar || "👤"}
                   </Text>
                   <View>
-                    <Text style={styles.searchResultName}>{user.displayName}</Text>
-                    <Text style={styles.searchResultUsername}>@{user.username}</Text>
+                    <Text style={styles.searchResultName}>
+                      {user.displayName}
+                    </Text>
+                    <Text style={styles.searchResultUsername}>
+                      @{user.username}
+                    </Text>
                   </View>
                 </View>
-                <Ionicons name="person-add" size={20} color={theme.colors.forest} />
+                <Ionicons
+                  name="person-add"
+                  size={20}
+                  color={theme.colors.forest}
+                />
               </TouchableOpacity>
             ))}
           </View>
         )}
       </View>
-      
+
       {/* Suggestions Section */}
       {suggestions && suggestions.length > 0 && (
         <View style={styles.suggestionsSection}>
@@ -568,11 +695,15 @@ export default function FriendsScreen() {
             <Text style={styles.sectionTitle}>People You May Know</Text>
             {refreshSuggestions && (
               <TouchableOpacity onPress={refreshSuggestions}>
-                <Ionicons name="refresh" size={20} color={theme.colors.forest} />
+                <Ionicons
+                  name="refresh"
+                  size={20}
+                  color={theme.colors.forest}
+                />
               </TouchableOpacity>
             )}
           </View>
-          
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -588,7 +719,7 @@ export default function FriendsScreen() {
           </ScrollView>
         </View>
       )}
-      
+
       {/* Share Section */}
       <View style={styles.shareSection}>
         <Ionicons name="share-social" size={40} color={theme.colors.forest} />
@@ -596,30 +727,35 @@ export default function FriendsScreen() {
         <Text style={styles.shareText}>
           Share your username with friends to connect on ExplorAble
         </Text>
-        <TouchableOpacity style={styles.shareButton} onPress={handleShareUsername}>
+        <TouchableOpacity
+          style={styles.shareButton}
+          onPress={handleShareUsername}
+        >
           <Text style={styles.shareButtonText}>Share @{profile?.username}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
   );
-  
+
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          title: 'Friends',
+          title: "Friends",
           headerStyle: {
             backgroundColor: theme.colors.forest,
           },
-          headerTintColor: '#fff',
+          headerTintColor: "#fff",
           headerTitleStyle: {
-            fontWeight: 'bold',
+            fontWeight: "bold",
           },
           headerRight: () => (
             <View style={styles.headerRight}>
               {friendRequests.length > 0 && (
                 <View style={styles.requestBadge}>
-                  <Text style={styles.requestBadgeText}>{friendRequests.length}</Text>
+                  <Text style={styles.requestBadgeText}>
+                    {friendRequests.length}
+                  </Text>
                 </View>
               )}
               <TouchableOpacity
@@ -632,23 +768,33 @@ export default function FriendsScreen() {
           ),
         }}
       />
-      
+
       {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
-          style={[styles.tab, selectedTab === 'friends' && styles.tabActive]}
-          onPress={() => setSelectedTab('friends')}
+          style={[styles.tab, selectedTab === "friends" && styles.tabActive]}
+          onPress={() => setSelectedTab("friends")}
         >
-          <Text style={[styles.tabText, selectedTab === 'friends' && styles.tabTextActive]}>
+          <Text
+            style={[
+              styles.tabText,
+              selectedTab === "friends" && styles.tabTextActive,
+            ]}
+          >
             Friends ({friends.length})
           </Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity
-          style={[styles.tab, selectedTab === 'requests' && styles.tabActive]}
-          onPress={() => setSelectedTab('requests')}
+          style={[styles.tab, selectedTab === "requests" && styles.tabActive]}
+          onPress={() => setSelectedTab("requests")}
         >
-          <Text style={[styles.tabText, selectedTab === 'requests' && styles.tabTextActive]}>
+          <Text
+            style={[
+              styles.tabText,
+              selectedTab === "requests" && styles.tabTextActive,
+            ]}
+          >
             Requests
           </Text>
           {friendRequests.length > 0 && (
@@ -657,17 +803,22 @@ export default function FriendsScreen() {
             </View>
           )}
         </TouchableOpacity>
-        
+
         <TouchableOpacity
-          style={[styles.tab, selectedTab === 'find' && styles.tabActive]}
-          onPress={() => setSelectedTab('find')}
+          style={[styles.tab, selectedTab === "find" && styles.tabActive]}
+          onPress={() => setSelectedTab("find")}
         >
-          <Text style={[styles.tabText, selectedTab === 'find' && styles.tabTextActive]}>
+          <Text
+            style={[
+              styles.tabText,
+              selectedTab === "find" && styles.tabTextActive,
+            ]}
+          >
             Find
           </Text>
         </TouchableOpacity>
       </View>
-      
+
       {/* Content */}
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -675,12 +826,12 @@ export default function FriendsScreen() {
         </View>
       ) : (
         <>
-          {selectedTab === 'friends' && renderFriendsTab()}
-          {selectedTab === 'requests' && renderRequestsTab()}
-          {selectedTab === 'find' && renderFindTab()}
+          {selectedTab === "friends" && renderFriendsTab()}
+          {selectedTab === "requests" && renderRequestsTab()}
+          {selectedTab === "find" && renderFindTab()}
         </>
       )}
-      
+
       {/* Add Friend Modal */}
       <Modal
         visible={showAddModal}
@@ -696,7 +847,7 @@ export default function FriendsScreen() {
                 <Ionicons name="close" size={24} color={theme.colors.gray} />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.modalLabel}>Username</Text>
             <TextInput
               style={styles.modalInput}
@@ -707,7 +858,7 @@ export default function FriendsScreen() {
               autoCorrect={false}
               placeholderTextColor={theme.colors.lightGray}
             />
-            
+
             <Text style={styles.modalLabel}>Message (optional)</Text>
             <TextInput
               style={[styles.modalInput, styles.modalTextArea]}
@@ -718,7 +869,7 @@ export default function FriendsScreen() {
               numberOfLines={3}
               placeholderTextColor={theme.colors.lightGray}
             />
-            
+
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => handleSendRequest(addUsername, addMessage)}
@@ -729,7 +880,7 @@ export default function FriendsScreen() {
           </View>
         </View>
       </Modal>
-      
+
       {/* Friend Options Modal */}
       <FriendOptionsModal
         visible={showOptionsModal}
@@ -752,42 +903,42 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginRight: 10,
   },
   headerButton: {
     marginLeft: 15,
   },
   requestBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: -5,
     right: 10,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
     width: 20,
     height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 1,
   },
   requestBadgeText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   tabs: {
-    flexDirection: 'row',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   tab: {
     flex: 1,
     paddingVertical: 15,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
   },
   tabActive: {
     borderBottomWidth: 2,
@@ -796,7 +947,7 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 15,
     color: theme.colors.gray,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   tabTextActive: {
     color: theme.colors.forest,
@@ -809,29 +960,29 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   tabBadgeText: {
-    color: 'white',
+    color: "white",
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   listContainer: {
     padding: 10,
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 40,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginTop: 15,
   },
@@ -839,7 +990,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   addFirstButton: {
     backgroundColor: theme.colors.forest,
@@ -849,18 +1000,18 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   addFirstText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   friendCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
     padding: 15,
     borderRadius: 12,
     marginBottom: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -871,31 +1022,31 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
-    position: 'relative',
+    position: "relative",
   },
   friendAvatarText: {
     fontSize: 24,
   },
   onlineIndicator: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     right: 0,
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#4CAF50',
+    backgroundColor: "#4CAF50",
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: "white",
   },
   friendInfo: {
     flex: 1,
   },
   friendName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   friendUsername: {
@@ -919,23 +1070,23 @@ const styles = StyleSheet.create({
   },
   requestSectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 15,
   },
   requestCard: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     marginBottom: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   requestHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 10,
   },
   requestAvatar: {
@@ -943,8 +1094,8 @@ const styles = StyleSheet.create({
     height: 45,
     borderRadius: 22.5,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   requestAvatarText: {
@@ -955,7 +1106,7 @@ const styles = StyleSheet.create({
   },
   requestName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   requestUsername: {
@@ -971,19 +1122,19 @@ const styles = StyleSheet.create({
   requestMessage: {
     fontSize: 14,
     color: theme.colors.gray,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     marginBottom: 12,
     paddingLeft: 57,
   },
   requestActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
   },
   actionButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 10,
     borderRadius: 8,
   },
@@ -991,9 +1142,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.forest,
   },
   acceptText: {
-    color: 'white',
+    color: "white",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 5,
   },
   declineButton: {
@@ -1004,7 +1155,7 @@ const styles = StyleSheet.create({
   declineText: {
     color: theme.colors.gray,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 5,
   },
   cancelButton: {
@@ -1015,26 +1166,26 @@ const styles = StyleSheet.create({
   cancelText: {
     color: theme.colors.gray,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   findContainer: {
     flex: 1,
   },
   searchSection: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     margin: 15,
     padding: 15,
     borderRadius: 12,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 12,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -1053,14 +1204,14 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.borderGray,
   },
   searchResult: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 10,
   },
   searchResultInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   searchResultAvatar: {
     fontSize: 24,
@@ -1068,7 +1219,7 @@ const styles = StyleSheet.create({
   },
   searchResultName: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
     color: theme.colors.navy,
   },
   searchResultUsername: {
@@ -1081,22 +1232,22 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   suggestionsScroll: {
     marginHorizontal: -5,
   },
   suggestionCard: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     marginHorizontal: 5,
     width: 140,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -1107,8 +1258,8 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 10,
   },
   suggestionAvatarText: {
@@ -1116,9 +1267,9 @@ const styles = StyleSheet.create({
   },
   suggestionName: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
-    textAlign: 'center',
+    textAlign: "center",
   },
   suggestionUsername: {
     fontSize: 12,
@@ -1129,34 +1280,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.colors.forest,
     marginTop: 5,
-    textAlign: 'center',
+    textAlign: "center",
   },
   suggestionAddButton: {
     backgroundColor: theme.colors.forest,
     width: 32,
     height: 32,
     borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 10,
   },
   shareSection: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     margin: 15,
     padding: 20,
     borderRadius: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   shareTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginTop: 10,
   },
   shareText: {
     fontSize: 14,
     color: theme.colors.gray,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 8,
     marginBottom: 15,
   },
@@ -1167,35 +1318,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   shareButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
     padding: 20,
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 20,
     padding: 20,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   modalLabel: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: theme.colors.gray,
     marginBottom: 8,
     marginTop: 10,
@@ -1211,45 +1362,45 @@ const styles = StyleSheet.create({
   },
   modalTextArea: {
     height: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   modalButton: {
     backgroundColor: theme.colors.forest,
     paddingVertical: 14,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 20,
   },
   modalButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 
 const optionStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   container: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 30,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   headerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   avatar: {
     fontSize: 32,
@@ -1257,7 +1408,7 @@ const optionStyles = StyleSheet.create({
   },
   name: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   username: {
@@ -1269,8 +1420,8 @@ const optionStyles = StyleSheet.create({
     padding: 20,
   },
   option: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
@@ -1287,7 +1438,7 @@ const optionStyles = StyleSheet.create({
   warning: {
     fontSize: 12,
     color: theme.colors.lightGray,
-    textAlign: 'center',
+    textAlign: "center",
     marginHorizontal: 20,
     marginTop: 10,
   },
