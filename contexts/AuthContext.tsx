@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - Complete fixed version
+// contexts/AuthContext.tsx - Clean, working version
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Session, User } from "@supabase/supabase-js";
 import React, {
@@ -59,11 +59,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const lastRefresh = useRef<Date>(new Date());
+  const hasSyncedThisSession = useRef(false);
 
+  // Initialize auth state
   useEffect(() => {
     console.log("🔍 AuthContext: Starting initialization...");
     checkAuthStatus();
+    
+    // Set up auth state listener
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('🔍 Auth state changed:', event);
+        
+        if (event === 'SIGNED_IN' && session) {
+          setSession(session);
+          setUser(session.user);
+          await loadProfile(session.user.id);
+          
+          // Trigger sync after successful sign in
+          if (!hasSyncedThisSession.current) {
+            hasSyncedThisSession.current = true;
+            setTimeout(() => {
+              syncLocalData();
+            }, 1000);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setProfile(null);
+          setSession(null);
+          hasSyncedThisSession.current = false;
+        } else if (event === 'TOKEN_REFRESHED' && session) {
+          setSession(session);
+          setUser(session.user);
+        }
+      }
+    );
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
+
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('🔐 AuthContext Provider state:', {
+      user: user?.id || 'null',
+      session: session?.user?.id || 'null',
+      profile: profile?.id || 'null',
+      loading,
+      isOfflineMode,
+    });
+  }, [user, session, profile, loading, isOfflineMode]);
 
   const checkAuthStatus = async () => {
     console.log("🔍 AuthContext: Checking auth status...");
@@ -105,123 +151,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session) {
         setSession(session);
         setUser(session.user);
-        console.log(
-          "🔍 AuthContext: Loading profile for user:",
-          session.user.id
-        );
-
-        loadProfile(session.user.id).catch((err) => {
-          console.error(
-            "🔍 AuthContext: Profile load error (non-blocking):",
-            err
-          );
-        });
-
-        updateLastActive(session.user.id).catch((err) => {
-          console.error(
-            "🔍 AuthContext: Last active update error (non-blocking):",
-            err
-          );
-        });
-
-        console.log("🔍 AuthContext: Skipping auto-sync to prevent duplicates");
+        console.log("🔍 AuthContext: Loading profile for user:", session.user.id);
+        
+        await loadProfile(session.user.id);
+        await updateLastActive(session.user.id);
       }
 
       clearTimeout(timeoutId);
-      console.log(
-        "🔍 AuthContext: Auth check complete, setting loading to false"
-      );
+      console.log("🔍 AuthContext: Auth check complete, setting loading to false");
       setLoading(false);
     } catch (error) {
       console.error("🔍 AuthContext: Critical auth check error:", error);
       setLoading(false);
-    }
-  };
-
-  // In AuthContext.tsx, replace refreshSession with this version that has a timeout:
-  const refreshSession = async (): Promise<boolean> => {
-    try {
-      const now = new Date();
-      const timeSince = now.getTime() - lastRefresh.current.getTime();
-
-      console.log("🔄 Session refresh check:", {
-        timeSinceLastRefresh: `${(timeSince / 1000).toFixed(1)}s`,
-        willRefresh: timeSince >= 5000,
-      });
-
-      // In AuthContext refreshSession:
-      if (timeSince < 300000) {
-        // 5 minutes instead of 5 seconds
-        return true;
-      }
-
-      console.log("🔄 Starting refresh...");
-
-      // Create a timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Refresh timeout")), 5000)
-      );
-
-      // Create the refresh promise
-      const refreshPromise = supabase.auth.refreshSession();
-
-      // Race them - if refresh takes more than 5 seconds, timeout
-      const { data, error } = await Promise.race([
-        refreshPromise,
-        timeoutPromise,
-      ]).catch((err) => {
-        if (err.message === "Refresh timeout") {
-          console.error("❌ Refresh timed out after 5 seconds");
-          return { data: null, error: err };
-        }
-        throw err;
-      });
-
-      if (error) {
-        console.error("❌ Refresh failed:", error);
-        return false;
-      }
-
-      if (data?.session) {
-        console.log("✅ Got new session, updating client...");
-
-        // Update the Supabase client with new tokens
-        const { error: setError } = await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
-
-        if (setError) {
-          console.error("❌ Failed to set session:", setError);
-          return false;
-        }
-
-        console.log("✅ Session updated in client");
-        setSession(data.session);
-        setUser(data.session.user);
-        lastRefresh.current = new Date();
-
-        // Quick test to verify it works
-        const { error: testError } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", data.session.user.id)
-          .single();
-
-        if (testError) {
-          console.error("❌ DB test failed:", testError);
-          return false;
-        }
-
-        console.log("✅ DB connection verified");
-        return true;
-      }
-
-      console.error("❌ No session returned");
-      return false;
-    } catch (error) {
-      console.error("💥 Refresh error:", error);
-      return false;
     }
   };
 
@@ -265,6 +206,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error("Error refreshing profile:", error);
+    }
+  };
+
+  const refreshSession = async (): Promise<boolean> => {
+    try {
+      const now = new Date();
+      const timeSince = now.getTime() - lastRefresh.current.getTime();
+
+      console.log("🔄 Session refresh check:", {
+        timeSinceLastRefresh: `${(timeSince / 1000).toFixed(1)}s`,
+        willRefresh: timeSince >= 300000, // 5 minutes
+      });
+
+      if (timeSince < 300000) {
+        return true;
+      }
+
+      console.log("🔄 Starting refresh...");
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Refresh timeout")), 5000)
+      );
+
+      const refreshPromise = supabase.auth.refreshSession();
+
+      const { data, error } = await Promise.race([
+        refreshPromise,
+        timeoutPromise,
+      ]).catch((err) => {
+        if (err.message === "Refresh timeout") {
+          console.error("❌ Refresh timed out after 5 seconds");
+          return { data: null, error: err };
+        }
+        throw err;
+      });
+
+      if (error) {
+        console.error("❌ Refresh failed:", error);
+        return false;
+      }
+
+      if (data?.session) {
+        console.log("✅ Got new session, updating state...");
+        setSession(data.session);
+        setUser(data.session.user);
+        lastRefresh.current = new Date();
+        return true;
+      }
+
+      console.error("❌ No session returned");
+      return false;
+    } catch (error) {
+      console.error("💥 Refresh error:", error);
+      return false;
     }
   };
 
@@ -325,59 +320,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log("User created successfully:", data.user.id);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      // Create profile if it doesn't exist
+      const { error: profileError } = await supabase.from("profiles").insert({
+        id: data.user.id,
+        username: username.toLowerCase(),
+        display_name: displayName,
+        avatar: "🏔️",
+        privacy_settings: {
+          share_activities: true,
+          share_locations: true,
+          allow_friend_requests: true,
+        },
+      });
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", data.user.id)
-        .maybeSingle();
-
-      if (!profile) {
-        console.log("Profile not auto-created, creating manually...");
-        const { error: insertError } = await supabase.from("profiles").insert({
-          id: data.user.id,
-          username: username.toLowerCase(),
-          display_name: displayName,
-          avatar: "🏔️",
-          privacy_settings: {
-            share_activities: true,
-            share_locations: true,
-            allow_friend_requests: true,
-          },
-        });
-
-        if (insertError && !insertError.message.includes("duplicate")) {
-          console.error("Profile creation error:", insertError);
-        }
+      if (profileError && !profileError.message.includes("duplicate")) {
+        console.error("Profile creation error:", profileError);
       }
 
       await AsyncStorage.setItem("isAuthenticated", "true");
       await AsyncStorage.setItem("userId", data.user.id);
 
       Alert.alert(
-        "Welcome to explorAble!",
+        "Welcome to ExplorAble!",
         "Your account has been created successfully!"
       );
-      await syncLocalData();
     } catch (error: any) {
       console.error("Signup error details:", error);
-
-      let errorMessage = error.message;
-      if (error.message.includes("duplicate key")) {
-        if (error.message.includes("profiles_pkey")) {
-          errorMessage = "An account already exists. Please sign in instead.";
-        } else if (error.message.includes("username")) {
-          errorMessage =
-            "This username is already taken. Please choose another.";
-        }
-      } else if (error.message.includes("Password should be")) {
-        errorMessage = "Password must be at least 6 characters long.";
-      } else if (error.message.includes("Invalid email")) {
-        errorMessage = "Please enter a valid email address.";
-      }
-
-      Alert.alert("Sign Up Error", errorMessage);
+      Alert.alert("Sign Up Error", error.message);
       throw error;
     } finally {
       setLoading(false);
@@ -396,12 +366,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
       if (!data.user) throw new Error("Login failed");
 
+      // The onAuthStateChange listener will handle setting user/session
+      // and triggering sync
+
       await AsyncStorage.setItem("isAuthenticated", "true");
       await AsyncStorage.setItem("userId", data.user.id);
       await AsyncStorage.removeItem("offlineMode");
 
       setIsOfflineMode(false);
-      console.log("Skipping auto-sync on sign in to prevent duplicates");
+      console.log("Sign in successful - auth state listener will handle sync");
     } catch (error: any) {
       Alert.alert("Sign In Error", error.message);
       throw error;
@@ -414,11 +387,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
 
+      // Clear state first
       setUser(null);
       setProfile(null);
       setSession(null);
       setIsOfflineMode(false);
+      hasSyncedThisSession.current = false;
 
+      // Sign out from Supabase
       try {
         const { error } = await supabase.auth.signOut();
         if (error && !error.message.includes("session")) {
@@ -428,6 +404,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Supabase signout failed:", supabaseError);
       }
 
+      // Clear storage
       await AsyncStorage.multiRemove([
         "isAuthenticated",
         "userId",
@@ -439,6 +416,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("Sign out completed");
     } catch (error) {
       console.error("Sign out error:", error);
+      // Force clear state even on error
       setUser(null);
       setProfile(null);
       setSession(null);
@@ -489,6 +467,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           result.synced.achievements;
         if (totalSynced > 0) {
           console.log(`Successfully synced ${totalSynced} items`);
+          Alert.alert(
+            "Data Synced!",
+            `Synced ${result.synced.activities} activities, ${result.synced.locations} locations`
+          );
         }
       } else {
         console.error("Sync failed:", result.errors);
@@ -531,21 +513,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshSession,
   };
 
-  console.log("🔍 AuthContext: Current state:", {
-    hasUser: !!user,
-    hasProfile: !!profile,
-    hasSession: !!session,
-    loading,
-    isOfflineMode,
-  });
-
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error('useAuth must be used within an AuthProvider');
   }
+  
+  console.log('📦 useAuth returning context with user:', context.user?.id || 'null');
+  
   return context;
-}
+};

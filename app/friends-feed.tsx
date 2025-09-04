@@ -1,8 +1,8 @@
-// friends-feed.tsx - Updated with wishlist hearts for locations
+// friends-feed.tsx - Updated with Map View
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,13 +16,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import { TouchableImage } from "../components/TouchableImage";
 import { theme } from "../constants/theme";
 import { useFriends } from "../contexts/FriendsContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
 
-// Reusable Avatar Component (same as before)
+// Keep your existing UserAvatar component exactly as is
 const UserAvatar = ({
   user,
   size = 40,
@@ -92,8 +93,84 @@ const UserAvatar = ({
     </View>
   );
 };
+const generateMiniMapHTML = (route: any[], name: string) => {
+  const coords = route.map((p) => `[${p.latitude}, ${p.longitude}]`).join(",");
+  const center = route[Math.floor(route.length / 2)];
 
-// Feed Item Card Component - Fixed version
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 150px; width: 100%; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map', { 
+          zoomControl: false,
+          dragging: false,
+          attributionControl: false
+        }).setView([${center.latitude}, ${center.longitude}], 13);
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        var route = L.polyline([${coords}], {
+          color: '#2d5a3d',
+          weight: 3
+        }).addTo(map);
+        
+        map.fitBounds(route.getBounds().pad(0.1));
+      </script>
+    </body>
+    </html>
+  `;
+};
+
+const generateLocationMapHTML = (location: any, name: string) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 150px; width: 100%; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map', { 
+          zoomControl: false,
+          dragging: false,
+          attributionControl: false
+        }).setView([${location.latitude}, ${location.longitude}], 14);
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        L.circleMarker([${location.latitude}, ${location.longitude}], {
+          radius: 10,
+          fillColor: '#d85430',
+          color: '#fff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).addTo(map);
+      </script>
+    </body>
+    </html>
+  `;
+};
+
+// Keep your existing FeedItemCard but REMOVE the view toggle from it
 const FeedItemCard = ({
   item,
   onLike,
@@ -103,6 +180,7 @@ const FeedItemCard = ({
   isInWishlist,
   formatDistance,
   formatSpeed,
+  router
 }: any) => {
   const { currentUserId } = useFriends();
   const [showComments, setShowComments] = useState(false);
@@ -266,7 +344,54 @@ const FeedItemCard = ({
           </View>
         )}
         {item.type === "activity" && renderActivityContent(item.data)}
+
+        {/* ADD THIS - Mini Map for Activities */}
+        {item.type === "activity" &&
+          item.data.route &&
+          item.data.route.length > 0 && (
+            <View style={styles.miniMapContainer}>
+              <WebView
+                source={{
+                  html: generateMiniMapHTML(item.data.route, item.data.name),
+                }}
+                style={styles.miniMap}
+                scrollEnabled={false}
+                pointerEvents="none"
+              />
+              <TouchableOpacity
+                style={styles.mapOverlay}
+                onPress={() => router.push(`/activity/${item.id}`)}
+              >
+                <Ionicons name="expand" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
+
         {item.type === "location" && renderLocationContent(item.data)}
+
+        {/* ADD THIS - Mini Map for Locations */}
+        {item.type === "location" && item.data.location && (
+          <View style={styles.miniMapContainer}>
+            <WebView
+              source={{
+                html: generateLocationMapHTML(
+                  item.data.location,
+                  item.data.name
+                ),
+              }}
+              style={styles.miniMap}
+              scrollEnabled={false}
+              pointerEvents="none"
+            />
+            <TouchableOpacity
+              style={styles.mapOverlay}
+              onPress={() => router.push(`/location/${item.id}`)}
+            >
+              <Ionicons name="expand" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {item.type === "achievement" && renderAchievementContent(item.data)}
       </View>
 
@@ -384,6 +509,165 @@ const FeedItemCard = ({
   );
 };
 
+// Map HTML Generator Function
+const generateFriendsMapHTML = (feedData: any[], settings: any) => {
+  const allMarkers: any[] = [];
+  const allRoutes: any[] = [];
+
+  // Process feed items for map display
+  feedData.forEach((item) => {
+    if (item.type === "location" && item.data.location) {
+      allMarkers.push({
+        lat: item.data.location.latitude,
+        lng: item.data.location.longitude,
+        type: "location",
+        name: item.data.name,
+        user:
+          item.data.sharedBy?.displayName ||
+          item.data.sharedBy?.display_name ||
+          "Friend",
+        category: item.data.category,
+      });
+    } else if (
+      item.type === "activity" &&
+      item.data.route &&
+      item.data.route.length > 0
+    ) {
+      allRoutes.push({
+        route: item.data.route,
+        user:
+          item.data.sharedBy?.displayName ||
+          item.data.sharedBy?.display_name ||
+          "Friend",
+        activityType: item.data.type,
+        name: item.data.name || "Activity",
+      });
+
+      // Add start marker for activity
+      allMarkers.push({
+        lat: item.data.route[0].latitude,
+        lng: item.data.route[0].longitude,
+        type: "activity-start",
+        name: item.data.name || "Activity",
+        user:
+          item.data.sharedBy?.displayName ||
+          item.data.sharedBy?.display_name ||
+          "Friend",
+        activityType: item.data.type,
+      });
+    }
+  });
+
+  // Default center (Seattle) - you could calculate center from markers
+  const centerLat =
+    allMarkers.length > 0
+      ? allMarkers.reduce((sum, m) => sum + m.lat, 0) / allMarkers.length
+      : 47.6062;
+  const centerLng =
+    allMarkers.length > 0
+      ? allMarkers.reduce((sum, m) => sum + m.lng, 0) / allMarkers.length
+      : -122.3321;
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; }
+        .custom-popup { text-align: center; }
+        .custom-popup b { color: #2d5a3d; }
+        .custom-popup .user { color: #666; font-size: 12px; margin-top: 4px; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map').setView([${centerLat}, ${centerLng}], 10);
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap',
+          maxZoom: 18
+        }).addTo(map);
+        
+        var markers = [];
+        
+        // Add location markers
+        ${allMarkers
+          .filter((m) => m.type === "location")
+          .map(
+            (marker) => `
+          var locationMarker = L.circleMarker([${marker.lat}, ${marker.lng}], {
+            radius: 10,
+            fillColor: '#d85430',
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.8
+          })
+          .addTo(map)
+          .bindPopup('<div class="custom-popup"><b>📍 ${marker.name}</b><div class="user">by ${marker.user}</div></div>');
+          markers.push(locationMarker);
+        `
+          )
+          .join("")}
+        
+        // Add activity start markers
+        ${allMarkers
+          .filter((m) => m.type === "activity-start")
+          .map(
+            (marker) => `
+          var activityMarker = L.circleMarker([${marker.lat}, ${marker.lng}], {
+            radius: 8,
+            fillColor: '#2d5a3d',
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.8
+          })
+          .addTo(map)
+          .bindPopup('<div class="custom-popup"><b>🏃 ${marker.name}</b><div class="user">by ${marker.user}</div></div>');
+          markers.push(activityMarker);
+        `
+          )
+          .join("")}
+        
+        // Add activity routes
+        ${allRoutes
+          .map(
+            (activity, index) => `
+          var route${index} = L.polyline([
+            ${activity.route
+              .map((p: any) => `[${p.latitude}, ${p.longitude}]`)
+              .join(",")}
+          ], {
+            color: '#2d5a3d',
+            weight: 3,
+            opacity: 0.6
+          }).addTo(map)
+          .bindPopup('<div class="custom-popup"><b>${
+            activity.name
+          }</b><div class="user">by ${activity.user}</div></div>');
+          markers.push(route${index});
+        `
+          )
+          .join("")}
+        
+        // Fit map to show all markers
+        if (markers.length > 0) {
+          var group = new L.featureGroup(markers);
+          map.fitBounds(group.getBounds().pad(0.1));
+        }
+      </script>
+    </body>
+    </html>
+  `;
+};
+
+// Main Component
 export default function FriendsFeedScreen() {
   const router = useRouter();
   const {
@@ -396,13 +680,15 @@ export default function FriendsFeedScreen() {
     addComment,
     loading,
   } = useFriends();
-  const { formatDistance, formatSpeed } = useSettings();
+  const { formatDistance, formatSpeed, settings } = useSettings();
   const { wishlistItems, addWishlistItem, removeWishlistItem } = useWishlist();
 
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<
     "all" | "activities" | "locations" | "achievements"
   >("all");
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const webViewRef = useRef<WebView>(null);
 
   useEffect(() => {
     refreshFeed();
@@ -422,7 +708,6 @@ export default function FriendsFeedScreen() {
     }
   };
 
-  // In FriendsFeedScreen component:
   const handleComment = (
     itemId: string,
     text: string,
@@ -431,6 +716,7 @@ export default function FriendsFeedScreen() {
   ) => {
     addComment(itemId, text, replyToId, replyToUserName);
   };
+
   const handleShare = (item: any) => {
     Alert.alert("Share", "Sharing functionality coming soon!");
   };
@@ -534,161 +820,307 @@ export default function FriendsFeedScreen() {
         }}
       />
 
-      {friends.length > 0 && (
-        <View style={styles.onlineBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {friends
-              .filter((f) => f.status === "accepted")
-              .map((friend) => {
-                const isOnline =
-                  friend.lastActive &&
-                  new Date().getTime() - new Date(friend.lastActive).getTime() <
-                    300000;
+      {/* View Mode Toggle - This is at the TOP level of the screen */}
+      <View style={styles.viewToggle}>
+        <TouchableOpacity
+          style={[
+            styles.toggleButton,
+            viewMode === "list" && styles.toggleActive,
+          ]}
+          onPress={() => setViewMode("list")}
+        >
+          <Ionicons
+            name="list"
+            size={20}
+            color={viewMode === "list" ? "white" : theme.colors.gray}
+          />
+          <Text
+            style={[
+              styles.toggleText,
+              viewMode === "list" && styles.toggleTextActive,
+            ]}
+          >
+            Feed
+          </Text>
+        </TouchableOpacity>
 
-                return (
-                  <TouchableOpacity
-                    key={friend.id}
-                    style={styles.onlineFriend}
-                    onPress={() => router.push(`/friend-profile/${friend.id}`)}
-                  >
-                    <View style={styles.onlineAvatar}>
-                      <UserAvatar user={friend} size={46} />
-                      {isOnline && <View style={styles.onlineIndicator} />}
-                    </View>
-                    <Text style={styles.onlineName}>
-                      {
-                        (
-                          friend.displayName ||
-                          friend.displayName ||
-                          friend.username
-                        ).split(" ")[0]
-                      }
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-          </ScrollView>
-        </View>
-      )}
-
-      <View style={styles.filterTabs}>
-        <TouchableOpacity
-          style={[styles.filterTab, filter === "all" && styles.filterTabActive]}
-          onPress={() => setFilter("all")}
-        >
-          <Text
-            style={[
-              styles.filterTabText,
-              filter === "all" && styles.filterTabTextActive,
-            ]}
-          >
-            All
-          </Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={[
-            styles.filterTab,
-            filter === "activities" && styles.filterTabActive,
+            styles.toggleButton,
+            viewMode === "map" && styles.toggleActive,
           ]}
-          onPress={() => setFilter("activities")}
+          onPress={() => setViewMode("map")}
         >
+          <Ionicons
+            name="map"
+            size={20}
+            color={viewMode === "map" ? "white" : theme.colors.gray}
+          />
           <Text
             style={[
-              styles.filterTabText,
-              filter === "activities" && styles.filterTabTextActive,
+              styles.toggleText,
+              viewMode === "map" && styles.toggleTextActive,
             ]}
           >
-            Activities
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            filter === "locations" && styles.filterTabActive,
-          ]}
-          onPress={() => setFilter("locations")}
-        >
-          <Text
-            style={[
-              styles.filterTabText,
-              filter === "locations" && styles.filterTabTextActive,
-            ]}
-          >
-            Places
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            filter === "achievements" && styles.filterTabActive,
-          ]}
-          onPress={() => setFilter("achievements")}
-        >
-          <Text
-            style={[
-              styles.filterTabText,
-              filter === "achievements" && styles.filterTabTextActive,
-            ]}
-          >
-            Achievements
+            Map
           </Text>
         </TouchableOpacity>
       </View>
 
-      {loading && !refreshing ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.forest} />
-        </View>
-      ) : (
-        <FlatList
-          data={filteredFeed}
-          renderItem={({ item }) => (
-            <FeedItemCard
-              item={item}
-              onLike={handleLike}
-              onComment={handleComment}
-              onShare={handleShare}
-              onAddToWishlist={handleAddToWishlist}
-              isInWishlist={
-                item.type === "location" && isLocationInWishlist(item.data)
+      {/* Conditionally show either list or map view */}
+      {viewMode === "list" ? (
+        <>
+          {/* Online Friends Bar */}
+          {friends.length > 0 && (
+            <View style={styles.onlineBar}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {friends
+                  .filter((f) => f.status === "accepted")
+                  .map((friend) => {
+                    const isOnline =
+                      friend.lastActive &&
+                      new Date().getTime() -
+                        new Date(friend.lastActive).getTime() <
+                        300000;
+
+                    return (
+                      <TouchableOpacity
+                        key={friend.id}
+                        style={styles.onlineFriend}
+                        onPress={() =>
+                          router.push(`/friend-profile/${friend.id}`)
+                        }
+                      >
+                        <View style={styles.onlineAvatar}>
+                          <UserAvatar user={friend} size={46} />
+                          {isOnline && <View style={styles.onlineIndicator} />}
+                        </View>
+                        <Text style={styles.onlineName}>
+                          {
+                            (friend.displayName || friend.username).split(
+                              " "
+                            )[0]
+                          }
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Filter Tabs */}
+          <View style={styles.filterTabs}>
+            <TouchableOpacity
+              style={[
+                styles.filterTab,
+                filter === "all" && styles.filterTabActive,
+              ]}
+              onPress={() => setFilter("all")}
+            >
+              <Text
+                style={[
+                  styles.filterTabText,
+                  filter === "all" && styles.filterTabTextActive,
+                ]}
+              >
+                All
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterTab,
+                filter === "activities" && styles.filterTabActive,
+              ]}
+              onPress={() => setFilter("activities")}
+            >
+              <Text
+                style={[
+                  styles.filterTabText,
+                  filter === "activities" && styles.filterTabTextActive,
+                ]}
+              >
+                Activities
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterTab,
+                filter === "locations" && styles.filterTabActive,
+              ]}
+              onPress={() => setFilter("locations")}
+            >
+              <Text
+                style={[
+                  styles.filterTabText,
+                  filter === "locations" && styles.filterTabTextActive,
+                ]}
+              >
+                Places
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterTab,
+                filter === "achievements" && styles.filterTabActive,
+              ]}
+              onPress={() => setFilter("achievements")}
+            >
+              <Text
+                style={[
+                  styles.filterTabText,
+                  filter === "achievements" && styles.filterTabTextActive,
+                ]}
+              >
+                Achievements
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* List View */}
+          {loading && !refreshing ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.colors.forest} />
+            </View>
+          ) : (
+            <FlatList
+              data={filteredFeed}
+              renderItem={({ item }) => (
+                <FeedItemCard
+                  item={item}
+                  onLike={handleLike}
+                  onComment={handleComment}
+                  onShare={handleShare}
+                  onAddToWishlist={handleAddToWishlist}
+                  isInWishlist={
+                    item.type === "location" && isLocationInWishlist(item.data)
+                  }
+                  formatDistance={formatDistance}
+                  formatSpeed={formatSpeed}
+                  router={router}
+                />
+              )}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={
+                filteredFeed.length === 0
+                  ? styles.emptyContainer
+                  : styles.feedContainer
               }
-              formatDistance={formatDistance}
-              formatSpeed={formatSpeed}
+              ListEmptyComponent={renderEmptyState}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={theme.colors.forest}
+                  colors={[theme.colors.forest]}
+                />
+              }
             />
           )}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={
-            filteredFeed.length === 0
-              ? styles.emptyContainer
-              : styles.feedContainer
-          }
-          ListEmptyComponent={renderEmptyState}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={theme.colors.forest}
-              colors={[theme.colors.forest]}
-            />
-          }
-        />
+        </>
+      ) : (
+        // Map View
+        <View style={styles.mapContainer}>
+          <WebView
+            ref={webViewRef}
+            source={{ html: generateFriendsMapHTML(filteredFeed, settings) }}
+            style={styles.mapView}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            scalesPageToFit={false}
+          />
+          <View style={styles.mapLegend}>
+            <View style={styles.legendItem}>
+              <View
+                style={[styles.legendDot, { backgroundColor: "#d85430" }]}
+              />
+              <Text style={styles.legendText}>Places</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View
+                style={[styles.legendDot, { backgroundColor: "#2d5a3d" }]}
+              />
+              <Text style={styles.legendText}>Activities</Text>
+            </View>
+          </View>
+        </View>
       )}
     </View>
   );
 }
 
+// Add these new styles to your existing styles
 const styles = StyleSheet.create({
-  // ... all the same styles as before, plus:
-  locationHeader: {
+  // Your existing styles plus these new ones:
+  viewToggle: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 5,
+    backgroundColor: "white",
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
   },
-  wishlistButton: {
-    padding: 4,
+  toggleButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 8,
+    marginHorizontal: 5,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 20,
   },
-  // ... rest of styles remain the same
+  toggleActive: {
+    backgroundColor: theme.colors.forest,
+  },
+  toggleText: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    fontWeight: "500",
+    marginLeft: 6,
+  },
+  toggleTextActive: {
+    color: "white",
+  },
+  mapContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  mapView: {
+    flex: 1,
+  },
+  mapLegend: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 6,
+  },
+  legendText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    fontWeight: "500",
+  },
+
+  // All your other existing styles
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
@@ -865,11 +1297,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   locationContent: {},
+  locationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 5,
+  },
   locationName: {
     fontSize: 18,
     fontWeight: "600",
     color: theme.colors.navy,
     flex: 1,
+  },
+  wishlistButton: {
+    padding: 4,
   },
   locationDescription: {
     fontSize: 14,
@@ -1035,12 +1476,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     marginBottom: 2,
   },
-  commentActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 4,
-  },
   replyButton: {
     paddingVertical: 2,
     paddingHorizontal: 8,
@@ -1074,5 +1509,27 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 4,
+  },
+  // Add these at the end of your styles object:
+  miniMapContainer: {
+    height: 150,
+    borderRadius: 8,
+    overflow: "hidden",
+    marginTop: 10,
+    position: "relative",
+  },
+  miniMap: {
+    flex: 1,
+  },
+  mapOverlay: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 20,
+    width: 32,
+    height: 32,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

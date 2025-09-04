@@ -1,109 +1,104 @@
 // app/auth/login.tsx
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Link, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Link, useRouter } from "expo-router";
+import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ExplorableLogo } from '../../components/Logo';
-import { theme } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
-import { syncService } from '../../services/syncService';
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ExplorableLogo } from "../../components/Logo";
+import { theme } from "../../constants/theme";
+import { supabase } from "../../lib/supabase";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<string>('');
+  const [syncStatus, setSyncStatus] = useState<string>("");
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+  // In your login.tsx, replace the handleLogin function with this:
+
+const handleLogin = async () => {
+  if (!email || !password) {
+    Alert.alert("Error", "Please fill in all fields");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    // Step 1: Sign in
+    setSyncStatus("Signing in...");
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error("Login failed");
+
+    // Step 2: Check if profile exists
+    setSyncStatus("Loading profile...");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", data.user.id)
+      .single();
+
+    if (!profile) {
+      // First time user - need to complete profile
+      router.replace("/auth/complete-profile");
       return;
     }
 
-    try {
-      setLoading(true);
-      
-      // Step 1: Sign in
-      setSyncStatus('Signing in...');
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase().trim(),
-        password,
-      });
+    // REMOVED: Don't sync here - let AuthContext handle it after state updates
+    // The AuthContext will sync once it detects the user is logged in
+    
+    // Step 3: Save auth state (optional - Supabase handles this)
+    await AsyncStorage.setItem("isAuthenticated", "true");
+    await AsyncStorage.setItem("userId", data.user.id);
 
-      if (error) throw error;
-      if (!data.user) throw new Error('Login failed');
-
-      // Step 2: Check if profile exists
-      setSyncStatus('Loading profile...');
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-
-      if (!profile) {
-        // First time user - need to complete profile
-        router.replace('/auth/complete-profile');
-        return;
-      }
-
-      // Step 3: Sync local data to cloud
-      setSyncStatus('Syncing your adventures...');
-      const syncResult = await syncService.syncAllData(data.user.id);
-      
-      if (syncResult.synced.activities > 0 || syncResult.synced.locations > 0) {
-        Alert.alert(
-          'Data Synced!',
-          `Successfully synced:\n` +
-          `${syncResult.synced.activities} activities\n` +
-          `${syncResult.synced.locations} locations\n` +
-          `${syncResult.synced.achievements} achievements`
-        );
-      }
-
-      // Step 4: Save auth state
-      await AsyncStorage.setItem('isAuthenticated', 'true');
-      await AsyncStorage.setItem('userId', data.user.id);
-      
-      // Navigate to main app
-      router.replace('/');
-      
-    } catch (error: any) {
-      console.error('Login error:', error);
-      Alert.alert(
-        'Login Failed',
-        error.message || 'Please check your email and password'
-      );
-    } finally {
-      setLoading(false);
-      setSyncStatus('');
-    }
-  };
+    // Step 4: Navigate - the AuthContext will handle sync
+    setSyncStatus("Redirecting...");
+    
+    // Give AuthContext a moment to update
+    setTimeout(() => {
+      router.replace("/");
+    }, 100);
+    
+  } catch (error: any) {
+    console.error("Login error:", error);
+    Alert.alert(
+      "Login Failed",
+      error.message || "Please check your email and password"
+    );
+  } finally {
+    setLoading(false);
+    setSyncStatus("");
+  }
+};
 
   const handleContinueOffline = async () => {
-    await AsyncStorage.setItem('offlineMode', 'true');
-    router.replace('/');
+    await AsyncStorage.setItem("offlineMode", "true");
+    router.replace("/");
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
         <ScrollView
@@ -162,7 +157,7 @@ export default function LoginScreen() {
                 style={styles.eyeIcon}
               >
                 <Ionicons
-                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
                   size={20}
                   color={theme.colors.gray}
                 />
@@ -177,7 +172,9 @@ export default function LoginScreen() {
               {loading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color="white" />
-                  <Text style={styles.loginButtonText}>{syncStatus || 'Signing in...'}</Text>
+                  <Text style={styles.loginButtonText}>
+                    {syncStatus || "Signing in..."}
+                  </Text>
                 </View>
               ) : (
                 <Text style={styles.loginButtonText}>Sign In</Text>
@@ -234,11 +231,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 20,
   },
   logoContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 40,
   },
   tagline: {
@@ -247,10 +244,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   formContainer: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 20,
     padding: 25,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
@@ -258,7 +255,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: theme.colors.navy,
     marginBottom: 8,
   },
@@ -268,8 +265,8 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
     borderRadius: 12,
     paddingHorizontal: 15,
@@ -291,24 +288,24 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.forest,
     borderRadius: 12,
     paddingVertical: 15,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 10,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   loginButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   forgotPassword: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 15,
   },
   forgotPasswordText: {
@@ -316,8 +313,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   signupContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     marginTop: 30,
   },
   signupText: {
@@ -327,11 +324,11 @@ const styles = StyleSheet.create({
   signupLink: {
     color: theme.colors.forest,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 30,
   },
   divider: {
@@ -345,10 +342,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   offlineButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white",
     borderRadius: 12,
     paddingVertical: 15,
     borderWidth: 1,
@@ -357,11 +354,11 @@ const styles = StyleSheet.create({
   offlineButtonText: {
     color: theme.colors.forest,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   offlineNote: {
-    textAlign: 'center',
+    textAlign: "center",
     color: theme.colors.gray,
     fontSize: 12,
     marginTop: 10,

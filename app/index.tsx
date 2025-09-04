@@ -4,20 +4,20 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    Modal,
-    PanResponder,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  Modal,
+  PanResponder,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -111,13 +111,41 @@ const UserAvatar = ({
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const {
-    user,
-    profile,
-    isOfflineMode,
-    loading: authLoading,
-    refreshProfile,
-  } = useAuth();
+
+  // Get the full auth context object to avoid stale closures
+  const authContext = useAuth();
+
+  // ADD THIS DEBUGGING BLOCK
+  console.log("🎯 Dashboard useAuth result:", {
+    hasUser: !!authContext.user,
+    userId: authContext.user?.id,
+    hasSession: !!authContext.session,
+    sessionUserId: authContext.session?.user?.id,
+    hasProfile: !!authContext.profile,
+    isOfflineMode: authContext.isOfflineMode,
+    loading: authContext.loading,
+    contextKeys: Object.keys(authContext),
+  });
+
+  // Now extract the values
+  const user = authContext.user;
+  const profile = authContext.profile;
+  const session = authContext.session;
+  const isOfflineMode = authContext.isOfflineMode;
+  const authLoading = authContext.loading;
+  const refreshProfile = authContext.refreshProfile;
+
+  // ADD THIS TOO - Log whenever these values change
+  useEffect(() => {
+    console.log("🎯 Dashboard auth values changed:", {
+      user: user?.id || "null",
+      session: session?.user?.id || "null",
+      profile: profile?.id || "null",
+      authLoading,
+      isOfflineMode,
+    });
+  }, [user, session, profile, authLoading, isOfflineMode]);
+
   const { savedSpots, location, getLocation } = useLocation();
   const { activities } = useActivity();
   const { formatDistance, formatSpeed, settings, getMapTileUrl } =
@@ -130,6 +158,19 @@ export default function DashboardScreen() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+
+  // Force re-render when auth state changes
+  const [authVersion, setAuthVersion] = useState(0);
+  useEffect(() => {
+    console.log(
+      "Dashboard: Auth state changed - User:",
+      user?.id,
+      "Session:",
+      session?.user?.id
+    );
+    setAuthVersion((v) => v + 1);
+  }, [user?.id, session?.user?.id]);
 
   // Sidebar animation
   const sidebarAnimation = useRef(new Animated.Value(-width * 0.75)).current;
@@ -178,49 +219,67 @@ export default function DashboardScreen() {
     }).start();
   };
 
-  // Initialize app
+  // Initialize app - simplified version that doesn't redirect
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        // Wait for auth to be ready
         if (authLoading) {
+          console.log("Dashboard: Waiting for auth...");
           return;
         }
 
+        // Mark that we've checked auth
+        if (!hasCheckedAuth) {
+          setHasCheckedAuth(true);
+        }
+
+        // Check onboarding
         const onboardingComplete = await AsyncStorage.getItem(
           "onboardingComplete"
         );
-
         if (onboardingComplete !== "true") {
-          console.log("Onboarding not complete - redirecting");
+          console.log("Dashboard: Onboarding not complete - redirecting");
           router.replace("/onboarding");
           return;
         }
 
-        if (!user && !isOfflineMode) {
-          console.log("No user and not offline - redirecting to login");
-          router.replace("/auth/login");
-          return;
-        }
+        // Get current auth state
+        const currentUser = authContext.user;
+        const currentSession = authContext.session;
+        const hasAuth = !!(currentUser?.id || currentSession?.user?.id);
 
         console.log(
-          "Dashboard ready - User:",
-          user?.id,
+          "Dashboard: Ready - HasAuth:",
+          hasAuth,
+          "User:",
+          currentUser?.id,
           "Offline:",
           isOfflineMode
         );
         setIsInitializing(false);
 
+        // Get location if available
         if (!location) {
           getLocation();
         }
       } catch (error) {
-        console.error("Error initializing dashboard:", error);
+        console.error("Dashboard: Error initializing:", error);
         setIsInitializing(false);
       }
     };
 
     initializeApp();
-  }, [user, isOfflineMode, authLoading, router, location, getLocation]);
+  }, [
+    authLoading,
+    hasCheckedAuth,
+    authContext.user?.id,
+    authContext.session?.user?.id,
+    isOfflineMode,
+    location,
+    getLocation,
+    router,
+  ]);
 
   // Fetch notification count with real-time updates
   useEffect(() => {
@@ -251,7 +310,7 @@ export default function DashboardScreen() {
         .on(
           "postgres_changes",
           {
-            event: "INSERT", // New notifications
+            event: "INSERT",
             schema: "public",
             table: "notifications",
             filter: `user_id=eq.${user.id}`,
@@ -263,7 +322,7 @@ export default function DashboardScreen() {
         .on(
           "postgres_changes",
           {
-            event: "UPDATE", // When notifications are marked as read
+            event: "UPDATE",
             schema: "public",
             table: "notifications",
             filter: `user_id=eq.${user.id}`,
@@ -505,6 +564,7 @@ export default function DashboardScreen() {
     );
   };
 
+  // Show loading screen while initializing or auth is loading
   if (isInitializing || authLoading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -519,6 +579,178 @@ export default function DashboardScreen() {
     );
   }
 
+  // Check if user is authenticated (check both user and session)
+  const isAuthenticated = !!(user?.id || session?.user?.id);
+
+  // If not authenticated and not in offline mode, show sign in prompt
+  if (!isAuthenticated && !isOfflineMode) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.authPromptContainer}>
+          <ExplorableIcon size={80} />
+          <Text style={styles.authPromptTitle}>Welcome to ExplorAble</Text>
+          <Text style={styles.authPromptText}>
+            Track your adventures, save your favorite spots, and share with
+            friends
+          </Text>
+          <TouchableOpacity
+            style={styles.authPromptButton}
+            onPress={() => router.push("/auth/login")}
+          >
+            <Text style={styles.authPromptButtonText}>Sign In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.authPromptLinkButton}
+            onPress={() => {
+              AsyncStorage.setItem("offlineMode", "true").then(() => {
+                router.replace("/(tabs)");
+              });
+
+              // Profile Edit Modal Styles
+              const profileEditStyles = StyleSheet.create({
+                overlay: {
+                  flex: 1,
+                  backgroundColor: "rgba(0, 0, 0, 0.5)",
+                  justifyContent: "center",
+                  padding: 20,
+                },
+                content: {
+                  backgroundColor: "white",
+                  borderRadius: 20,
+                  maxHeight: "80%",
+                },
+                header: {
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: 20,
+                  borderBottomWidth: 1,
+                  borderBottomColor: theme.colors.borderGray,
+                },
+                title: {
+                  fontSize: 20,
+                  fontWeight: "600",
+                  color: theme.colors.navy,
+                },
+                form: {
+                  padding: 20,
+                },
+                label: {
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: theme.colors.gray,
+                  marginBottom: 8,
+                },
+                input: {
+                  backgroundColor: theme.colors.offWhite,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 16,
+                  color: theme.colors.navy,
+                  borderWidth: 1,
+                  borderColor: theme.colors.borderGray,
+                },
+                inputError: {
+                  borderColor: "#FF4757",
+                },
+                hint: {
+                  fontSize: 12,
+                  color: theme.colors.lightGray,
+                  marginTop: 4,
+                  marginBottom: 20,
+                },
+                errorText: {
+                  fontSize: 12,
+                  color: "#FF4757",
+                  marginTop: 4,
+                  marginBottom: 20,
+                },
+                usernameContainer: {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: theme.colors.offWhite,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: theme.colors.borderGray,
+                  paddingLeft: 12,
+                },
+                usernamePrefix: {
+                  fontSize: 16,
+                  color: theme.colors.gray,
+                  marginRight: 2,
+                },
+                usernameInput: {
+                  flex: 1,
+                  padding: 12,
+                  paddingLeft: 2,
+                  fontSize: 16,
+                  color: theme.colors.navy,
+                },
+                usernameSpinner: {
+                  marginRight: 12,
+                },
+                currentInfo: {
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: theme.colors.borderGray,
+                },
+                infoLabel: {
+                  fontSize: 14,
+                  color: theme.colors.gray,
+                },
+                infoValue: {
+                  fontSize: 14,
+                  color: theme.colors.navy,
+                  fontWeight: "500",
+                },
+                actions: {
+                  flexDirection: "row",
+                  padding: 20,
+                  gap: 10,
+                },
+                cancelBtn: {
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  backgroundColor: theme.colors.offWhite,
+                },
+                cancelText: {
+                  fontSize: 16,
+                  color: theme.colors.gray,
+                  fontWeight: "600",
+                },
+                saveBtn: {
+                  flex: 1,
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  paddingVertical: 14,
+                  borderRadius: 8,
+                  backgroundColor: theme.colors.forest,
+                },
+                saveBtnDisabled: {
+                  opacity: 0.6,
+                },
+                saveText: {
+                  fontSize: 16,
+                  color: "white",
+                  fontWeight: "600",
+                  marginLeft: 8,
+                },
+              });
+            }}
+          >
+            <Text style={styles.authPromptLinkText}>Continue Offline</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Calculate stats
   const stats = {
     totalDistance: activities.reduce((sum, act) => sum + act.distance, 0),
     totalDuration: activities.reduce((sum, act) => sum + act.duration, 0),
@@ -534,8 +766,6 @@ export default function DashboardScreen() {
     currentStreak: calculateStreak(),
   };
 
-  // Fixed calculateStreak function - use this in both index.tsx and statistics.tsx
-
   function calculateStreak() {
     if (activities.length === 0) return 0;
 
@@ -544,25 +774,20 @@ export default function DashboardScreen() {
         new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
 
-    // Get today's date at midnight
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Get the most recent activity date at midnight
     const mostRecentActivity = new Date(sortedActivities[0].startTime);
     mostRecentActivity.setHours(0, 0, 0, 0);
 
-    // Calculate days since most recent activity
     const daysSinceLastActivity = Math.floor(
       (today.getTime() - mostRecentActivity.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // If last activity was more than 1 day ago, streak is broken
     if (daysSinceLastActivity > 1) {
       return 0;
     }
 
-    // Build a set of all activity dates (as date strings)
     const activityDates = new Set(
       activities.map((activity) => {
         const date = new Date(activity.startTime);
@@ -571,11 +796,9 @@ export default function DashboardScreen() {
       })
     );
 
-    // Start counting from the most recent activity date
     let streak = 0;
     let checkDate = new Date(mostRecentActivity);
 
-    // Count consecutive days going backwards
     while (activityDates.has(checkDate.toDateString())) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
@@ -750,6 +973,7 @@ export default function DashboardScreen() {
 
   const sidebarItems = [
     { icon: "map", label: "Dashboard", route: "/", active: true },
+    { icon: "person-circle", label: "Edit Profile", route: "/profile-edit" }, // ADD THIS
     {
       icon: "notifications",
       label: "Notifications",
@@ -788,6 +1012,7 @@ export default function DashboardScreen() {
     other: "fitness",
   };
 
+  // Main dashboard render
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.white} />
@@ -935,9 +1160,7 @@ export default function DashboardScreen() {
               </View>
               <Text style={styles.statNumber}>{stats.currentStreak}</Text>
               <Text style={styles.statLabel}>Activity</Text>
-              <Text style={[styles.statLabel, { fontSize: 10 }]}>
-                Streak
-              </Text>
+              <Text style={[styles.statLabel, { fontSize: 10 }]}>Streak</Text>
             </View>
           </View>
 
@@ -1193,6 +1416,13 @@ export default function DashboardScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickAction}
+            onPress={() => router.push("/quick-photo")}
+          >
+            <Ionicons name="camera" size={24} color="#FFB800" />
+            <Text style={styles.quickActionText}>Quick Log</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickAction}
             onPress={() => router.push("/track-activity")}
           >
             <Ionicons name="fitness" size={24} color={theme.colors.navy} />
@@ -1386,6 +1616,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
+  },
+  authPromptContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: theme.colors.offWhite,
+  },
+  authPromptTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: theme.colors.navy,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  authPromptText: {
+    fontSize: 16,
+    color: theme.colors.gray,
+    textAlign: "center",
+    marginBottom: 30,
+    paddingHorizontal: 20,
+  },
+  authPromptButton: {
+    backgroundColor: theme.colors.forest,
+    paddingHorizontal: 40,
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  authPromptButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  authPromptLinkButton: {
+    padding: 10,
+  },
+  authPromptLinkText: {
+    color: theme.colors.forest,
+    fontSize: 14,
+    textDecorationLine: "underline",
   },
   header: {
     flexDirection: "row",

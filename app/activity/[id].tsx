@@ -1,7 +1,7 @@
 // app/activity/[id].tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -68,6 +68,9 @@ export default function ActivityDetailScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const commentInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (id) {
@@ -198,6 +201,17 @@ export default function ActivityDetailScreen() {
     }
   };
 
+  const handleReply = (comment: Comment) => {
+    const replyPrefix = `@${comment.user.display_name || comment.user.username} `;
+    setNewComment(replyPrefix);
+    setReplyingTo(comment.id);
+    // Focus the input and scroll to bottom
+    setTimeout(() => {
+      commentInputRef.current?.focus();
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
+
   const handleAddComment = async () => {
     if (!user) {
       Alert.alert("Sign In Required", "Please sign in to comment");
@@ -232,6 +246,7 @@ export default function ActivityDetailScreen() {
 
       setComments([data, ...comments]);
       setNewComment("");
+      setReplyingTo(null);
     } catch (error) {
       console.error("Error adding comment:", error);
       Alert.alert("Error", "Failed to add comment");
@@ -375,9 +390,12 @@ export default function ActivityDetailScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollView}
+          contentContainerStyle={{ paddingBottom: 20 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
@@ -552,18 +570,17 @@ export default function ActivityDetailScreen() {
                 </View>
                 <Text style={styles.commentText}>{comment.text}</Text>
 
-                {/* Add Reply button here */}
-                <TouchableOpacity
-                  style={styles.replyButton}
-                  onPress={() => {
-                    setNewComment(
-                      `@${comment.user.display_name || comment.user.username} `
-                    );
-                    // You'll need to add state for tracking who you're replying to
-                  }}
-                >
-                  <Text style={styles.replyButtonText}>Reply</Text>
-                </TouchableOpacity>
+                {/* Reply button with improved touch handling */}
+                <View style={styles.replyButtonContainer}>
+                  <TouchableOpacity
+                    style={styles.replyButton}
+                    onPress={() => handleReply(comment)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.replyButtonText}>Reply</Text>
+                  </TouchableOpacity>
+                </View>
 
                 {user && comment.user.id === user.id && (
                   <TouchableOpacity
@@ -584,37 +601,55 @@ export default function ActivityDetailScreen() {
               <Text style={styles.noComments}>
                 No comments yet. Be the first!
               </Text>
-            )}
-          </View>
-        </ScrollView>
+              )}
+            </View>
+          </ScrollView>
 
-        {/* Comment Input */}
-        <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Add a comment..."
-            value={newComment}
-            onChangeText={setNewComment}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              !newComment.trim() && styles.sendButtonDisabled,
-            ]}
-            onPress={handleAddComment}
-            disabled={!newComment.trim() || submitting}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Ionicons name="send" size={20} color="white" />
+          {/* Comment Input */}
+          <View style={[styles.commentInputContainer, {
+            paddingBottom: 10,
+          }]}>
+            {replyingTo && (
+              <View style={styles.replyingToContainer}>
+                <Text style={styles.replyingToText}>Replying...</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setReplyingTo(null);
+                    setNewComment("");
+                  }}
+                >
+                  <Ionicons name="close" size={20} color={theme.colors.gray} />
+                </TouchableOpacity>
+              </View>
             )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <View style={styles.commentInputRow}>
+              <TextInput
+                ref={commentInputRef}
+                style={styles.commentInput}
+                placeholder="Add a comment..."
+                value={newComment}
+                onChangeText={setNewComment}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  !newComment.trim() && styles.sendButtonDisabled,
+                ]}
+                onPress={handleAddComment}
+                disabled={!newComment.trim() || submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Ionicons name="send" size={20} color="white" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
   );
 }
 
@@ -832,11 +867,28 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   commentInputContainer: {
-    flexDirection: "row",
-    padding: 12,
     backgroundColor: "white",
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
+    paddingBottom: Platform.OS === "ios" ? 20 : 10,
+  },
+  replyingToContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  replyingToText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    fontStyle: "italic",
+  },
+  commentInputRow: {
+    flexDirection: "row",
+    padding: 12,
+    paddingTop: 8,
   },
   commentInput: {
     flex: 1,
@@ -859,11 +911,14 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: theme.colors.lightGray,
   },
-  replyButton: {
+  replyButtonContainer: {
     marginTop: 8,
-    paddingVertical: 4,
+  },
+  replyButton: {
+    paddingVertical: 6,
     paddingHorizontal: 12,
     alignSelf: "flex-start",
+    backgroundColor: "transparent",
   },
   replyButtonText: {
     fontSize: 13,

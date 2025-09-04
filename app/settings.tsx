@@ -464,17 +464,6 @@ export default function SettingsScreen() {
 
           <TouchableOpacity 
             style={styles.settingItem}
-            onPress={() => router.push('/profile-edit')}
-          >
-            <View style={styles.settingLeft}>
-              <Ionicons name="create-outline" size={22} color={theme.colors.gray} />
-              <Text style={styles.settingLabel}>Edit Profile</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.settingItem}
             onPress={() => router.push('/friends')}
           >
             <View style={styles.settingLeft}>
