@@ -1,27 +1,27 @@
 // app/onboarding.tsx
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Location from 'expo-location';
-import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
+import { Stack, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ExplorableIcon, ExplorableLogo } from '../components/Logo';
-import { theme } from '../constants/theme';
-import { ActivityType } from '../contexts/ActivityContext';
-import { useSettings } from '../contexts/SettingsContext';
+  Alert,
+  Animated,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ExplorableIcon, ExplorableLogo } from "../components/Logo";
+import { theme } from "../constants/theme";
+import { ActivityType } from "../contexts/ActivityContext";
+import { useSettings } from "../contexts/SettingsContext";
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
 interface OnboardingSlide {
   id: string;
@@ -41,12 +41,16 @@ export default function OnboardingScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
-  
+
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [userName, setUserName] = useState('');
-  const [selectedUnits, setSelectedUnits] = useState<'metric' | 'imperial'>('metric');
-  const [selectedActivity, setSelectedActivity] = useState<ActivityType>('bike');
-  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [selectedUnits, setSelectedUnits] = useState<"metric" | "imperial">(
+    "metric"
+  );
+  const [selectedActivity, setSelectedActivity] =
+    useState<ActivityType>("bike");
+  const [locationPermissionGranted, setLocationPermissionGranted] =
+    useState(false);
 
   useEffect(() => {
     // Animate in
@@ -67,27 +71,27 @@ export default function OnboardingScreen() {
   const requestLocationPermission = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
+      if (status === "granted") {
         setLocationPermissionGranted(true);
-        
+
         // Also try to get background permission (optional)
         try {
           await Location.requestBackgroundPermissionsAsync();
         } catch (e) {
           // Background permission is optional
         }
-        
+
         return true;
       } else {
         Alert.alert(
-          'Location Required',
-          'explorAble needs location access to track your activities and save spots. You can enable this later in Settings.',
-          [{ text: 'OK' }]
+          "Location Required",
+          "explorAble needs location access to track your activities and save spots. You can enable this later in Settings.",
+          [{ text: "OK" }]
         );
         return false;
       }
     } catch (error) {
-      console.error('Error requesting location permission:', error);
+      console.error("Error requesting location permission:", error);
       return false;
     }
   };
@@ -99,28 +103,29 @@ export default function OnboardingScreen() {
         units: selectedUnits,
         defaultActivityType: selectedActivity,
       });
-      
+
       // Save user name if provided
       if (userName.trim()) {
-        await AsyncStorage.setItem('userName', userName.trim());
+        await AsyncStorage.setItem("userName", userName.trim());
       }
-      
+
       // Mark onboarding as complete
-      await AsyncStorage.setItem('onboardingComplete', 'true');
-      
+      await AsyncStorage.setItem("onboardingComplete", "true");
+
       // Navigate to main app
-      router.replace('/');
+      router.replace("/");
     } catch (error) {
-      console.error('Error completing onboarding:', error);
-      Alert.alert('Error', 'Failed to save settings. Please try again.');
+      console.error("Error completing onboarding:", error);
+      Alert.alert("Error", "Failed to save settings. Please try again.");
     }
   };
 
   const slides: OnboardingSlide[] = [
     {
-      id: 'welcome',
-      title: 'Welcome to',
-      subtitle: 'Track your adventures, save your favorite spots, and explore new places',
+      id: "welcome",
+      title: "Welcome to",
+      subtitle:
+        "Track your adventures, save your favorite spots, and explore new places",
       backgroundColor: theme.colors.offWhite,
       textColor: theme.colors.navy,
       customContent: (
@@ -133,9 +138,9 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'name',
+      id: "name",
       title: "What's your name?",
-      subtitle: 'Let\'s personalize your experience',
+      subtitle: "Let's personalize your experience",
       backgroundColor: theme.colors.white,
       textColor: theme.colors.navy,
       customContent: (
@@ -154,10 +159,10 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'track',
-      title: 'Track Activities',
-      subtitle: 'Record your bikes, runs, hikes, and more with GPS tracking',
-      icon: 'fitness',
+      id: "track",
+      title: "Track Activities",
+      subtitle: "Record your bikes, runs, hikes, and more with GPS tracking",
+      icon: "fitness",
       backgroundColor: theme.colors.forest,
       textColor: theme.colors.white,
       customContent: (
@@ -182,30 +187,38 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'save',
-      title: 'Save Locations',
-      subtitle: 'Mark your favorite spots and organize them by category',
-      icon: 'location',
+      id: "save",
+      title: "Save Locations",
+      subtitle: "Mark your favorite spots and organize them by category",
+      icon: "location",
       backgroundColor: theme.colors.navy,
       textColor: theme.colors.white,
       customContent: (
         <View style={styles.categoriesPreview}>
           <View style={styles.categoryRow}>
-            <View style={[styles.categoryBadge, { backgroundColor: '#cc5500' }]}>
+            <View
+              style={[styles.categoryBadge, { backgroundColor: "#cc5500" }]}
+            >
               <Ionicons name="umbrella" size={24} color="white" />
               <Text style={styles.categoryLabel}>Beach</Text>
             </View>
-            <View style={[styles.categoryBadge, { backgroundColor: '#2d5a3d' }]}>
+            <View
+              style={[styles.categoryBadge, { backgroundColor: "#2d5a3d" }]}
+            >
               <Ionicons name="walk" size={24} color="white" />
               <Text style={styles.categoryLabel}>Trail</Text>
             </View>
           </View>
           <View style={styles.categoryRow}>
-            <View style={[styles.categoryBadge, { backgroundColor: '#8b5cf6' }]}>
+            <View
+              style={[styles.categoryBadge, { backgroundColor: "#8b5cf6" }]}
+            >
               <Ionicons name="camera" size={24} color="white" />
               <Text style={styles.categoryLabel}>Viewpoint</Text>
             </View>
-            <View style={[styles.categoryBadge, { backgroundColor: '#059669' }]}>
+            <View
+              style={[styles.categoryBadge, { backgroundColor: "#059669" }]}
+            >
               <Ionicons name="bonfire" size={24} color="white" />
               <Text style={styles.categoryLabel}>Camping</Text>
             </View>
@@ -214,17 +227,23 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'friends',
-      title: 'Connect with Friends',
-      subtitle: 'Share your adventures and discover new places together',
+      id: "friends",
+      title: "Connect with Friends",
+      subtitle: "Share your adventures and discover new places together",
       backgroundColor: theme.colors.burntOrange,
       textColor: theme.colors.white,
       customContent: (
         <View style={styles.friendsPreview}>
           <View style={styles.friendFeature}>
-            <Ionicons name="people-circle" size={50} color={theme.colors.white} />
+            <Ionicons
+              name="people-circle"
+              size={50}
+              color={theme.colors.white}
+            />
             <Text style={styles.friendFeatureTitle}>Friends Feed</Text>
-            <Text style={styles.friendFeatureText}>See what your friends are exploring</Text>
+            <Text style={styles.friendFeatureText}>
+              See what your friends are exploring
+            </Text>
           </View>
           <View style={styles.friendFeatureRow}>
             <View style={styles.friendFeatureSmall}>
@@ -233,7 +252,9 @@ export default function OnboardingScreen() {
             </View>
             <View style={styles.friendFeatureSmall}>
               <Ionicons name="share-social" size={30} color="#4ECDC4" />
-              <Text style={styles.friendFeatureSmallText}>Share Activities</Text>
+              <Text style={styles.friendFeatureSmallText}>
+                Share Activities
+              </Text>
             </View>
           </View>
           <View style={styles.friendFeatureRow}>
@@ -250,10 +271,10 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'wishlist',
-      title: 'Plan Adventures',
-      subtitle: 'Create a wishlist of places you want to explore',
-      icon: 'heart',
+      id: "wishlist",
+      title: "Plan Adventures",
+      subtitle: "Create a wishlist of places you want to explore",
+      icon: "heart",
       backgroundColor: theme.colors.forest,
       textColor: theme.colors.white,
       customContent: (
@@ -274,9 +295,9 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'preferences',
-      title: 'Your Preferences',
-      subtitle: 'Choose your units and default activity',
+      id: "preferences",
+      title: "Your Preferences",
+      subtitle: "Choose your units and default activity",
       backgroundColor: theme.colors.white,
       textColor: theme.colors.navy,
       customContent: (
@@ -284,50 +305,94 @@ export default function OnboardingScreen() {
           <Text style={styles.preferenceLabel}>Distance Units</Text>
           <View style={styles.unitsToggle}>
             <TouchableOpacity
-              style={[styles.unitOption, selectedUnits === 'metric' && styles.unitOptionActive]}
-              onPress={() => setSelectedUnits('metric')}
+              style={[
+                styles.unitOption,
+                selectedUnits === "metric" && styles.unitOptionActive,
+              ]}
+              onPress={() => setSelectedUnits("metric")}
             >
-              <Text style={[styles.unitText, selectedUnits === 'metric' && styles.unitTextActive]}>
+              <Text
+                style={[
+                  styles.unitText,
+                  selectedUnits === "metric" && styles.unitTextActive,
+                ]}
+              >
                 Kilometers
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.unitOption, selectedUnits === 'imperial' && styles.unitOptionActive]}
-              onPress={() => setSelectedUnits('imperial')}
+              style={[
+                styles.unitOption,
+                selectedUnits === "imperial" && styles.unitOptionActive,
+              ]}
+              onPress={() => setSelectedUnits("imperial")}
             >
-              <Text style={[styles.unitText, selectedUnits === 'imperial' && styles.unitTextActive]}>
+              <Text
+                style={[
+                  styles.unitText,
+                  selectedUnits === "imperial" && styles.unitTextActive,
+                ]}
+              >
                 Miles
               </Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.preferenceLabel, { marginTop: 30 }]}>Default Activity</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.activityScroll}>
-            {(['bike', 'run', 'walk', 'hike', 'paddleboard', 'climb', 'other'] as ActivityType[]).map((activity) => {
+          <Text style={[styles.preferenceLabel, { marginTop: 30 }]}>
+            Default Activity
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={true} // CHANGE false to true
+            style={styles.activityScroll}
+            nestedScrollEnabled={true} // ADD THIS LINE
+          >
+            {(
+              [
+                "bike",
+                "run",
+                "walk",
+                "hike",
+                "paddleboard",
+                "climb",
+                "other",
+              ] as ActivityType[]
+            ).map((activity) => {
               const icons = {
-                bike: 'bicycle',
-                run: 'walk',
-                walk: 'footsteps',
-                hike: 'trail-sign',
-                paddleboard: 'boat',
-                climb: 'trending-up',
-                other: 'fitness',
+                bike: "bicycle",
+                run: "walk",
+                walk: "footsteps",
+                hike: "trail-sign",
+                paddleboard: "boat",
+                climb: "trending-up",
+                other: "fitness",
               };
               return (
                 <TouchableOpacity
                   key={activity}
-                  style={[styles.activityOption, selectedActivity === activity && styles.activityOptionActive]}
+                  style={[
+                    styles.activityOption,
+                    selectedActivity === activity &&
+                      styles.activityOptionActive,
+                  ]}
                   onPress={() => setSelectedActivity(activity)}
                 >
-                  <Ionicons 
-                    name={icons[activity] as any} 
-                    size={24} 
-                    color={selectedActivity === activity ? theme.colors.white : theme.colors.forest} 
+                  <Ionicons
+                    name={icons[activity] as any}
+                    size={24}
+                    color={
+                      selectedActivity === activity
+                        ? theme.colors.white
+                        : theme.colors.forest
+                    }
                   />
-                  <Text style={[
-                    styles.activityText,
-                    selectedActivity === activity && styles.activityTextActive
-                  ]}>
+                  <Text
+                    style={[
+                      styles.activityText,
+                      selectedActivity === activity &&
+                        styles.activityTextActive,
+                    ]}
+                  >
                     {activity.charAt(0).toUpperCase() + activity.slice(1)}
                   </Text>
                 </TouchableOpacity>
@@ -338,27 +403,48 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'permissions',
-      title: 'Enable Location',
-      subtitle: 'We need location access to track your activities and save your spots',
-      icon: 'navigate',
+      id: "permissions",
+      title: "Enable Location",
+      subtitle:
+        "We need location access to track your activities and save your spots",
+      icon: "navigate",
       backgroundColor: theme.colors.navy,
       textColor: theme.colors.white,
       action: requestLocationPermission,
-      actionLabel: locationPermissionGranted ? '✓ Permission Granted' : 'Enable Location',
+      actionLabel: locationPermissionGranted
+        ? "✓ Permission Granted"
+        : "Enable Location",
       customContent: (
         <View style={styles.permissionInfo}>
           <View style={styles.permissionItem}>
-            <Ionicons name="checkmark-circle" size={24} color={theme.colors.white} />
-            <Text style={styles.permissionText}>Track your routes accurately</Text>
+            <Ionicons
+              name="checkmark-circle"
+              size={24}
+              color={theme.colors.white}
+            />
+            <Text style={styles.permissionText}>
+              Track your routes accurately
+            </Text>
           </View>
           <View style={styles.permissionItem}>
-            <Ionicons name="checkmark-circle" size={24} color={theme.colors.white} />
-            <Text style={styles.permissionText}>Save your current location</Text>
+            <Ionicons
+              name="checkmark-circle"
+              size={24}
+              color={theme.colors.white}
+            />
+            <Text style={styles.permissionText}>
+              Save your current location
+            </Text>
           </View>
           <View style={styles.permissionItem}>
-            <Ionicons name="checkmark-circle" size={24} color={theme.colors.white} />
-            <Text style={styles.permissionText}>Find nearby points of interest</Text>
+            <Ionicons
+              name="checkmark-circle"
+              size={24}
+              color={theme.colors.white}
+            />
+            <Text style={styles.permissionText}>
+              Find nearby points of interest
+            </Text>
           </View>
           <View style={styles.permissionItem}>
             <Ionicons name="lock-closed" size={24} color={theme.colors.white} />
@@ -368,36 +454,59 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: 'ready',
+      id: "ready",
       title: "You're All Set!",
-      subtitle: `Welcome${userName ? `, ${userName}` : ''}! Let's start exploring`,
+      subtitle: `Welcome${
+        userName ? `, ${userName}` : ""
+      }! Let's start exploring`,
       backgroundColor: theme.colors.offWhite,
       textColor: theme.colors.navy,
       customContent: (
         <View style={styles.readyContainer}>
-          <Ionicons name="checkmark-circle" size={100} color={theme.colors.forest} />
+          <Ionicons
+            name="checkmark-circle"
+            size={100}
+            color={theme.colors.forest}
+          />
           <View style={styles.summaryContainer}>
             <Text style={styles.summaryTitle}>Your Settings:</Text>
             <View style={styles.summaryItem}>
-              <Ionicons name="speedometer" size={20} color={theme.colors.navy} />
+              <Ionicons
+                name="speedometer"
+                size={20}
+                color={theme.colors.navy}
+              />
               <Text style={styles.summaryText}>
-                Units: {selectedUnits === 'metric' ? 'Kilometers' : 'Miles'}
+                Units: {selectedUnits === "metric" ? "Kilometers" : "Miles"}
               </Text>
             </View>
             <View style={styles.summaryItem}>
               <Ionicons name="fitness" size={20} color={theme.colors.navy} />
               <Text style={styles.summaryText}>
-                Default: {selectedActivity.charAt(0).toUpperCase() + selectedActivity.slice(1)}
+                Default:{" "}
+                {selectedActivity.charAt(0).toUpperCase() +
+                  selectedActivity.slice(1)}
               </Text>
             </View>
             <View style={styles.summaryItem}>
-              <Ionicons 
-                name={locationPermissionGranted ? "checkmark-circle" : "close-circle"} 
-                size={20} 
-                color={locationPermissionGranted ? theme.colors.forest : theme.colors.burntOrange} 
+              <Ionicons
+                name={
+                  locationPermissionGranted
+                    ? "checkmark-circle"
+                    : "close-circle"
+                }
+                size={20}
+                color={
+                  locationPermissionGranted
+                    ? theme.colors.forest
+                    : theme.colors.burntOrange
+                }
               />
               <Text style={styles.summaryText}>
-                Location: {locationPermissionGranted ? 'Enabled' : 'Not enabled (can enable later)'}
+                Location:{" "}
+                {locationPermissionGranted
+                  ? "Enabled"
+                  : "Not enabled (can enable later)"}
               </Text>
             </View>
           </View>
@@ -417,23 +526,23 @@ export default function OnboardingScreen() {
   };
 
   const handleSkip = () => {
-    Alert.alert(
-      'Skip Setup?',
-      'You can always change these settings later',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Skip', 
-          onPress: completeOnboarding,
-          style: 'destructive'
-        },
-      ]
-    );
+    Alert.alert("Skip Setup?", "You can always change these settings later", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Skip",
+        onPress: completeOnboarding,
+        style: "destructive",
+      },
+    ]);
   };
 
   const handleScroll = (event: any) => {
     const slideIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-    if (slideIndex !== currentIndex && slideIndex >= 0 && slideIndex < slides.length) {
+    if (
+      slideIndex !== currentIndex &&
+      slideIndex >= 0 &&
+      slideIndex < slides.length
+    ) {
       setCurrentIndex(slideIndex);
     }
   };
@@ -441,17 +550,26 @@ export default function OnboardingScreen() {
   const currentSlide = slides[currentIndex];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentSlide.backgroundColor }]}>
-      <Stack.Screen 
-        options={{ 
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: currentSlide.backgroundColor },
+      ]}
+    >
+      <Stack.Screen
+        options={{
           headerShown: false,
-        }} 
+        }}
       />
-      
+
       {/* Skip button */}
       {currentIndex < slides.length - 1 && (
         <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-          <Text style={[styles.skipButtonText, { color: currentSlide.textColor }]}>Skip</Text>
+          <Text
+            style={[styles.skipButtonText, { color: currentSlide.textColor }]}
+          >
+            Skip
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -484,36 +602,53 @@ export default function OnboardingScreen() {
             ]}
           >
             {slide.customContent}
-            
+
             <View style={styles.slideContent}>
               {slide.icon && !slide.customContent && (
-                <Ionicons name={slide.icon as any} size={80} color={slide.textColor} />
+                <Ionicons
+                  name={slide.icon as any}
+                  size={80}
+                  color={slide.textColor}
+                />
               )}
-              
+
               <Text style={[styles.slideTitle, { color: slide.textColor }]}>
                 {slide.title}
               </Text>
-              
-              <Text style={[styles.slideSubtitle, { color: slide.textColor, opacity: 0.8 }]}>
+
+              <Text
+                style={[
+                  styles.slideSubtitle,
+                  { color: slide.textColor, opacity: 0.8 },
+                ]}
+              >
                 {slide.subtitle}
               </Text>
-              
+
               {slide.action && (
                 <TouchableOpacity
                   style={[
                     styles.actionButton,
-                    { 
-                      backgroundColor: locationPermissionGranted ? theme.colors.forest : theme.colors.white,
+                    {
+                      backgroundColor: locationPermissionGranted
+                        ? theme.colors.forest
+                        : theme.colors.white,
                       opacity: locationPermissionGranted ? 0.8 : 1,
-                    }
+                    },
                   ]}
                   onPress={slide.action}
                   disabled={locationPermissionGranted}
                 >
-                  <Text style={[
-                    styles.actionButtonText,
-                    { color: locationPermissionGranted ? theme.colors.white : theme.colors.forest }
-                  ]}>
+                  <Text
+                    style={[
+                      styles.actionButtonText,
+                      {
+                        color: locationPermissionGranted
+                          ? theme.colors.white
+                          : theme.colors.forest,
+                      },
+                    ]}
+                  >
                     {slide.actionLabel}
                   </Text>
                 </TouchableOpacity>
@@ -527,18 +662,26 @@ export default function OnboardingScreen() {
       <View style={styles.bottomNav}>
         {/* Swipe hint - only show on first few slides */}
         {currentIndex < 3 && (
-          <Text style={[styles.swipeHint, { color: currentSlide.textColor, opacity: 0.6 }]}>
+          <Text
+            style={[
+              styles.swipeHint,
+              { color: currentSlide.textColor, opacity: 0.6 },
+            ]}
+          >
             Swipe left to continue →
           </Text>
         )}
-        
+
         {/* Page indicators */}
         <View style={styles.pagination}>
           {slides.map((_, index) => (
             <TouchableOpacity
               key={index}
               onPress={() => {
-                scrollViewRef.current?.scrollTo({ x: width * index, animated: true });
+                scrollViewRef.current?.scrollTo({
+                  x: width * index,
+                  animated: true,
+                });
                 setCurrentIndex(index);
               }}
               hitSlop={{ top: 10, bottom: 10, left: 5, right: 5 }}
@@ -547,7 +690,10 @@ export default function OnboardingScreen() {
                 style={[
                   styles.paginationDot,
                   {
-                    backgroundColor: index === currentIndex ? currentSlide.textColor : `${currentSlide.textColor}30`,
+                    backgroundColor:
+                      index === currentIndex
+                        ? currentSlide.textColor
+                        : `${currentSlide.textColor}30`,
                     width: index === currentIndex ? 24 : 8,
                   },
                 ]}
@@ -563,48 +709,74 @@ export default function OnboardingScreen() {
             <TouchableOpacity
               style={[
                 styles.backButton,
-                { 
-                  borderColor: currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest,
-                }
+                {
+                  borderColor:
+                    currentSlide.textColor === theme.colors.white
+                      ? theme.colors.white
+                      : theme.colors.forest,
+                },
               ]}
               onPress={() => {
                 const prevIndex = currentIndex - 1;
-                scrollViewRef.current?.scrollTo({ x: width * prevIndex, animated: true });
+                scrollViewRef.current?.scrollTo({
+                  x: width * prevIndex,
+                  animated: true,
+                });
                 setCurrentIndex(prevIndex);
               }}
             >
-              <Ionicons 
-                name="arrow-back" 
-                size={20} 
-                color={currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest}
+              <Ionicons
+                name="arrow-back"
+                size={20}
+                color={
+                  currentSlide.textColor === theme.colors.white
+                    ? theme.colors.white
+                    : theme.colors.forest
+                }
               />
             </TouchableOpacity>
           )}
-          
+
           {/* Next/Get Started button */}
           <TouchableOpacity
             style={[
               styles.nextButton,
-              { 
-                backgroundColor: currentSlide.textColor === theme.colors.white ? theme.colors.white : theme.colors.forest,
+              {
+                backgroundColor:
+                  currentSlide.textColor === theme.colors.white
+                    ? theme.colors.white
+                    : theme.colors.forest,
                 flex: currentIndex === 0 ? 1 : undefined,
                 marginLeft: currentIndex > 0 ? 10 : 0,
-              }
+              },
             ]}
             onPress={handleNext}
           >
-            <Text style={[
-              styles.nextButtonText,
-              { 
-                color: currentSlide.textColor === theme.colors.white ? theme.colors.forest : theme.colors.white,
-              }
-            ]}>
-              {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
+            <Text
+              style={[
+                styles.nextButtonText,
+                {
+                  color:
+                    currentSlide.textColor === theme.colors.white
+                      ? theme.colors.forest
+                      : theme.colors.white,
+                },
+              ]}
+            >
+              {currentIndex === slides.length - 1 ? "Get Started" : "Next"}
             </Text>
-            <Ionicons 
-              name={currentIndex === slides.length - 1 ? 'checkmark' : 'arrow-forward'} 
-              size={20} 
-              color={currentSlide.textColor === theme.colors.white ? theme.colors.forest : theme.colors.white}
+            <Ionicons
+              name={
+                currentIndex === slides.length - 1
+                  ? "checkmark"
+                  : "arrow-forward"
+              }
+              size={20}
+              color={
+                currentSlide.textColor === theme.colors.white
+                  ? theme.colors.forest
+                  : theme.colors.white
+              }
             />
           </TouchableOpacity>
         </View>
@@ -618,7 +790,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   skipButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 60,
     right: 20,
     zIndex: 10,
@@ -626,37 +798,37 @@ const styles = StyleSheet.create({
   },
   skipButtonText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   slide: {
     width,
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 40,
   },
   slideContent: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 30,
   },
   slideTitle: {
     fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
     marginBottom: 15,
   },
   slideSubtitle: {
     fontSize: 18,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 26,
   },
   logoContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
   inputContainer: {
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   nameInput: {
     backgroundColor: theme.colors.offWhite,
@@ -666,8 +838,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     fontSize: 18,
-    width: '100%',
-    textAlign: 'center',
+    width: "100%",
+    textAlign: "center",
     color: theme.colors.navy,
   },
   skipText: {
@@ -676,31 +848,34 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   featureGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     marginBottom: 20,
   },
   featureItem: {
-    alignItems: 'center',
+    alignItems: "center",
     margin: 15,
+    minWidth: 70, // Add minimum width to prevent text cutoff
   },
   featureText: {
     color: theme.colors.white,
     marginTop: 8,
     fontSize: 14,
+    textAlign: "center", // Add text alignment
+    width: 70, // Set fixed width to ensure text has space
   },
   categoriesPreview: {
     marginBottom: 20,
   },
   categoryRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
     marginBottom: 15,
   },
   categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 20,
@@ -710,20 +885,20 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
     marginLeft: 8,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   friendsPreview: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
   friendFeature: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 25,
   },
   friendFeatureTitle: {
     color: theme.colors.white,
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 10,
   },
   friendFeatureText: {
@@ -733,48 +908,48 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   friendFeatureRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
     marginBottom: 20,
   },
   friendFeatureSmall: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
   },
   friendFeatureSmallText: {
     color: theme.colors.white,
     fontSize: 12,
     marginTop: 5,
-    textAlign: 'center',
+    textAlign: "center",
   },
   wishlistPreview: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
   priorityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 10,
   },
   priorityText: {
     color: theme.colors.white,
     marginLeft: 15,
     fontSize: 18,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   preferencesContainer: {
-    width: '100%',
+    width: "100%",
     marginBottom: 20,
   },
   preferenceLabel: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 10,
   },
   unitsToggle: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: theme.colors.offWhite,
     borderRadius: 12,
     padding: 4,
@@ -782,7 +957,7 @@ const styles = StyleSheet.create({
   unitOption: {
     flex: 1,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 8,
   },
   unitOptionActive: {
@@ -791,17 +966,18 @@ const styles = StyleSheet.create({
   unitText: {
     fontSize: 16,
     color: theme.colors.gray,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   unitTextActive: {
     color: theme.colors.white,
   },
   activityScroll: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginTop: 10,
+    maxHeight: 80, // ADD THIS LINE
   },
   activityOption: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingHorizontal: 15,
     paddingVertical: 10,
     backgroundColor: theme.colors.offWhite,
@@ -809,6 +985,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
+    minWidth: 70, // ADD THIS LINE
   },
   activityOptionActive: {
     backgroundColor: theme.colors.forest,
@@ -826,8 +1003,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   permissionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 10,
   },
   permissionText: {
@@ -843,10 +1020,10 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   readyContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
   summaryContainer: {
@@ -854,17 +1031,17 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     padding: 20,
     borderRadius: 12,
-    width: '100%',
+    width: "100%",
   },
   summaryTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 15,
   },
   summaryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginVertical: 8,
   },
   summaryText: {
@@ -879,14 +1056,14 @@ const styles = StyleSheet.create({
   },
   swipeHint: {
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 10,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 20,
   },
   paginationDot: {
@@ -895,23 +1072,23 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   navigationButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 2,
   },
   nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 16,
     paddingHorizontal: 30,
     borderRadius: 12,
@@ -919,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   nextButtonText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginRight: 8,
   },
 });

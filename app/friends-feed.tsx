@@ -438,73 +438,99 @@ const FeedItemCard = ({
       </View>
 
       {showComments && (
-        <View style={styles.commentsSection}>
-          {item.data.comments.map((comment: any) => (
-            <View key={comment.id} style={styles.comment}>
-              {comment.replyToUser && (
-                <Text style={styles.replyIndicator}>
-                  ↳ @{comment.replyToUser}
-                </Text>
-              )}
-              <View style={styles.commentHeader}>
-                <Text style={styles.commentUser}>{comment.userName}</Text>
-                <Text style={styles.commentTime}>
-                  {getTimeAgo(comment.timestamp)}
-                </Text>
-              </View>
-              <Text style={styles.commentText}>{comment.text}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setCommentText(`@${comment.userName} `);
-                  setReplyingTo({ id: comment.id, userName: comment.userName });
-                }}
-                style={styles.replyButton}
-              >
-                <Text style={styles.replyButtonText}>Reply</Text>
-              </TouchableOpacity>
+  <View style={styles.commentsSection}>
+    {item.data.comments
+      .filter((comment: any) => !comment.replyToId) // Only parent comments
+      .map((comment: any) => (
+        <View key={comment.id}>
+          {/* Parent Comment */}
+          <View style={styles.comment}>
+            <View style={styles.commentHeader}>
+              <Text style={styles.commentUser}>{comment.userName}</Text>
+              <Text style={styles.commentTime}>
+                {getTimeAgo(comment.timestamp)}
+              </Text>
             </View>
-          ))}
-
-          <View style={styles.addCommentWrapper}>
-            {replyingTo && (
-              <View style={styles.replyingToIndicator}>
-                <Text style={styles.replyingToText}>
-                  Replying to {replyingTo.userName}
-                </Text>
-                <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                  <Ionicons name="close" size={16} color={theme.colors.gray} />
-                </TouchableOpacity>
-              </View>
-            )}
-            <View style={styles.addCommentContainer}>
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Add a comment..."
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholderTextColor={theme.colors.lightGray}
-              />
-              <TouchableOpacity
-                style={styles.sendButton}
-                onPress={() => {
-                  if (commentText.trim()) {
-                    onComment(
-                      item.id,
-                      commentText,
-                      replyingTo?.id,
-                      replyingTo?.userName
-                    );
-                    setCommentText("");
-                    setReplyingTo(null);
-                  }
-                }}
-              >
-                <Ionicons name="send" size={20} color={theme.colors.forest} />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.commentText}>{comment.text}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setCommentText(`@${comment.userName} `);
+                setReplyingTo({ id: comment.id, userName: comment.userName });
+              }}
+              style={styles.replyButton}
+            >
+              <Text style={styles.replyButtonText}>Reply</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Nested Replies */}
+          {item.data.comments
+            .filter((reply: any) => reply.replyToId === comment.id)
+            .map((reply: any) => (
+              <View key={reply.id} style={styles.replyComment}>
+                <View style={styles.replyIndent}>
+                  <View style={styles.replyLine} />
+                  <View style={styles.replyContent}>
+                    <View style={styles.commentHeader}>
+                      <Text style={styles.commentUser}>{reply.userName}</Text>
+                      <Text style={styles.commentTime}>
+                        {getTimeAgo(reply.timestamp)}
+                      </Text>
+                    </View>
+                    <Text style={styles.commentText}>
+                      <Text style={styles.replyToMention}>
+                        @{comment.userName}{" "}
+                      </Text>
+                      {reply.text}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+        </View>
+      ))}
+
+    <View style={styles.addCommentWrapper}>
+      {replyingTo && (
+        <View style={styles.replyingToIndicator}>
+          <Text style={styles.replyingToText}>
+            Replying to {replyingTo.userName}
+          </Text>
+          <TouchableOpacity onPress={() => setReplyingTo(null)}>
+            <Ionicons name="close" size={16} color={theme.colors.gray} />
+          </TouchableOpacity>
         </View>
       )}
+      <View style={styles.addCommentContainer}>
+        <TextInput
+          style={styles.commentInput}
+          placeholder="Add a comment..."
+          value={commentText}
+          onChangeText={setCommentText}
+          placeholderTextColor={theme.colors.lightGray}
+        />
+        <TouchableOpacity
+          style={styles.sendButton}
+          onPress={() => {
+            if (commentText.trim()) {
+              onComment(
+                item.id,
+                commentText,
+                replyingTo?.id,
+                replyingTo?.userName
+              );
+              setCommentText("");
+              setReplyingTo(null);
+            }
+          }}
+        >
+          <Ionicons name="send" size={20} color={theme.colors.forest} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+)}
+
     </View>
   );
 };
@@ -1532,4 +1558,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  replyComment: {
+  paddingLeft: 30,
+  marginTop: 8,
+},
+replyIndent: {
+  flexDirection: "row",
+},
+replyLine: {
+  width: 2,
+  backgroundColor: theme.colors.lightGray + "30",
+  marginRight: 12,
+  marginLeft: 5,
+},
+replyContent: {
+  flex: 1,
+  backgroundColor: theme.colors.offWhite,
+  padding: 8,
+  borderRadius: 8,
+},
+replyToMention: {
+  color: theme.colors.forest,
+  fontWeight: "600",
+},
+
 });

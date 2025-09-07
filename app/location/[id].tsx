@@ -1,7 +1,7 @@
 // app/location/[id].tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,7 @@ interface Comment {
   id: string;
   text: string;
   created_at: string;
+  reply_to_id?: string;
   user: {
     id: string;
     username: string;
@@ -64,6 +65,9 @@ export default function LocationDetailScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const commentInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (id) {
@@ -194,6 +198,17 @@ export default function LocationDetailScreen() {
     }
   };
 
+  const handleReply = (comment: Comment) => {
+    const replyPrefix = `@${comment.user.display_name || comment.user.username} `;
+    setNewComment(replyPrefix);
+    setReplyingTo(comment.id);
+    // Focus the input and scroll to bottom
+    setTimeout(() => {
+      commentInputRef.current?.focus();
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
+
   const handleAddComment = async () => {
     if (!user) {
       Alert.alert("Sign In Required", "Please sign in to comment");
@@ -204,13 +219,19 @@ export default function LocationDetailScreen() {
 
     setSubmitting(true);
     try {
+      const commentData: any = {
+        location_id: id,
+        user_id: user.id,
+        text: newComment.trim(),
+      };
+
+      if (replyingTo) {
+        commentData.reply_to_id = replyingTo;
+      }
+
       const { data, error } = await supabase
         .from("comments")
-        .insert({
-          location_id: id,
-          user_id: user.id,
-          text: newComment.trim(),
-        })
+        .insert(commentData)
         .select(
           `
           *,
@@ -226,8 +247,13 @@ export default function LocationDetailScreen() {
 
       if (error) throw error;
 
+      if (replyingTo) {
+        data.reply_to_id = replyingTo;
+      }
+
       setComments([data, ...comments]);
       setNewComment("");
+      setReplyingTo(null);
     } catch (error) {
       console.error("Error adding comment:", error);
       Alert.alert("Error", "Failed to add comment");
@@ -305,9 +331,12 @@ export default function LocationDetailScreen() {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollView}
+          contentContainerStyle={{ paddingBottom: 20 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
@@ -426,55 +455,100 @@ export default function LocationDetailScreen() {
               Comments ({comments.length})
             </Text>
 
-            {comments.map((comment) => (
-              <View key={comment.id} style={styles.comment}>
-                <View style={styles.commentHeader}>
-                  <TouchableOpacity
-                    style={styles.commentUser}
-                    onPress={() =>
-                      router.push(`/friend-profile/${comment.user.id}` as any)
-                    }
-                  >
-                    <Text style={styles.commentAvatar}>
-                      {comment.user.avatar || "👤"}
-                    </Text>
-                    <Text style={styles.commentUsername}>
-                      {comment.user.display_name || comment.user.username}
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={styles.commentTime}>
-                    {new Date(comment.created_at).toLocaleDateString()}
-                  </Text>
+            {comments
+              .filter((comment) => !comment.reply_to_id)
+              .map((comment) => (
+                <View key={comment.id}>
+                  {/* Parent Comment */}
+                  <View style={styles.comment}>
+                    <View style={styles.commentHeader}>
+                      <TouchableOpacity
+                        style={styles.commentUser}
+                        onPress={() =>
+                          router.push(`/friend-profile/${comment.user.id}` as any)
+                        }
+                      >
+                        <Text style={styles.commentAvatar}>
+                          {comment.user.avatar || "👤"}
+                        </Text>
+                        <Text style={styles.commentUsername}>
+                          {comment.user.display_name || comment.user.username}
+                        </Text>
+                      </TouchableOpacity>
+                      <Text style={styles.commentTime}>
+                        {new Date(comment.created_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <Text style={styles.commentText}>{comment.text}</Text>
+
+                    <TouchableOpacity
+                      style={styles.replyButton}
+                      onPress={() => handleReply(comment)}
+                    >
+                      <Text style={styles.replyButtonText}>Reply</Text>
+                    </TouchableOpacity>
+
+                    {user && comment.user.id === user.id && (
+                      <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => handleDeleteComment(comment.id)}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={16}
+                          color={theme.colors.lightGray}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Nested Replies */}
+                  {comments
+                    .filter((reply) => reply.reply_to_id === comment.id)
+                    .map((reply) => (
+                      <View key={reply.id} style={styles.replyComment}>
+                        <View style={styles.replyIndent}>
+                          <View style={styles.replyLine} />
+                          <View style={styles.replyContent}>
+                            <View style={styles.commentHeader}>
+                              <TouchableOpacity
+                                style={styles.commentUser}
+                                onPress={() =>
+                                  router.push(`/friend-profile/${reply.user.id}` as any)
+                                }
+                              >
+                                <Text style={styles.commentAvatar}>
+                                  {reply.user.avatar || "👤"}
+                                </Text>
+                                <Text style={styles.commentUsername}>
+                                  {reply.user.display_name || reply.user.username}
+                                </Text>
+                              </TouchableOpacity>
+                              <Text style={styles.commentTime}>
+                                {new Date(reply.created_at).toLocaleDateString()}
+                              </Text>
+                            </View>
+                            <Text style={styles.commentText}>{reply.text}</Text>
+
+                            {user && reply.user.id === user.id && (
+                              <TouchableOpacity
+                                style={[styles.deleteButton, { top: 8, right: -8 }]}
+                                onPress={() => handleDeleteComment(reply.id)}
+                              >
+                                <Ionicons
+                                  name="trash-outline"
+                                  size={16}
+                                  color={theme.colors.lightGray}
+                                />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    ))}
                 </View>
-                <Text style={styles.commentText}>{comment.text}</Text>
+              ))}
 
-                {/* Add Reply button here */}
-                <TouchableOpacity
-                  style={styles.replyButton}
-                  onPress={() => {
-                    setNewComment(
-                      `@${comment.user.display_name || comment.user.username} `
-                    );
-                    // You'll need to add state for tracking who you're replying to
-                  }}
-                >
-                  <Text style={styles.replyButtonText}>Reply</Text>
-                </TouchableOpacity>
-
-                {user && comment.user.id === user.id && (
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteComment(comment.id)}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={16}
-                      color={theme.colors.lightGray}
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
             {comments.length === 0 && (
               <Text style={styles.noComments}>
                 No comments yet. Be the first!
@@ -484,29 +558,47 @@ export default function LocationDetailScreen() {
         </ScrollView>
 
         {/* Comment Input */}
-        <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Add a comment..."
-            value={newComment}
-            onChangeText={setNewComment}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              !newComment.trim() && styles.sendButtonDisabled,
-            ]}
-            onPress={handleAddComment}
-            disabled={!newComment.trim() || submitting}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Ionicons name="send" size={20} color="white" />
-            )}
-          </TouchableOpacity>
+        <View style={[styles.commentInputContainer, {
+          paddingBottom: Platform.OS === "ios" ? 20 : 10,
+        }]}>
+          {replyingTo && (
+            <View style={styles.replyingToContainer}>
+              <Text style={styles.replyingToText}>Replying...</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setReplyingTo(null);
+                  setNewComment("");
+                }}
+              >
+                <Ionicons name="close" size={20} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={styles.commentInputRow}>
+            <TextInput
+              ref={commentInputRef}
+              style={styles.commentInput}
+              placeholder="Add a comment..."
+              value={newComment}
+              onChangeText={setNewComment}
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                !newComment.trim() && styles.sendButtonDisabled,
+              ]}
+              onPress={handleAddComment}
+              disabled={!newComment.trim() || submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Ionicons name="send" size={20} color="white" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -710,8 +802,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   commentInputContainer: {
-    flexDirection: "row",
-    padding: 12,
     backgroundColor: "white",
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
@@ -747,5 +837,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.forest,
     fontWeight: "500",
+  },
+  replyComment: {
+    paddingLeft: 20,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  replyIndent: {
+    flexDirection: "row",
+  },
+  replyLine: {
+    width: 2,
+    backgroundColor: theme.colors.lightGray + "50",
+    marginRight: 15,
+    marginLeft: 10,
+  },
+  replyContent: {
+    flex: 1,
+    position: "relative",
+  },
+  commentInputRow: {
+    flexDirection: "row",
+    padding: 12,
+  },
+  replyingToContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    backgroundColor: theme.colors.forest + "10",
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 8,
+  },
+  replyingToText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    fontStyle: "italic",
   },
 });
