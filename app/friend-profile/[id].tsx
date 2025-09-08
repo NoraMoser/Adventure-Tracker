@@ -3,24 +3,26 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { theme } from "../../constants/theme";
 import { Activity } from "../../contexts/ActivityContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { Friend, useFriends } from "../../contexts/FriendsContext";
 import { SavedSpot, useLocation } from "../../contexts/LocationContext";
 import { useSettings } from "../../contexts/SettingsContext";
+import { supabase } from "../../lib/supabase";
 import { FriendDataService } from "../../services/friendDataService";
 
 const { width, height } = Dimensions.get("window");
@@ -212,11 +214,7 @@ const PrivacySettingsModal = ({
 export default function FriendProfileScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const {
-    friends,
-    removeFriend,
-    blockUser,
-  } = useFriends();
+  const { friends, removeFriend, blockUser } = useFriends();
   const { savedSpots } = useLocation();
   const { formatDistance, formatSpeed } = useSettings();
 
@@ -226,7 +224,7 @@ export default function FriendProfileScreen() {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [friendPrivacySettings, setFriendPrivacySettings] = useState({});
-  
+
   // State for friend's data
   const [friendActivities, setFriendActivities] = useState<Activity[]>([]);
   const [friendLocations, setFriendLocations] = useState<SavedSpot[]>([]);
@@ -235,19 +233,22 @@ export default function FriendProfileScreen() {
     totalActivities: 0,
     totalLocations: 0,
   });
+  const [mutualFriends, setMutualFriends] = useState<Friend[]>([]);
+  const { user } = useAuth();
 
   const friend = friends.find((f) => f.id === id);
 
-  // Load friend's data when component mounts or friend changes
   useEffect(() => {
-    if (friend) {
+    if (friend && user && friends.length > 0) {
+      // Add user check
       loadFriendData();
+      loadMutualFriends();
     }
-  }, [friend?.id]);
+  }, [friend?.id, friends.length, user?.id]); // Add user?.id as dependency
 
   const loadFriendData = async () => {
     if (!friend) return;
-    
+
     setLoadingData(true);
     try {
       const [activities, locations, stats] = await Promise.all([
@@ -255,18 +256,61 @@ export default function FriendProfileScreen() {
         FriendDataService.loadFriendLocations(friend.id),
         FriendDataService.loadFriendStats(friend.id),
       ]);
-      
+
       setFriendActivities(activities);
       setFriendLocations(locations);
       setFriendStats(stats);
-      
     } catch (error) {
-      console.error('Error loading friend data:', error);
-      Alert.alert('Error', 'Failed to load friend data');
+      console.error("Error loading friend data:", error);
+      Alert.alert("Error", "Failed to load friend data");
     } finally {
       setLoadingData(false);
     }
   };
+
+  const loadMutualFriends = async () => {
+  if (!friend || !user) return;
+  
+  try {
+    // Get ALL friendships for the profile being viewed
+    const { data: friendsFriendships, error } = await supabase
+      .from('friendships')
+      .select('user_id, friend_id, status')
+      .or(`user_id.eq.${friend.id},friend_id.eq.${friend.id}`)
+      .eq('status', 'accepted');
+
+    console.log('Raw friendships for', friend.displayName, ':', friendsFriendships);
+
+    if (!friendsFriendships) return;
+
+    // Build set of friend's friends
+    const profileFriendIds = new Set<string>();
+    friendsFriendships.forEach(f => {
+      if (f.user_id === friend.id) {
+        profileFriendIds.add(f.friend_id);
+      } else if (f.friend_id === friend.id) {
+        profileFriendIds.add(f.user_id);
+      }
+    });
+
+    // Remove yourself from the set
+    profileFriendIds.delete(user.id);
+    
+    console.log(friend.displayName + ' is friends with:', Array.from(profileFriendIds));
+    console.log('You are friends with:', friends.map(f => f.id));
+
+    // Find mutual friends
+    const mutuals = friends.filter(f => 
+      f.id !== friend.id && // Not the profile being viewed
+      profileFriendIds.has(f.id) // Is in both friend lists
+    );
+    
+    console.log('Mutual friends:', mutuals);
+    setMutualFriends(mutuals);
+  } catch (error) {
+    console.error('Error:', error);
+  }
+};
 
   // Calculate mutual spots
   const mutualSpots = savedSpots.filter((mySpot) =>
@@ -278,11 +322,6 @@ export default function FriendProfileScreen() {
           0.001
     )
   );
-
-  // Calculate mutual friends (mock for now)
-  const mutualFriends = friends
-    .filter((f) => f.id !== id && f.status === "accepted")
-    .slice(0, 3); // Mock: showing first 3 as mutual
 
   // Calculate friend stats from loaded data
   const totalDistance = friendActivities.reduce(
@@ -430,14 +469,18 @@ export default function FriendProfileScreen() {
   };
 
   // Helper function to render avatars with profile picture support
-  const renderAvatar = (user: Friend, size: 'small' | 'large' = 'small') => {
-    const imageStyle = size === 'large' ? styles.profileAvatarImage : styles.smallAvatarImage;
-    const textStyle = size === 'large' ? styles.profileAvatarText : styles.smallAvatarText;
-    
+  const renderAvatar = (user: Friend, size: "small" | "large" = "small") => {
+    const imageStyle =
+      size === "large" ? styles.profileAvatarImage : styles.smallAvatarImage;
+    const textStyle =
+      size === "large" ? styles.profileAvatarText : styles.smallAvatarText;
+
     if (user.profile_picture) {
-      return <Image source={{ uri: user.profile_picture }} style={imageStyle} />;
+      return (
+        <Image source={{ uri: user.profile_picture }} style={imageStyle} />
+      );
     }
-    return <Text style={textStyle}>{user.avatar || '👤'}</Text>;
+    return <Text style={textStyle}>{user.avatar || "👤"}</Text>;
   };
 
   return (
@@ -467,7 +510,7 @@ export default function FriendProfileScreen() {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.profileAvatar}>
-            {renderAvatar(friend, 'large')}
+            {renderAvatar(friend, "large")}
             {isOnline && <View style={styles.onlineIndicator} />}
           </View>
 
@@ -602,7 +645,7 @@ export default function FriendProfileScreen() {
                       }
                     >
                       <View style={styles.mutualFriendAvatar}>
-                        {renderAvatar(mFriend, 'small')}
+                        {renderAvatar(mFriend, "small")}
                       </View>
                       <Text style={styles.mutualFriendName}>
                         {mFriend.displayName}
@@ -707,13 +750,20 @@ export default function FriendProfileScreen() {
                   )}
 
                   <View style={styles.friendSince}>
-                    <Ionicons name="calendar" size={20} color={theme.colors.gray} />
+                    <Ionicons
+                      name="calendar"
+                      size={20}
+                      color={theme.colors.gray}
+                    />
                     <Text style={styles.friendSinceText}>
                       Friends since{" "}
-                      {new Date(friend.friendsSince).toLocaleDateString("en-US", {
-                        month: "long",
-                        year: "numeric",
-                      })}
+                      {new Date(friend.friendsSince).toLocaleDateString(
+                        "en-US",
+                        {
+                          month: "long",
+                          year: "numeric",
+                        }
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -809,7 +859,9 @@ export default function FriendProfileScreen() {
                             size={20}
                             color={theme.colors.burntOrange}
                           />
-                          <Text style={styles.locationName}>{location.name}</Text>
+                          <Text style={styles.locationName}>
+                            {location.name}
+                          </Text>
                         </View>
                         {location.description && (
                           <Text style={styles.locationDescription}>
@@ -823,7 +875,8 @@ export default function FriendProfileScreen() {
                           {mutualSpots.some(
                             (spot) =>
                               Math.abs(
-                                spot.location.latitude - location.location.latitude
+                                spot.location.latitude -
+                                  location.location.latitude
                               ) < 0.001
                           ) && (
                             <View style={styles.mutualBadge}>
@@ -959,11 +1012,11 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   profileAvatarImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderRadius: 50,
   },
   profileAvatarText: {
@@ -1103,9 +1156,9 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     marginRight: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
   },
   mutualFriendName: {
     fontSize: 12,

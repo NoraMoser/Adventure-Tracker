@@ -17,8 +17,8 @@ export interface Friend {
   id: string;
   username: string;
   displayName: string;
-  avatar?: string;
   profile_picture?: string | null;
+  avatar?: string;
   friendsSince: Date;
   status: "pending" | "accepted" | "blocked";
   lastActive?: Date;
@@ -204,151 +204,166 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
   const refreshFriends = async () => {
     if (!user) return;
-    
+
     try {
       setLoading(true);
-      
+
       // 1. Load accepted friendships from friendships table
       const { data: friendships, error: friendshipsError } = await supabase
-        .from('friendships')
-        .select('*')
+        .from("friendships")
+        .select("*")
         .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
-        .eq('status', 'accepted');
-      
+        .eq("status", "accepted");
+
       if (friendshipsError) {
-        console.error('Error loading friendships:', friendshipsError);
+        console.error("Error loading friendships:", friendshipsError);
       }
-      
+
+      // Get friend profiles
       // Get friend profiles
       if (friendships && friendships.length > 0) {
-        const friendIds = friendships.map(f => 
-          f.user_id === user.id ? f.friend_id : f.user_id
-        );
-        
+        // Use a Set to ensure unique friend IDs
+        const friendIdsSet = new Set<string>();
+        friendships.forEach((f) => {
+          const friendId = f.user_id === user.id ? f.friend_id : f.user_id;
+          friendIdsSet.add(friendId);
+        });
+        const friendIds = Array.from(friendIdsSet);
+
         const { data: profiles } = await supabase
-          .from('profiles')
-          .select('*')
-          .in('id', friendIds);
-        
+          .from("profiles")
+          .select("*")
+          .in("id", friendIds);
+
         const profileMap: Record<string, any> = {};
-        profiles?.forEach(p => {
+        profiles?.forEach((p) => {
           profileMap[p.id] = p;
         });
-        
-        const processedFriends: Friend[] = friendships.map(f => {
+
+        // Use a Map to ensure unique friends by ID
+        const friendsMap = new Map<string, Friend>();
+        friendships.forEach((f) => {
           const friendId = f.user_id === user.id ? f.friend_id : f.user_id;
-          const profile = profileMap[friendId] || {};
-          
-          return {
-            id: friendId,
-            username: profile.username || '',
-            displayName: profile.display_name || profile.username || 'Unknown',
-            avatar: profile.avatar,
-            profile_picture: profile.profile_picture,
-            status: 'accepted' as const,
-            friendsSince: new Date(f.accepted_at || f.requested_at),
-            lastActive: profile.last_active ? new Date(profile.last_active) : undefined,
-          };
+
+          // Only add if not already in the map
+          if (!friendsMap.has(friendId)) {
+            const profile = profileMap[friendId] || {};
+            friendsMap.set(friendId, {
+              id: friendId,
+              username: profile.username || "",
+              displayName:
+                profile.display_name || profile.username || "Unknown",
+              avatar: profile.avatar,
+              profile_picture: profile.profile_picture,
+              status: "accepted" as const,
+              friendsSince: new Date(f.accepted_at || f.requested_at),
+              lastActive: profile.last_active
+                ? new Date(profile.last_active)
+                : undefined,
+            });
+          }
         });
-        
+        const processedFriends = Array.from(friendsMap.values());
+
         setFriends(processedFriends);
       } else {
         setFriends([]);
       }
-      
+
       // 2. Load incoming friend requests from friend_requests table
       const { data: incomingRequests, error: incomingError } = await supabase
-        .from('friend_requests')
-        .select('*')
-        .eq('to_user_id', user.id);
-      
+        .from("friend_requests")
+        .select("*")
+        .eq("to_user_id", user.id);
+
       if (incomingError) {
-        console.error('Error loading incoming requests:', incomingError);
+        console.error("Error loading incoming requests:", incomingError);
       }
-      
+
       // Get sender profiles
       if (incomingRequests && incomingRequests.length > 0) {
-        const senderIds = incomingRequests.map(r => r.from_user_id);
-        
+        const senderIds = incomingRequests.map((r) => r.from_user_id);
+
         const { data: profiles } = await supabase
-          .from('profiles')
-          .select('*')
-          .in('id', senderIds);
-        
+          .from("profiles")
+          .select("*")
+          .in("id", senderIds);
+
         const profileMap: Record<string, any> = {};
-        profiles?.forEach(p => {
+        profiles?.forEach((p) => {
           profileMap[p.id] = p;
         });
-        
-        const processedRequests: FriendRequest[] = incomingRequests.map(r => ({
-          id: r.id,
-          from_user_id: r.from_user_id,
-          to_user_id: r.to_user_id,
-          message: r.message,
-          sent_at: r.sent_at,
-          from_user: profileMap[r.from_user_id] || {
-            id: r.from_user_id,
-            username: 'Unknown',
-            displayName: 'Unknown User',
-          },
-          from: profileMap[r.from_user_id] || {
-            id: r.from_user_id,
-            username: 'Unknown',
-            displayName: 'Unknown User',
-          },
-          sentAt: new Date(r.sent_at),
-        }));
-        
+
+        const processedRequests: FriendRequest[] = incomingRequests.map(
+          (r) => ({
+            id: r.id,
+            from_user_id: r.from_user_id,
+            to_user_id: r.to_user_id,
+            message: r.message,
+            sent_at: r.sent_at,
+            from_user: profileMap[r.from_user_id] || {
+              id: r.from_user_id,
+              username: "Unknown",
+              displayName: "Unknown User",
+            },
+            from: profileMap[r.from_user_id] || {
+              id: r.from_user_id,
+              username: "Unknown",
+              displayName: "Unknown User",
+            },
+            sentAt: new Date(r.sent_at),
+          })
+        );
+
         setFriendRequests(processedRequests);
       } else {
         setFriendRequests([]);
       }
-      
+
       // 3. Load sent friend requests from friend_requests table
       const { data: sentRequests, error: sentError } = await supabase
-        .from('friend_requests')
-        .select('*')
-        .eq('from_user_id', user.id);
-      
+        .from("friend_requests")
+        .select("*")
+        .eq("from_user_id", user.id);
+
       if (sentError) {
-        console.error('Error loading sent requests:', sentError);
+        console.error("Error loading sent requests:", sentError);
       }
-      
+
       // Get receiver profiles
       if (sentRequests && sentRequests.length > 0) {
-        const receiverIds = sentRequests.map(r => r.to_user_id);
-        
+        const receiverIds = sentRequests.map((r) => r.to_user_id);
+
         const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, username')
-          .in('id', receiverIds);
-        
+          .from("profiles")
+          .select("id, username")
+          .in("id", receiverIds);
+
         const profileMap: Record<string, any> = {};
-        profiles?.forEach(p => {
+        profiles?.forEach((p) => {
           profileMap[p.id] = p;
         });
-        
-        const processedSent: FriendRequest[] = sentRequests.map(r => ({
+
+        const processedSent: FriendRequest[] = sentRequests.map((r) => ({
           id: r.id,
           from_user_id: r.from_user_id,
           to_user_id: r.to_user_id,
-          to: profileMap[r.to_user_id]?.username || 'Unknown',
+          to: profileMap[r.to_user_id]?.username || "Unknown",
           message: r.message,
           sent_at: r.sent_at,
           sentAt: new Date(r.sent_at),
         }));
-        
+
         setPendingRequests(processedSent);
       } else {
         setPendingRequests([]);
       }
-      
+
       // Load suggestions
       await loadSuggestions();
-      
     } catch (error) {
-      console.error('Error in refreshFriends:', error);
-      setError('Failed to load friends');
+      console.error("Error in refreshFriends:", error);
+      setError("Failed to load friends");
     } finally {
       setLoading(false);
     }
@@ -356,127 +371,123 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
   const acceptFriendRequest = async (requestId: string) => {
     if (!user) return;
-    
+
     try {
       // Find the request in our state
-      const request = friendRequests.find(r => r.id === requestId);
+      const request = friendRequests.find((r) => r.id === requestId);
       if (!request) {
-        Alert.alert('Error', 'Friend request not found');
+        Alert.alert("Error", "Friend request not found");
         return;
       }
-      
+
       // 1. Delete from friend_requests table
       const { error: deleteError } = await supabase
-        .from('friend_requests')
+        .from("friend_requests")
         .delete()
-        .eq('id', requestId);
-      
+        .eq("id", requestId);
+
       if (deleteError) {
-        console.error('Error deleting friend request:', deleteError);
-        Alert.alert('Error', 'Failed to accept friend request');
+        console.error("Error deleting friend request:", deleteError);
+        Alert.alert("Error", "Failed to accept friend request");
         return;
       }
-      
+
       // 2. Insert into friendships table
-      const { error: insertError } = await supabase
-        .from('friendships')
-        .insert({
-          user_id: request.from_user_id,
-          friend_id: user.id,
-          status: 'accepted',
-          requested_at: request.sent_at,
-          accepted_at: new Date().toISOString(),
-        });
-      
+      const { error: insertError } = await supabase.from("friendships").insert({
+        user_id: request.from_user_id,
+        friend_id: user.id,
+        status: "accepted",
+        requested_at: request.sent_at,
+        accepted_at: new Date().toISOString(),
+      });
+
       if (insertError) {
-        console.error('Error creating friendship:', insertError);
-        Alert.alert('Error', 'Failed to create friendship');
+        console.error("Error creating friendship:", insertError);
+        Alert.alert("Error", "Failed to create friendship");
         return;
       }
-      
+
       // 3. Update local state immediately
-      setFriendRequests(prev => prev.filter(r => r.id !== requestId));
-      
+      setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
+
       // 4. Add to friends list
       if (request.from_user) {
         const newFriend: Friend = {
           id: request.from_user_id,
-          username: request.from_user.username || '',
-          displayName: request.from_user.displayName || request.from_user.username || '',
+          username: request.from_user.username || "",
+          displayName:
+            request.from_user.displayName || request.from_user.username || "",
           avatar: request.from_user.avatar,
           profile_picture: request.from_user.profile_picture,
-          status: 'accepted',
+          status: "accepted",
           friendsSince: new Date(),
           lastActive: undefined,
         };
-        
-        setFriends(prev => [...prev, newFriend]);
+
+        setFriends((prev) => [...prev, newFriend]);
       }
-      
-      Alert.alert('Success', 'Friend request accepted!');
-      
+
+      Alert.alert("Success", "Friend request accepted!");
+
       // Refresh to sync everything
       setTimeout(() => {
         refreshFriends();
       }, 1000);
-      
     } catch (error) {
-      console.error('Error accepting friend request:', error);
-      Alert.alert('Error', 'Failed to accept friend request');
+      console.error("Error accepting friend request:", error);
+      Alert.alert("Error", "Failed to accept friend request");
     }
   };
 
   const declineFriendRequest = async (requestId: string) => {
     if (!user) return;
-    
+
     try {
       // Delete from friend_requests table
       const { error } = await supabase
-        .from('friend_requests')
+        .from("friend_requests")
         .delete()
-        .eq('id', requestId);
-      
+        .eq("id", requestId);
+
       if (error) {
-        console.error('Error declining friend request:', error);
-        Alert.alert('Error', 'Failed to decline friend request');
+        console.error("Error declining friend request:", error);
+        Alert.alert("Error", "Failed to decline friend request");
         return;
       }
-      
+
       // Update local state
-      setFriendRequests(prev => prev.filter(r => r.id !== requestId));
-      
-      Alert.alert('Success', 'Friend request declined');
-      
+      setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
+
+      Alert.alert("Success", "Friend request declined");
     } catch (error) {
-      console.error('Error declining friend request:', error);
-      Alert.alert('Error', 'Failed to decline friend request');
+      console.error("Error declining friend request:", error);
+      Alert.alert("Error", "Failed to decline friend request");
     }
   };
 
   const cancelFriendRequest = async (requestId: string) => {
     if (!user) return;
-    
+
     try {
       // Delete from friend_requests table
       const { error } = await supabase
-        .from('friend_requests')
+        .from("friend_requests")
         .delete()
-        .eq('id', requestId);
-      
+        .eq("id", requestId);
+
       if (error) {
-        console.error('Error canceling friend request:', error);
-        Alert.alert('Error', 'Failed to cancel friend request');
+        console.error("Error canceling friend request:", error);
+        Alert.alert("Error", "Failed to cancel friend request");
         return;
       }
-      
+
       // Update local state
-      setPendingRequests(prev => prev.filter(r => r.id !== requestId));
-      
-      Alert.alert('Success', 'Friend request canceled');
-      
+      setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+
+      Alert.alert("Success", "Friend request canceled");
     } catch (error) {
-      console.error('Error canceling friend request:', error);
-      Alert.alert('Error', 'Failed to cancel friend request');
+      console.error("Error canceling friend request:", error);
+      Alert.alert("Error", "Failed to cancel friend request");
     }
   };
 
@@ -543,9 +554,11 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
       Alert.alert(
         "Success",
-        `Friend request sent to ${targetUser.display_name || targetUser.username}`
+        `Friend request sent to ${
+          targetUser.display_name || targetUser.username
+        }`
       );
-      
+
       await refreshFriends();
     } catch (err: any) {
       console.error("Error sending friend request:", err);
@@ -566,10 +579,10 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         );
 
       if (error) throw error;
-      
+
       // Update local state
-      setFriends(prev => prev.filter(f => f.id !== friendId));
-      
+      setFriends((prev) => prev.filter((f) => f.id !== friendId));
+
       Alert.alert("Success", "Friend removed");
     } catch (err) {
       Alert.alert("Error", "Failed to remove friend");
@@ -578,7 +591,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
   const blockUser = async (userId: string) => {
     if (!user) return;
-    
+
     try {
       // Update status in friendships table
       const { error } = await supabase
@@ -589,7 +602,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         );
 
       if (error) throw error;
-      
+
       await refreshFriends();
       Alert.alert("Success", "User blocked");
     } catch (err) {
@@ -599,7 +612,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
   const unblockUser = async (userId: string) => {
     if (!user) return;
-    
+
     try {
       // Update status in friendships table
       const { error } = await supabase
@@ -610,7 +623,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         );
 
       if (error) throw error;
-      
+
       await refreshFriends();
       Alert.alert("Success", "User unblocked");
     } catch (err) {
@@ -710,16 +723,16 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
       // Get user profiles
       const allUserIds = new Set<string>();
-      activities?.forEach(a => allUserIds.add(a.user_id));
-      locations?.forEach(l => allUserIds.add(l.user_id));
-      
+      activities?.forEach((a) => allUserIds.add(a.user_id));
+      locations?.forEach((l) => allUserIds.add(l.user_id));
+
       const { data: profiles } = await supabase
         .from("profiles")
         .select("*")
         .in("id", Array.from(allUserIds));
-      
+
       const profileMap: Record<string, any> = {};
-      profiles?.forEach(p => {
+      profiles?.forEach((p) => {
         profileMap[p.id] = p;
       });
 
@@ -742,8 +755,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           route: activity.route || [],
           sharedBy: {
             id: activity.user_id,
-            username: profileMap[activity.user_id]?.username || '',
-            displayName: profileMap[activity.user_id]?.display_name || 'Unknown',
+            username: profileMap[activity.user_id]?.username || "",
+            displayName:
+              profileMap[activity.user_id]?.display_name || "Unknown",
             avatar: profileMap[activity.user_id]?.avatar,
             profile_picture: profileMap[activity.user_id]?.profile_picture,
             friendsSince: new Date(),
@@ -771,8 +785,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           category: location.category,
           sharedBy: {
             id: location.user_id,
-            username: profileMap[location.user_id]?.username || '',
-            displayName: profileMap[location.user_id]?.display_name || 'Unknown',
+            username: profileMap[location.user_id]?.username || "",
+            displayName:
+              profileMap[location.user_id]?.display_name || "Unknown",
             avatar: profileMap[location.user_id]?.avatar,
             profile_picture: profileMap[location.user_id]?.profile_picture,
             friendsSince: new Date(),
