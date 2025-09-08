@@ -13,6 +13,7 @@ import { LocationProvider } from "../contexts/LocationContext";
 import { SettingsProvider } from "../contexts/SettingsContext";
 import { WishlistProvider } from "../contexts/WishlistContext";
 import { supabase } from "../lib/supabase";
+import { UpdateChecker } from "../services/updateService";
 
 // Conditionally import notifications
 let Notifications: any = null;
@@ -163,126 +164,136 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <NotificationHandler>
-        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-          <SettingsProvider>
-            <LocationProvider>
-              <ActivityProvider>
-                <WishlistProvider>
-                  <FriendsProvider>
-                    <SafeAreaProvider>
-                      <StatusBar style="light" />
-                      <Stack
-                        screenOptions={{
-                          headerStyle: {
-                            backgroundColor: theme.colors.forest,
-                          },
-                          headerTintColor: "#fff",
-                          headerTitleStyle: {
-                            fontWeight: "bold",
-                          },
-                          contentStyle: {
-                            backgroundColor: theme.colors.offWhite,
-                          },
-                        }}
-                      >
-                        {/* All your screens here */}
-                        <Stack.Screen
-                          name="index"
-                          options={{ title: "Home", headerShown: false }}
-                        />
-                        <Stack.Screen
-                          name="splash"
-                          options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                          name="onboarding"
-                          options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                          name="save-location"
-                          options={{
-                            title: "Save Location",
-                            presentation: "modal",
-                            headerLeft: () => null,
+    <UpdateChecker>
+      <AuthProvider>
+        <NotificationHandler>
+          <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+            <SettingsProvider>
+              <LocationProvider>
+                <ActivityProvider>
+                  <WishlistProvider>
+                    <FriendsProvider>
+                      <SafeAreaProvider>
+                        <StatusBar style="light" />
+                        <Stack
+                          screenOptions={{
+                            headerStyle: {
+                              backgroundColor: theme.colors.forest,
+                            },
+                            headerTintColor: "#fff",
+                            headerTitleStyle: {
+                              fontWeight: "bold",
+                            },
+                            contentStyle: {
+                              backgroundColor: theme.colors.offWhite,
+                            },
                           }}
-                        />
-                        <Stack.Screen
-                          name="saved-spots"
-                          options={{ title: "Saved Spots" }}
-                        />
-                        <Stack.Screen
-                          name="edit-location"
-                          options={{ title: "Edit Location" }}
-                        />
-                        <Stack.Screen
-                          name="add-location"
-                          options={{
-                            title: "Add Location",
-                            presentation: "modal",
-                          }}
-                        />
-                        <Stack.Screen
-                          name="track-activity"
-                          options={{ title: "Track Activity" }}
-                        />
-                        <Stack.Screen
-                          name="past-activities"
-                          options={{ title: "Past Activities" }}
-                        />
-                        <Stack.Screen
-                          name="add-activity"
-                          options={{
-                            title: "Add Activity",
-                            presentation: "modal",
-                          }}
-                        />
-                        <Stack.Screen
-                          name="statistics"
-                          options={{ title: "Statistics" }}
-                        />
-                        <Stack.Screen
-                          name="wishlist"
-                          options={{ title: "Wishlist" }}
-                        />
-                        <Stack.Screen
-                          name="settings"
-                          options={{ title: "Settings" }}
-                        />
-                        <Stack.Screen
-                          name="friends-feed"
-                          options={{ title: "Friends Feed" }}
-                        />
-                        <Stack.Screen
-                          name="friends"
-                          options={{ title: "Friends" }}
-                        />
-                        <Stack.Screen
-                          name="friend-requests"
-                          options={{ title: "Friend Requests" }}
-                        />
-                        <Stack.Screen
-                          name="friend-profile/[id]"
-                          options={{ title: "Friend Profile" }}
-                        />
-                        <Stack.Screen
-                          name="notifications"
-                          options={{ title: "Notifications" }}
-                        />
-                        <Stack.Screen
-                          name="notification-settings"
-                          options={{ title: "Notification Settings" }}
-                        />
-                      </Stack>
-                    </SafeAreaProvider>
-                  </FriendsProvider>
-                </WishlistProvider>
-              </ActivityProvider>
-            </LocationProvider>
-          </SettingsProvider>
-        </View>
-      </NotificationHandler>
-    </AuthProvider>
+                        >
+                          {/* All your screens here */}
+                          <Stack.Screen
+                            name="index"
+                            options={{ title: "Home", headerShown: false }}
+                          />
+                          <Stack.Screen
+                            name="splash"
+                            options={{ headerShown: false }}
+                          />
+                          <Stack.Screen
+                            name="onboarding"
+                            options={{ headerShown: false }}
+                          />
+                          <Stack.Screen
+                            name="save-location"
+                            options={{
+                              title: "Save Location",
+                              presentation: "modal",
+                              headerLeft: () => null,
+                            }}
+                          />
+                          <Stack.Screen
+                            name="saved-spots"
+                            options={{ title: "Saved Spots" }}
+                          />
+                          <Stack.Screen
+                            name="edit-location"
+                            options={{ title: "Edit Location" }}
+                          />
+                          <Stack.Screen
+                            name="add-location"
+                            options={{
+                              title: "Add Location",
+                              presentation: "modal",
+                            }}
+                          />
+                          <Stack.Screen
+                            name="track-activity"
+                            options={{ title: "Track Activity" }}
+                          />
+                          <Stack.Screen
+                            name="past-activities"
+                            options={{ title: "Past Activities" }}
+                          />
+                          <Stack.Screen
+                            name="add-activity"
+                            options={{
+                              title: "Add Activity",
+                              presentation: "modal",
+                            }}
+                          />
+                          <Stack.Screen
+                            name="statistics"
+                            options={{ title: "Statistics" }}
+                          />
+                          <Stack.Screen
+                            name="wishlist"
+                            options={{ title: "Wishlist" }}
+                          />
+                          <Stack.Screen
+                            name="settings"
+                            options={{ title: "Settings" }}
+                          />
+                          <Stack.Screen
+                            name="friends-feed"
+                            options={{ title: "Friends Feed" }}
+                          />
+                          <Stack.Screen
+                            name="friends"
+                            options={{ title: "Friends" }}
+                          />
+                          <Stack.Screen
+                            name="friend-requests"
+                            options={{ title: "Friend Requests" }}
+                          />
+                          <Stack.Screen
+                            name="friend-profile/[id]"
+                            options={{ title: "Friend Profile" }}
+                          />
+                          <Stack.Screen
+                            name="notifications"
+                            options={{ title: "Notifications" }}
+                          />
+                          <Stack.Screen
+                            name="notification-settings"
+                            options={{ title: "Notification Settings" }}
+                          />
+                          <Stack.Screen
+                            name="activity/[id]"
+                            options={{ title: "Activity Details" }}
+                          />
+                          <Stack.Screen
+                            name="location/[id]"
+                            options={{ title: "Location Details" }}
+                          />
+                        </Stack>
+                      </SafeAreaProvider>
+                    </FriendsProvider>
+                  </WishlistProvider>
+                </ActivityProvider>
+              </LocationProvider>
+            </SettingsProvider>
+          </View>
+        </NotificationHandler>
+      </AuthProvider>
+    </UpdateChecker>
   );
 }

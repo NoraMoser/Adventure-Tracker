@@ -989,7 +989,6 @@ export default function DashboardScreen() {
       badge: friendRequests.length,
     },
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
-    { icon: "add-circle", label: "Add New", route: "/save-location" },
     { divider: true },
     { icon: "stats-chart", label: "Statistics", route: "/statistics" },
     {

@@ -4,19 +4,19 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    FlatList,
-    Modal,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  Animated,
+  Dimensions,
+  FlatList,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { TouchableImage } from "../components/TouchableImage";
@@ -356,7 +356,9 @@ const AnimatedListItem = ({
                   {item.name}
                 </Text>
                 <View style={styles.categoryBadge}>
-                  <Text style={[styles.cardCategory, { color: category.color }]}>
+                  <Text
+                    style={[styles.cardCategory, { color: category.color }]}
+                  >
                     {category.label}
                   </Text>
                 </View>
@@ -425,9 +427,9 @@ export default function SavedSpotsScreen() {
   const { getMapTileUrl } = useSettings();
 
   const [searchQuery, setSearchQuery] = useState("");
-const [selectedCategories, setSelectedCategories] = useState<Set<CategoryType>>(
-  new Set(Object.keys(categories) as CategoryType[])
-);
+  const [selectedCategories, setSelectedCategories] = useState<
+    Set<CategoryType>
+  >(new Set(Object.keys(categories) as CategoryType[]));
   const [sortBy, setSortBy] = useState<"date" | "name" | "rating">("date");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -637,7 +639,7 @@ const [selectedCategories, setSelectedCategories] = useState<Set<CategoryType>>(
     </html>
   `;
   };
-  
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -804,10 +806,25 @@ const [selectedCategories, setSelectedCategories] = useState<Set<CategoryType>>(
         onNavigate={handleNavigateToSpot}
       />
 
-      {/* FAB */}
+      {/* FAB with options */}
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push("/add-location")}
+        onPress={() => {
+          Alert.alert("Add Location", "How would you like to add a location?", [
+            {
+              text: "Current Location",
+              onPress: () => router.push("/save-location"),
+            },
+            {
+              text: "Choose on Map",
+              onPress: () => router.push("/add-location"),
+            },
+            {
+              text: "Cancel",
+              style: "cancel",
+            },
+          ]);
+        }}
         activeOpacity={0.8}
       >
         <Ionicons name="add" size={28} color={theme.colors.white} />
