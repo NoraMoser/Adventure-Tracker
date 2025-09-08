@@ -8,6 +8,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   Share,
@@ -504,13 +505,26 @@ export default function FriendsScreen() {
     }
   };
 
-  const handleShareUsername = () => {
-    if (!profile) return;
+  const handleInviteFriends = () => {
+    const inviteMessage = `Hey! I've been using explorAble to track my outdoor adventures and save cool spots. Join me on the app!`;
 
-    Share.share({
-      message: `Join me on explorAble! Add me as a friend: @${profile.username}`,
-      title: "Add me on explorAble",
-    });
+    const androidLink =
+      "https://play.google.com/store/apps/details?id=com.moser.explorable";
+
+    if (Platform.OS === "android") {
+      // Android: Include link in the message
+      Share.share({
+        message: `${inviteMessage}\n\n${androidLink}`,
+        title: "Join me on ExplorAble!",
+      });
+    } else {
+      // iOS: Use url parameter when you have an iOS link
+      Share.share({
+        message: inviteMessage,
+        // url: iosLink, // Add this when you have an iOS link
+        title: "Join me on ExplorAble!",
+      });
+    }
   };
 
   const renderFriendsTab = () => (
@@ -720,18 +734,21 @@ export default function FriendsScreen() {
         </View>
       )}
 
-      {/* Share Section */}
+      {/* Invite Section */}
       <View style={styles.shareSection}>
-        <Ionicons name="share-social" size={40} color={theme.colors.forest} />
-        <Text style={styles.shareTitle}>Invite Friends</Text>
+        <Ionicons name="gift" size={40} color={theme.colors.forest} />
+        <Text style={styles.shareTitle}>Invite Friends to explorAble</Text>
         <Text style={styles.shareText}>
-          Share your username with friends to connect on ExplorAble
+          Share the app with friends and start exploring together!
         </Text>
         <TouchableOpacity
           style={styles.shareButton}
-          onPress={handleShareUsername}
+          onPress={handleInviteFriends}
         >
-          <Text style={styles.shareButtonText}>Share @{profile?.username}</Text>
+          <Ionicons name="send" size={18} color="white" />
+          <Text style={[styles.shareButtonText, { marginLeft: 8 }]}>
+            Send Invite
+          </Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -1316,6 +1333,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 25,
     paddingVertical: 12,
     borderRadius: 8,
+    flexDirection: "row", // ADD THIS
+    alignItems: "center",
   },
   shareButtonText: {
     color: "white",
