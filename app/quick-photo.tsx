@@ -1,7 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import * as MediaLibrary from "expo-media-library";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -13,21 +14,23 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { categories, CategoryType } from '../constants/categories';
-import { theme } from '../constants/theme';
-import { useLocation as useLocationContext } from '../contexts/LocationContext';
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { categories, CategoryType } from "../constants/categories";
+import { theme } from "../constants/theme";
+import { useLocation as useLocationContext } from "../contexts/LocationContext";
 
 export default function QuickPhotoScreen() {
   const router = useRouter();
   const { saveCurrentLocation, getLocation, location } = useLocationContext();
   const [photos, setPhotos] = useState<string[]>([]);
-  const [caption, setCaption] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('other');
+  const [caption, setCaption] = useState("");
+  const [selectedCategory, setSelectedCategory] =
+    useState<CategoryType>("other");
   const [saving, setSaving] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
+  const [title, setTitle] = useState("");
 
   useEffect(() => {
     // Get current location when screen opens
@@ -38,14 +41,20 @@ export default function QuickPhotoScreen() {
 
   const takePhoto = async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Camera permission is required');
+      // Request camera permission
+      const { status: cameraStatus } =
+        await ImagePicker.requestCameraPermissionsAsync();
+      if (cameraStatus !== "granted") {
+        Alert.alert("Permission Denied", "Camera permission is required");
         if (photos.length === 0) {
           router.back();
         }
         return;
       }
+
+      // Request media library permission to save to gallery
+      const { status: mediaStatus } =
+        await MediaLibrary.requestPermissionsAsync();
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -54,14 +63,33 @@ export default function QuickPhotoScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setPhotos(prev => [...prev, result.assets[0].uri]);
+        setPhotos((prev) => [...prev, result.assets[0].uri]);
+
+        // Save to device gallery if permission granted
+        if (mediaStatus === "granted") {
+          try {
+            // Save the photo to the device's photo library
+            const asset = await MediaLibrary.createAssetAsync(
+              result.assets[0].uri
+            );
+
+            // Optionally create an explorAble album
+            const album = await MediaLibrary.getAlbumAsync("explorAble");
+            if (album == null) {
+              await MediaLibrary.createAlbumAsync("explorAble", asset, false);
+            } else {
+              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+            }
+          } catch (error) {
+            console.log("Photo saved to app but not to gallery:", error);
+          }
+        }
       } else if (photos.length === 0) {
-        // If user cancels camera and has no photos, go back
         router.back();
       }
     } catch (error) {
-      console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo');
+      console.error("Error taking photo:", error);
+      Alert.alert("Error", "Failed to take photo");
       if (photos.length === 0) {
         router.back();
       }
@@ -69,17 +97,20 @@ export default function QuickPhotoScreen() {
   };
 
   const removePhoto = (index: number) => {
-    setPhotos(prev => prev.filter((_, i) => i !== index));
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   const saveQuickLog = async () => {
     if (photos.length === 0) {
-      Alert.alert('Error', 'Please take at least one photo');
+      Alert.alert("Error", "Please take at least one photo");
       return;
     }
 
     if (!location) {
-      Alert.alert('Error', 'Location not available. Please enable location services.');
+      Alert.alert(
+        "Error",
+        "Location not available. Please enable location services."
+      );
       return;
     }
 
@@ -87,60 +118,69 @@ export default function QuickPhotoScreen() {
     try {
       // Save using current location from context
       await saveCurrentLocation(
-        caption || `Quick log ${new Date().toLocaleDateString()}`,
-        caption, // description
-        photos, // photos array
-        selectedCategory // selected category
+        title || caption || `Quick log ${new Date().toLocaleDateString()}`, // Use title first if available
+        caption, // description stays as caption
+        photos,
+        selectedCategory
       );
-      
+
       Alert.alert(
-        'Saved!',
-        'Your moment has been logged. You can add more details later.',
+        "Saved!",
+        "Your moment has been logged. You can add more details later.",
         [
           {
-            text: 'Take Another',
+            text: "Take Another",
             onPress: () => {
               setPhotos([]);
-              setCaption('');
-              setSelectedCategory('other');
+              setCaption("");
+              setSelectedCategory("other");
               takePhoto();
             },
           },
           {
-            text: 'Done',
+            text: "Done",
             onPress: () => router.back(),
           },
         ]
       );
     } catch (error) {
-      console.error('Error saving quick log:', error);
-      Alert.alert('Error', 'Failed to save. Please try again.');
+      console.error("Error saving quick log:", error);
+      Alert.alert("Error", "Failed to save. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const CategorySelector = () => {
-    const categoryList = Object.entries(categories).filter(([key]) => key !== 'all');
-    
+    const categoryList = Object.entries(categories).filter(
+      ([key]) => key !== "all"
+    );
+
     return (
       <View style={styles.categoryContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.categoryButton}
           onPress={() => setShowCategories(!showCategories)}
         >
-          <View style={[styles.categoryIcon, { backgroundColor: categories[selectedCategory].color + '20' }]}>
-            <Ionicons 
-              name={categories[selectedCategory].icon as any} 
-              size={20} 
-              color={categories[selectedCategory].color} 
+          <View
+            style={[
+              styles.categoryIcon,
+              { backgroundColor: categories[selectedCategory].color + "20" },
+            ]}
+          >
+            <Ionicons
+              name={categories[selectedCategory].icon as any}
+              size={20}
+              color={categories[selectedCategory].color}
             />
           </View>
-          <Text style={styles.categoryButtonText}>{categories[selectedCategory].label}</Text>
-          <Ionicons 
-            name={showCategories ? "chevron-up" : "chevron-down"} 
-            size={20} 
-            color={theme.colors.gray} 
+          <Text style={styles.categoryButtonText}>
+            {categories[selectedCategory].label}
+          </Text>
+          <Ionicons
+            name={showCategories ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={theme.colors.gray}
           />
         </TouchableOpacity>
 
@@ -151,24 +191,32 @@ export default function QuickPhotoScreen() {
                 key={key}
                 style={[
                   styles.categoryOption,
-                  selectedCategory === key && styles.categoryOptionSelected
+                  selectedCategory === key && styles.categoryOptionSelected,
                 ]}
                 onPress={() => {
                   setSelectedCategory(key as CategoryType);
                   setShowCategories(false);
                 }}
               >
-                <View style={[styles.categoryOptionIcon, { backgroundColor: category.color + '20' }]}>
-                  <Ionicons 
-                    name={category.icon as any} 
-                    size={16} 
-                    color={category.color} 
+                <View
+                  style={[
+                    styles.categoryOptionIcon,
+                    { backgroundColor: category.color + "20" },
+                  ]}
+                >
+                  <Ionicons
+                    name={category.icon as any}
+                    size={16}
+                    color={category.color}
                   />
                 </View>
-                <Text style={[
-                  styles.categoryOptionText,
-                  selectedCategory === key && styles.categoryOptionTextSelected
-                ]}>
+                <Text
+                  style={[
+                    styles.categoryOptionText,
+                    selectedCategory === key &&
+                      styles.categoryOptionTextSelected,
+                  ]}
+                >
                   {category.label}
                 </Text>
               </TouchableOpacity>
@@ -181,34 +229,36 @@ export default function QuickPhotoScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="close" size={28} color={theme.colors.navy} />
           </TouchableOpacity>
           <Text style={styles.title}>Quick Log</Text>
-          <TouchableOpacity 
-            onPress={saveQuickLog} 
+          <TouchableOpacity
+            onPress={saveQuickLog}
             disabled={saving || photos.length === 0}
           >
             {saving ? (
               <ActivityIndicator color={theme.colors.forest} />
             ) : (
-              <Text style={[
-                styles.saveButton,
-                (photos.length === 0) && styles.saveButtonDisabled
-              ]}>
+              <Text
+                style={[
+                  styles.saveButton,
+                  photos.length === 0 && styles.saveButtonDisabled,
+                ]}
+              >
                 Save
               </Text>
             )}
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
+        <ScrollView
           style={styles.content}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -218,8 +268,8 @@ export default function QuickPhotoScreen() {
             <>
               {/* Photo Gallery */}
               <View style={styles.photoSection}>
-                <ScrollView 
-                  horizontal 
+                <ScrollView
+                  horizontal
                   showsHorizontalScrollIndicator={false}
                   style={styles.photoScroll}
                 >
@@ -234,17 +284,34 @@ export default function QuickPhotoScreen() {
                       </TouchableOpacity>
                     </View>
                   ))}
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.addPhotoButton}
                     onPress={takePhoto}
                   >
-                    <Ionicons name="add-circle-outline" size={40} color={theme.colors.forest} />
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={40}
+                      color={theme.colors.forest}
+                    />
                     <Text style={styles.addPhotoText}>Add Photo</Text>
                   </TouchableOpacity>
                 </ScrollView>
                 <Text style={styles.photoCount}>
-                  {photos.length} photo{photos.length !== 1 ? 's' : ''}
+                  {photos.length} photo{photos.length !== 1 ? "s" : ""}
                 </Text>
+              </View>
+              {/* Title Input */}
+              <View style={styles.titleContainer}>
+                <Text style={styles.label}>Title (optional)</Text>
+                <TextInput
+                  style={styles.titleInput}
+                  placeholder="Give this moment a name"
+                  placeholderTextColor={theme.colors.lightGray}
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={50}
+                  returnKeyType="done"
+                />
               </View>
 
               {/* Caption Input */}
@@ -260,9 +327,7 @@ export default function QuickPhotoScreen() {
                   maxLength={200}
                   returnKeyType="done"
                 />
-                <Text style={styles.charCount}>
-                  {caption.length}/200
-                </Text>
+                <Text style={styles.charCount}>{caption.length}/200</Text>
               </View>
 
               {/* Category Selector */}
@@ -271,16 +336,19 @@ export default function QuickPhotoScreen() {
               {/* Location Indicator */}
               {location && (
                 <View style={styles.locationInfo}>
-                  <Ionicons name="location" size={16} color={theme.colors.forest} />
-                  <Text style={styles.locationText}>
-                    Location captured
-                  </Text>
+                  <Ionicons
+                    name="location"
+                    size={16}
+                    color={theme.colors.forest}
+                  />
+                  <Text style={styles.locationText}>Location captured</Text>
                 </View>
               )}
 
               <View style={styles.footer}>
                 <Text style={styles.footerText}>
-                  Quick capture mode - add more details later from your saved spots!
+                  Quick capture mode - add more details later from your saved
+                  spots!
                 </Text>
               </View>
             </>
@@ -302,22 +370,22 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   title: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   saveButton: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.forest,
   },
   saveButtonDisabled: {
@@ -338,7 +406,7 @@ const styles = StyleSheet.create({
   },
   photoWrapper: {
     marginRight: 12,
-    position: 'relative',
+    position: "relative",
   },
   photo: {
     width: 200,
@@ -346,10 +414,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   removePhotoButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: "rgba(0,0,0,0.5)",
     borderRadius: 12,
   },
   addPhotoButton: {
@@ -358,33 +426,33 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'white',
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "white",
   },
   addPhotoText: {
     marginTop: 8,
     fontSize: 14,
     color: theme.colors.forest,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   photoCount: {
     fontSize: 12,
     color: theme.colors.gray,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 8,
   },
   captionContainer: {
     marginHorizontal: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.gray,
     marginBottom: 8,
   },
@@ -392,12 +460,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.navy,
     minHeight: 60,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   charCount: {
     fontSize: 12,
     color: theme.colors.lightGray,
-    textAlign: 'right',
+    textAlign: "right",
     marginTop: 4,
   },
   categoryContainer: {
@@ -405,9 +473,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   categoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
     padding: 16,
     borderRadius: 12,
   },
@@ -415,25 +483,25 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   categoryButtonText: {
     flex: 1,
     fontSize: 16,
     color: theme.colors.navy,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   categoryGrid: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     marginTop: 8,
     borderRadius: 12,
     padding: 8,
   },
   categoryOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
     borderRadius: 8,
   },
@@ -444,8 +512,8 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   categoryOptionText: {
@@ -453,15 +521,15 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
   },
   categoryOptionTextSelected: {
-    fontWeight: '600',
+    fontWeight: "600",
   },
   locationInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 12,
-    backgroundColor: theme.colors.forest + '10',
+    backgroundColor: theme.colors.forest + "10",
     borderRadius: 8,
   },
   locationText: {
@@ -471,8 +539,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 12,
@@ -482,12 +550,25 @@ const styles = StyleSheet.create({
   footer: {
     padding: 16,
     marginHorizontal: 16,
-    backgroundColor: theme.colors.lightGray + '10',
+    backgroundColor: theme.colors.lightGray + "10",
     borderRadius: 8,
   },
   footerText: {
     fontSize: 14,
     color: theme.colors.gray,
-    textAlign: 'center',
+    textAlign: "center",
+  },
+  titleContainer: {
+    marginHorizontal: 16,
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  titleInput: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    paddingVertical: 8,
   },
 });
