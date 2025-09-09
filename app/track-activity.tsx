@@ -656,6 +656,19 @@ export default function TrackActivityScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      <View style={styles.disclaimerContainer}>
+        <Ionicons
+          name="information-circle-outline"
+          size={20}
+          color={theme.colors.gray}
+        />
+        <Text style={styles.disclaimerText}>
+          This tracker provides general location and distance estimates for your
+          outdoor activities. GPS accuracy can vary based on weather, terrain,
+          and device conditions. For precision tracking needs, consider using
+          dedicated GPS devices.
+        </Text>
+      </View>
 
       <TouchableOpacity
         style={styles.startButton}
@@ -1166,5 +1179,23 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  disclaimerContainer: {
+    flexDirection: "row",
+    backgroundColor: theme.colors.lightGray + "20",
+    margin: 20,
+    marginTop: 10,
+    marginBottom: 10,
+    padding: 15,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.gray,
+  },
+  disclaimerText: {
+    flex: 1,
+    fontSize: 12,
+    color: theme.colors.gray,
+    lineHeight: 18,
+    marginLeft: 10,
   },
 });

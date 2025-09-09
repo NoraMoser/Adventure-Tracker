@@ -159,6 +159,7 @@ export default function DashboardScreen() {
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   // Force re-render when auth state changes
   const [authVersion, setAuthVersion] = useState(0);
@@ -1083,6 +1084,7 @@ export default function DashboardScreen() {
       <ScrollView
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
       >
         {/* Stats Section */}
         <View style={styles.statsSection}>
@@ -1263,18 +1265,22 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.mapContainer}>
+          <View
+            style={styles.mapContainer}
+            onTouchStart={() => setScrollEnabled(false)}
+            onTouchEnd={() => setScrollEnabled(true)}
+          >
             <WebView
               ref={webViewRef}
               style={styles.map}
               source={{ html: generateMapHTML() }}
               javaScriptEnabled={true}
               domStorageEnabled={true}
-              scrollEnabled={false}
+              scrollEnabled={true}
               scalesPageToFit={false}
             />
 
-            <View style={styles.mapLegend}>
+            <View style={styles.mapLegend} pointerEvents="none">
               <View style={styles.legendItem}>
                 <View
                   style={[
