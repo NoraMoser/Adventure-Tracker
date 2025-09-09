@@ -1,36 +1,38 @@
 // add-activity.tsx - Updated with Route Drawing on Map
-import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import React, { useRef, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { WebView } from 'react-native-webview';
-import { theme } from '../constants/theme';
-import { ActivityType, useActivity } from '../contexts/ActivityContext';
-import { useLocation } from '../contexts/LocationContext';
-import { useSettings } from '../contexts/SettingsContext';
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { WebView } from "react-native-webview";
+import { theme } from "../constants/theme";
+import { ActivityType, useActivity } from "../contexts/ActivityContext";
+import { useLocation } from "../contexts/LocationContext";
+import { useSettings } from "../contexts/SettingsContext";
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
 const activityTypes: { type: ActivityType; label: string; icon: string }[] = [
-  { type: 'bike', label: 'Bike', icon: 'bicycle' },
-  { type: 'run', label: 'Run', icon: 'walk' },
-  { type: 'walk', label: 'Walk', icon: 'footsteps' },
-  { type: 'hike', label: 'Hike', icon: 'trail-sign' },
-  { type: 'paddleboard', label: 'Paddle', icon: 'boat' },
-  { type: 'climb', label: 'Climb', icon: 'trending-up' },
-  { type: 'other', label: 'Other', icon: 'fitness' },
+  { type: "bike", label: "Bike", icon: "bicycle" },
+  { type: "run", label: "Run", icon: "walk" },
+  { type: "walk", label: "Walk", icon: "footsteps" },
+  { type: "hike", label: "Hike", icon: "trail-sign" },
+  { type: "paddleboard", label: "Paddle", icon: "boat" },
+  { type: "climb", label: "Climb", icon: "trending-up" },
+  { type: "other", label: "Other", icon: "fitness" },
 ];
 
 export default function AddActivityScreen() {
@@ -42,35 +44,36 @@ export default function AddActivityScreen() {
 
   // Use default activity type from settings
   const [activityType, setActivityType] = useState<ActivityType>(
-    settings.defaultActivityType || 'bike'
+    settings.defaultActivityType || "bike"
   );
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [duration, setDuration] = useState({ hours: '0', minutes: '0' });
-  const [distance, setDistance] = useState('');
-  const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>(
-    settings.units === 'imperial' ? 'mi' : 'km'
+  const [duration, setDuration] = useState({ hours: "0", minutes: "0" });
+  const [distance, setDistance] = useState("");
+  const [distanceUnit, setDistanceUnit] = useState<"km" | "mi">(
+    settings.units === "imperial" ? "mi" : "km"
   );
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState("");
   const [showMapModal, setShowMapModal] = useState(false);
   const [drawnRoute, setDrawnRoute] = useState<any[]>([]);
   const [routeDistance, setRouteDistance] = useState(0);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   const handleSave = async () => {
     // Validation
     if (!name.trim()) {
-      Alert.alert('Error', 'Please enter an activity name');
+      Alert.alert("Error", "Please enter an activity name");
       return;
     }
 
-    const durationInSeconds = 
-      (parseInt(duration.hours) || 0) * 3600 + 
+    const durationInSeconds =
+      (parseInt(duration.hours) || 0) * 3600 +
       (parseInt(duration.minutes) || 0) * 60;
 
     if (durationInSeconds === 0) {
-      Alert.alert('Error', 'Please enter the activity duration');
+      Alert.alert("Error", "Please enter the activity duration");
       return;
     }
 
@@ -78,15 +81,15 @@ export default function AddActivityScreen() {
     let distanceInMeters = routeDistance; // Route distance is already in meters
     if (!distanceInMeters && distance) {
       const distanceValue = parseFloat(distance);
-      distanceInMeters = distanceUnit === 'km' 
-        ? distanceValue * 1000 
-        : distanceValue * 1609.34;
+      distanceInMeters =
+        distanceUnit === "km" ? distanceValue * 1000 : distanceValue * 1609.34;
     }
 
     // Calculate average speed
-    const avgSpeed = distanceInMeters > 0 
-      ? (distanceInMeters / 1000) / (durationInSeconds / 3600) 
-      : 0;
+    const avgSpeed =
+      distanceInMeters > 0
+        ? distanceInMeters / 1000 / (durationInSeconds / 3600)
+        : 0;
 
     // Create activity object
     const activity = {
@@ -96,38 +99,37 @@ export default function AddActivityScreen() {
       endTime: new Date(date.getTime() + durationInSeconds * 1000),
       duration: durationInSeconds,
       distance: distanceInMeters,
-      route: drawnRoute, // Include the drawn route
+      route: drawnRoute,
       averageSpeed: avgSpeed,
       maxSpeed: avgSpeed,
       notes: notes.trim(),
+      photos: photos, // Add this line
       isManualEntry: true,
     };
 
     try {
       await addManualActivity(activity);
-      Alert.alert(
-        'Success',
-        'Activity added successfully!',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      Alert.alert("Success", "Activity added successfully!", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (error) {
-      Alert.alert('Error', 'Failed to save activity');
+      Alert.alert("Error", "Failed to save activity");
     }
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
       hour12: true,
     });
   };
@@ -135,22 +137,73 @@ export default function AddActivityScreen() {
   const handleMapMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      
-      if (data.type === 'routeUpdated') {
+
+      if (data.type === "routeUpdated") {
         setDrawnRoute(data.route);
         setRouteDistance(data.distance);
-        
+
         // Update the distance field with the calculated distance
         if (data.distance > 0) {
-          const displayDistance = distanceUnit === 'km' 
-            ? (data.distance / 1000).toFixed(2)
-            : (data.distance / 1609.34).toFixed(2);
+          const displayDistance =
+            distanceUnit === "km"
+              ? (data.distance / 1000).toFixed(2)
+              : (data.distance / 1609.34).toFixed(2);
           setDistance(displayDistance);
         }
       }
     } catch (error) {
-      console.error('Error parsing map message:', error);
+      console.error("Error parsing map message:", error);
     }
+  };
+
+  const handleTakePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Denied",
+        "Camera permission is required to take photos"
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
+    }
+  };
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Denied",
+        "Media library permission is required to select photos"
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    const newPhotos = photos.filter((_, i) => i !== index);
+    setPhotos(newPhotos);
   };
 
   const generateMapHTML = () => {
@@ -493,10 +546,14 @@ export default function AddActivityScreen() {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <Text style={styles.title}>Add Past Activity</Text>
-        <Text style={styles.subtitle}>Record an activity you forgot to track</Text>
+        <Text style={styles.subtitle}>
+          Record an activity you forgot to track
+        </Text>
         {settings.defaultActivityType && (
           <Text style={styles.defaultNote}>
-            Default: {settings.defaultActivityType.charAt(0).toUpperCase() + settings.defaultActivityType.slice(1)}
+            Default:{" "}
+            {settings.defaultActivityType.charAt(0).toUpperCase() +
+              settings.defaultActivityType.slice(1)}
           </Text>
         )}
       </View>
@@ -518,12 +575,17 @@ export default function AddActivityScreen() {
                 <Ionicons
                   name={activity.icon as any}
                   size={24}
-                  color={activityType === activity.type ? theme.colors.white : theme.colors.navy}
+                  color={
+                    activityType === activity.type
+                      ? theme.colors.white
+                      : theme.colors.navy
+                  }
                 />
                 <Text
                   style={[
                     styles.activityLabel,
-                    activityType === activity.type && styles.activityLabelSelected,
+                    activityType === activity.type &&
+                      styles.activityLabelSelected,
                   ]}
                 >
                   {activity.label}
@@ -554,7 +616,11 @@ export default function AddActivityScreen() {
             style={styles.dateTimeButton}
             onPress={() => setShowDatePicker(true)}
           >
-            <Ionicons name="calendar-outline" size={20} color={theme.colors.navy} />
+            <Ionicons
+              name="calendar-outline"
+              size={20}
+              color={theme.colors.navy}
+            />
             <Text style={styles.dateTimeText}>{formatDate(date)}</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -571,7 +637,7 @@ export default function AddActivityScreen() {
         <DateTimePicker
           value={date}
           mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={(event, selectedDate) => {
             setShowDatePicker(false);
             if (selectedDate) setDate(selectedDate);
@@ -584,7 +650,7 @@ export default function AddActivityScreen() {
         <DateTimePicker
           value={date}
           mode="time"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={(event, selectedDate) => {
             setShowTimePicker(false);
             if (selectedDate) setDate(selectedDate);
@@ -611,7 +677,9 @@ export default function AddActivityScreen() {
             <TextInput
               style={styles.numberInput}
               value={duration.minutes}
-              onChangeText={(text) => setDuration({ ...duration, minutes: text })}
+              onChangeText={(text) =>
+                setDuration({ ...duration, minutes: text })
+              }
               keyboardType="numeric"
               placeholder="0"
               maxLength={2}
@@ -630,18 +698,22 @@ export default function AddActivityScreen() {
         >
           <Ionicons name="map" size={20} color={theme.colors.forest} />
           <Text style={styles.drawRouteText}>
-            {drawnRoute.length > 0 
+            {drawnRoute.length > 0
               ? `Route drawn (${drawnRoute.length} points)`
-              : 'Draw route on map'}
+              : "Draw route on map"}
           </Text>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.forest} />
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={theme.colors.forest}
+          />
         </TouchableOpacity>
       </View>
 
       {/* Distance */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>
-          Distance {routeDistance > 0 ? '(from route)' : '(Optional)'}
+          Distance {routeDistance > 0 ? "(from route)" : "(Optional)"}
         </Text>
         <View style={styles.distanceContainer}>
           <TextInput
@@ -654,18 +726,34 @@ export default function AddActivityScreen() {
           />
           <View style={styles.unitToggle}>
             <TouchableOpacity
-              style={[styles.unitButton, distanceUnit === 'km' && styles.unitButtonActive]}
-              onPress={() => setDistanceUnit('km')}
+              style={[
+                styles.unitButton,
+                distanceUnit === "km" && styles.unitButtonActive,
+              ]}
+              onPress={() => setDistanceUnit("km")}
             >
-              <Text style={[styles.unitText, distanceUnit === 'km' && styles.unitTextActive]}>
+              <Text
+                style={[
+                  styles.unitText,
+                  distanceUnit === "km" && styles.unitTextActive,
+                ]}
+              >
                 km
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.unitButton, distanceUnit === 'mi' && styles.unitButtonActive]}
-              onPress={() => setDistanceUnit('mi')}
+              style={[
+                styles.unitButton,
+                distanceUnit === "mi" && styles.unitButtonActive,
+              ]}
+              onPress={() => setDistanceUnit("mi")}
             >
-              <Text style={[styles.unitText, distanceUnit === 'mi' && styles.unitTextActive]}>
+              <Text
+                style={[
+                  styles.unitText,
+                  distanceUnit === "mi" && styles.unitTextActive,
+                ]}
+              >
                 mi
               </Text>
             </TouchableOpacity>
@@ -688,13 +776,61 @@ export default function AddActivityScreen() {
         />
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Photos (Optional)</Text>
+
+        <View style={styles.photoActions}>
+          <TouchableOpacity
+            style={styles.photoButton}
+            onPress={handleTakePhoto}
+          >
+            <Ionicons name="camera" size={20} color={theme.colors.forest} />
+            <Text style={styles.photoButtonText}>Camera</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.photoButton}
+            onPress={handlePickImage}
+          >
+            <Ionicons name="images" size={20} color={theme.colors.forest} />
+            <Text style={styles.photoButtonText}>Gallery</Text>
+          </TouchableOpacity>
+        </View>
+
+        {photos.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.photoList}
+          >
+            {photos.map((photo, index) => (
+              <View key={index} style={styles.photoContainer}>
+                <Image source={{ uri: photo }} style={styles.photo} />
+                <TouchableOpacity
+                  style={styles.removePhotoButton}
+                  onPress={() => handleRemovePhoto(index)}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={24}
+                    color={theme.colors.burntOrange}
+                  />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+
       {/* Save Button */}
       <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
         <Ionicons name="save-outline" size={20} color={theme.colors.white} />
         <Text style={styles.saveButtonText}>Save Activity</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
+      <TouchableOpacity
+        style={styles.cancelButton}
+        onPress={() => router.back()}
+      >
         <Text style={styles.cancelButtonText}>Cancel</Text>
       </TouchableOpacity>
 
@@ -741,7 +877,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: theme.colors.navy,
   },
   subtitle: {
@@ -753,26 +889,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.forest,
     marginTop: 5,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   section: {
     padding: 20,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 12,
   },
   activityTypes: {
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   activityCard: {
     backgroundColor: theme.colors.white,
     borderRadius: 12,
     padding: 12,
     marginRight: 10,
-    alignItems: 'center',
+    alignItems: "center",
     minWidth: 80,
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
@@ -785,7 +921,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: theme.colors.navy,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   activityLabelSelected: {
     color: theme.colors.white,
@@ -800,13 +936,13 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
   },
   dateTimeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   dateTimeButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.white,
     padding: 12,
     borderRadius: 8,
@@ -820,13 +956,13 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   durationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   durationInput: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.white,
     borderRadius: 8,
     borderWidth: 1,
@@ -845,9 +981,9 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
   },
   drawRouteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: theme.colors.white,
     borderWidth: 2,
     borderColor: theme.colors.forest,
@@ -859,18 +995,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.forest,
     marginLeft: 10,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   distanceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   distanceInput: {
     flex: 1,
     marginRight: 10,
   },
   unitToggle: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: theme.colors.white,
     borderRadius: 8,
     borderWidth: 1,
@@ -887,7 +1023,7 @@ const styles = StyleSheet.create({
   unitText: {
     fontSize: 14,
     color: theme.colors.gray,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   unitTextActive: {
     color: theme.colors.white,
@@ -897,9 +1033,9 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: theme.colors.forest,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
     borderRadius: 12,
     marginHorizontal: 20,
@@ -908,12 +1044,12 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: theme.colors.white,
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   cancelButton: {
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 30,
   },
   cancelButtonText: {
@@ -925,18 +1061,18 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
   },
   mapModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
-    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    paddingTop: Platform.OS === "ios" ? 50 : 16,
     backgroundColor: theme.colors.white,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   mapModalTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   mapModalClose: {
@@ -948,9 +1084,50 @@ const styles = StyleSheet.create({
   mapModalCloseText: {
     color: theme.colors.white,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   mapWebView: {
     flex: 1,
+  },
+  photoActions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 15,
+  },
+  photoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.forest,
+  },
+  photoButtonText: {
+    color: theme.colors.forest,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  photoList: {
+    marginBottom: 15,
+    maxHeight: 110,
+  },
+  photoContainer: {
+    marginRight: 10,
+    position: "relative",
+  },
+  photo: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  removePhotoButton: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "white",
+    borderRadius: 12,
   },
 });

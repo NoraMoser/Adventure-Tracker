@@ -1,11 +1,13 @@
 // app/track-activity.tsx
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   ScrollView,
   StyleSheet,
@@ -74,6 +76,7 @@ export default function TrackActivityScreen() {
   const [finalDistance, setFinalDistance] = useState(0);
   const [finalDuration, setFinalDuration] = useState(0);
   const [finalSpeed, setFinalSpeed] = useState(0);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   useEffect(() => {
     if (loading || manualLoading) {
@@ -209,6 +212,7 @@ export default function TrackActivityScreen() {
     setShowSaveDialog(true);
   };
 
+  // Update the handleSaveActivity function (around line 273)
   const handleSaveActivity = async () => {
     setIsSaving(true);
     setSaveError(null);
@@ -220,12 +224,15 @@ export default function TrackActivityScreen() {
         name,
         distance: finalDistance,
         duration: finalDuration,
+        photos: photos.length, // Add this for debugging
       });
 
-      await stopTracking(name, activityNotes);
+      // Pass photos as the third parameter
+      await stopTracking(name, activityNotes, photos); // Update this line
 
       setActivityName("");
       setActivityNotes("");
+      setPhotos([]); // Clear photos after saving
       setShowSaveDialog(false);
       setIsSaving(false);
 
@@ -235,7 +242,6 @@ export default function TrackActivityScreen() {
     } catch (error) {
       console.error("Save error:", error);
       setIsSaving(false);
-      setSaveError("Failed to save activity. Please try again.");
 
       Alert.alert(
         "Save Failed",
@@ -272,6 +278,66 @@ export default function TrackActivityScreen() {
         },
       ]
     );
+  };
+
+  const handleTakePhoto = async () => {
+    if (!isTracking) {
+      Alert.alert("Not Tracking", "Start tracking to add photos");
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Denied",
+        "Camera permission is required to take photos"
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
+    }
+  };
+
+  const handlePickImage = async () => {
+    if (!isTracking) {
+      Alert.alert("Not Tracking", "Start tracking to add photos");
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Denied",
+        "Media library permission is required to select photos"
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    const newPhotos = photos.filter((_, i) => i !== index);
+    setPhotos(newPhotos);
   };
 
   const formatDuration = (seconds: number) => {
@@ -538,7 +604,9 @@ export default function TrackActivityScreen() {
           <View style={styles.primaryStat}>
             <Text style={styles.primaryStatLabel}>Distance</Text>
             <Text style={styles.primaryStatValue}>
-              {formatDistance ? formatDistance(currentDistance || 0) : "0 km"}
+              {formatDistance
+                ? formatDistance(currentDistance || 0)
+                : `0 ${settings.units === "imperial" ? "mi" : "km"}`}
             </Text>
           </View>
 
@@ -552,9 +620,64 @@ export default function TrackActivityScreen() {
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Speed</Text>
               <Text style={styles.statValue}>
-                {formatSpeed ? formatSpeed(currentSpeed || 0) : "0 km/h"}
+                {formatSpeed
+                  ? formatSpeed(currentSpeed || 0)
+                  : `0 ${settings.units === "imperial" ? "mph" : "km/h"}`}
               </Text>
             </View>
+          </View>
+          <View style={styles.photoSection}>
+            <View style={styles.photoHeader}>
+              <Text style={styles.photoTitle}>
+                Activity Photos ({photos.length})
+              </Text>
+              <View style={styles.photoButtons}>
+                <TouchableOpacity
+                  style={styles.photoActionButton}
+                  onPress={handleTakePhoto}
+                >
+                  <Ionicons
+                    name="camera"
+                    size={22}
+                    color={theme.colors.white}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.photoActionButton}
+                  onPress={handlePickImage}
+                >
+                  <Ionicons
+                    name="images"
+                    size={22}
+                    color={theme.colors.white}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {photos.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.photoList}
+              >
+                {photos.map((photo, index) => (
+                  <View key={index} style={styles.photoContainer}>
+                    <Image source={{ uri: photo }} style={styles.photo} />
+                    <TouchableOpacity
+                      style={styles.removePhotoButton}
+                      onPress={() => handleRemovePhoto(index)}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={20}
+                        color={theme.colors.white}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
 
           <View style={styles.gpsStatus}>
@@ -1197,5 +1320,53 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     lineHeight: 18,
     marginLeft: 10,
+  },
+  photoSection: {
+    backgroundColor: theme.colors.white + "10",
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+  },
+  photoHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  photoTitle: {
+    fontSize: 14,
+    color: theme.colors.white,
+    fontWeight: "600",
+  },
+  photoButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  photoActionButton: {
+    backgroundColor: theme.colors.forest,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoList: {
+    marginTop: 10,
+  },
+  photoContainer: {
+    marginRight: 10,
+    position: "relative",
+  },
+  photo: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  removePhotoButton: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 10,
   },
 });

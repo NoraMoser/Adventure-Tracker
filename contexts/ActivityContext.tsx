@@ -65,9 +65,10 @@ interface ActivityContextType {
   startTracking: (activityType: ActivityType) => Promise<void>;
   pauseTracking: () => void;
   resumeTracking: () => void;
-  stopTracking: (name: string, notes?: string) => Promise<void>;
+  stopTracking: (name: string, notes?: string, photos?: string[]) => Promise<void>;
   deleteActivity: (activityId: string) => Promise<void>;
   addManualActivity: (activity: Omit<Activity, "id">) => Promise<void>;
+  updateActivity: (activityId: string, updatedData: Partial<Activity>) => Promise<void>;
   loading: boolean;
   error: string | null;
   refreshActivities: () => Promise<void>;
@@ -565,7 +566,11 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const stopTracking = async (name: string, notes?: string) => {
+  const stopTracking = async (
+    name: string,
+    notes?: string,
+    photos?: string[]
+  ) => {
     try {
       console.log("Stopping tracking...");
 
@@ -602,6 +607,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         averageSpeed: avgSpeed,
         maxSpeed: maxSpeedRef.current,
         notes: notes,
+        photos: photos, // Add this line
         isManualEntry: false,
       };
 
@@ -656,6 +662,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           average_speed: activity.averageSpeed,
           max_speed: activity.maxSpeed,
           notes: activity.notes,
+          photos: activity.photos, // Add this line
           is_manual_entry: activity.isManualEntry,
         })
         .select()
@@ -692,6 +699,42 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  const updateActivity = async (activityId: string, updatedData: Partial<Activity>) => {
+  if (!user) throw new Error("No user logged in");
+
+  try {
+    // Update in database
+    const { error } = await supabase
+      .from("activities")
+      .update({
+        name: updatedData.name,
+        notes: updatedData.notes,
+        route: updatedData.route,
+        distance: updatedData.distance,
+        duration: updatedData.duration,
+        photos: updatedData.photos,
+        average_speed: updatedData.averageSpeed,
+        max_speed: updatedData.maxSpeed,
+      })
+      .eq("id", activityId)
+      .eq("user_id", user.id);
+
+    if (error) throw error;
+
+    // Update local state
+    setActivities((prev) =>
+      prev.map((activity) =>
+        activity.id === activityId
+          ? { ...activity, ...updatedData }
+          : activity
+      )
+    );
+  } catch (err: any) {
+    console.error("Error updating activity:", err);
+    throw err;
+  }
+};
+
   const addManualActivity = async (activity: Omit<Activity, "id">) => {
     const newActivity: Activity = {
       ...activity,
@@ -717,6 +760,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     stopTracking,
     deleteActivity,
     addManualActivity,
+    updateActivity,
     loading,
     error,
     refreshActivities,
@@ -728,6 +772,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     </ActivityContext.Provider>
   );
 };
+
+
 
 export const useActivity = () => {
   const context = useContext(ActivityContext);

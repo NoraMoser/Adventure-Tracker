@@ -4,7 +4,9 @@ import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   Alert,
+  Dimensions,
   FlatList,
+  Image,
   Modal,
   ScrollView,
   Share,
@@ -200,6 +202,11 @@ export default function PastActivitiesScreen() {
   const [autoShareEnabled, setAutoShareEnabled] = useState(
     privacySettings.shareActivitiesWithFriends
   );
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number>(0);
+  const [selectedActivityPhotos, setSelectedActivityPhotos] = useState<
+    string[]
+  >([]);
 
   // Filter and sort activities
   const filteredActivities = useMemo(() => {
@@ -299,7 +306,7 @@ export default function PastActivitiesScreen() {
       const shareOptions = {
         units: settings.units,
       };
-      
+
       if (activity.route && activity.route.length > 0) {
         await ShareService.shareActivityWithMap(activity, shareOptions);
       } else {
@@ -368,7 +375,9 @@ export default function PastActivitiesScreen() {
       message += `📊 Total Stats:\n`;
       message += `• ${filteredActivities.length} activities completed\n`;
       message += `• ${formatDistance(totalDistance)} total distance\n`;
-      message += `• ${ShareService.formatDuration(totalDuration)} total time\n\n`;
+      message += `• ${ShareService.formatDuration(
+        totalDuration
+      )} total time\n\n`;
 
       message += `🎯 Recent Activities:\n`;
       filteredActivities.slice(0, 5).forEach((activity, index) => {
@@ -534,6 +543,26 @@ export default function PastActivitiesScreen() {
             </Text>
           </View>
         </View>
+        {item.photos && item.photos.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.activityPhotos}
+          >
+            {item.photos.map((photo: string, index: number) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => {
+                  setSelectedPhotoIndex(index);
+                  setSelectedActivityPhotos(item.photos);
+                  setSelectedPhoto(photo);
+                }}
+              >
+                <Image source={{ uri: photo }} style={styles.activityPhoto} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {item.notes && (
           <Text style={styles.notes} numberOfLines={2}>
@@ -569,6 +598,17 @@ export default function PastActivitiesScreen() {
             onPress={() => handleViewMap(item)}
           >
             <Ionicons name="map-outline" size={22} color={theme.colors.gray} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.editButton]}
+            onPress={() => router.push(`/edit-activity?activityId=${item.id}`)}
+          >
+            <Ionicons
+              name="create-outline"
+              size={22}
+              color={theme.colors.navy}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -899,6 +939,46 @@ export default function PastActivitiesScreen() {
         onShare={handleShareToFriends}
         formatDistance={formatDistance}
       />
+      <Modal
+        visible={!!selectedPhoto}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedPhoto(null)}
+      >
+        <View style={styles.photoModal}>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentOffset={{
+              x: selectedPhotoIndex * Dimensions.get("window").width,
+              y: 0,
+            }}
+          >
+            {selectedActivityPhotos.map((photo: string, index: number) => (
+              <View key={index} style={styles.fullPhotoContainer}>
+                <Image source={{ uri: photo }} style={styles.fullPhoto} />
+              </View>
+            ))}
+          </ScrollView>
+
+          <View style={styles.photoIndicator}>
+            <Text style={styles.photoIndicatorText}>
+              {selectedPhotoIndex + 1} / {selectedActivityPhotos.length}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.closePhotoButton}
+            onPress={() => {
+              setSelectedPhoto(null);
+              setSelectedActivityPhotos([]);
+            }}
+          >
+            <Ionicons name="close-circle" size={40} color="white" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1385,5 +1465,53 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     marginLeft: 8,
+  },
+  editButton: {
+    backgroundColor: theme.colors.navy + "10",
+  },
+  activityPhotos: {
+    marginVertical: 10,
+    paddingVertical: 5,
+  },
+  activityPhoto: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  photoModal: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullPhoto: {
+    width: "90%",
+    height: "70%",
+    resizeMode: "contain",
+  },
+  closePhotoButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+  },
+  fullPhotoContainer: {
+    width: Dimensions.get("window").width,
+    height: Dimensions.get("window").height,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoIndicator: {
+    position: "absolute",
+    bottom: 50,
+    alignSelf: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  photoIndicatorText: {
+    color: "white",
+    fontSize: 14,
   },
 });
