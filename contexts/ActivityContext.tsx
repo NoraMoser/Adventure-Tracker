@@ -1,4 +1,4 @@
-// contexts/ActivityContext.tsx - Rewritten with improved safety
+// contexts/ActivityContext.tsx - Complete with date support
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
@@ -36,19 +36,20 @@ interface LocationPoint {
 
 interface Activity {
   id: string;
-  type: ActivityType;
   name: string;
+  type: ActivityType;
   startTime: Date;
   endTime: Date;
+  activityDate: Date; // The actual date of the activity
   duration: number;
   distance: number;
   route: LocationPoint[];
   averageSpeed: number;
   maxSpeed: number;
-  elevationGain?: number;
   notes?: string;
   photos?: string[];
-  isManualEntry: boolean;
+  isManualEntry?: boolean;
+  createdAt: Date; // When it was saved to DB
 }
 
 interface ActivityContextType {
@@ -67,7 +68,7 @@ interface ActivityContextType {
   resumeTracking: () => void;
   stopTracking: (name: string, notes?: string, photos?: string[]) => Promise<void>;
   deleteActivity: (activityId: string) => Promise<void>;
-  addManualActivity: (activity: Omit<Activity, "id">) => Promise<void>;
+  addManualActivity: (activity: Partial<Activity>) => Promise<void>;
   updateActivity: (activityId: string, updatedData: Partial<Activity>) => Promise<void>;
   loading: boolean;
   error: string | null;
@@ -206,6 +207,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         .from("activities")
         .select("*")
         .eq("user_id", user.id)
+        .order("activity_date", { ascending: false }) // Order by activity date
         .order("start_time", { ascending: false });
 
       if (fetchError) {
@@ -220,6 +222,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           name: act.name,
           startTime: new Date(act.start_time),
           endTime: new Date(act.end_time),
+          activityDate: act.activity_date 
+            ? new Date(act.activity_date) 
+            : new Date(act.start_time),
           duration: act.duration || 0,
           distance: act.distance || 0,
           route: Array.isArray(act.route) ? act.route : [],
@@ -229,6 +234,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           notes: act.notes,
           photos: act.photos,
           isManualEntry: act.is_manual_entry || false,
+          createdAt: new Date(act.created_at || act.start_time),
         }));
 
         setActivities(transformedActivities);
@@ -312,7 +318,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
     // Lower accuracy threshold and minimum distance
     if (!location.accuracy || location.accuracy <= 30) {
-      // Increased from 20 to 30
       setCurrentRoute((prev) => {
         const currentPoints = Array.isArray(prev) ? prev : [];
 
@@ -335,13 +340,11 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
         // Lower minimum movement threshold for better tracking
         if (distance < 2) {
-          // Reduced from 5 to 2 meters
           return currentPoints;
         }
 
         // Increase max jump to handle GPS in vehicles
         if (distance > 500) {
-          // Increased from 200 to 500
           console.log("GPS jump detected, ignoring point");
           return currentPoints;
         }
@@ -390,7 +393,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // In handleLocationUpdate, add more detailed logging:
   const handleLocationUpdate = (location: Location.LocationObject) => {
     console.log("Raw GPS update:", {
       lat: location.coords.latitude,
@@ -432,7 +434,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
       // Get initial location with high accuracy
       const initialLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High, // Changed from BestForNavigation
+        accuracy: Location.Accuracy.High,
       });
 
       const initialPoint: LocationPoint = {
@@ -479,9 +481,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       // Start location tracking with better settings
       locationSubscription.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High, // Changed from BestForNavigation
-          timeInterval: 1000, // Update every 2 seconds instead of 3
-          distanceInterval: 1, // Update every 2 meters instead of 5
+          accuracy: Location.Accuracy.High,
+          timeInterval: 1000,
+          distanceInterval: 1,
         },
         (location) => {
           console.log("Location update received");
@@ -492,11 +494,11 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       // Adjust stale check to be less aggressive
       staleCheckInterval.current = setInterval(() => {
         const timeSinceLastUpdate = Date.now() - lastUpdateTime.current;
-        // Only mark as stale if no update for 60 seconds (increased from 30)
+        // Only mark as stale if no update for 60 seconds
         if (timeSinceLastUpdate > 60000) {
           setGpsStatus("stale");
         }
-      }, 10000); // Check every 10 seconds instead of 5
+      }, 10000);
 
       setLoading(false);
       console.log("Tracking started successfully");
@@ -508,7 +510,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // Also update resumeTracking with the same GPS settings
   const resumeTracking = async () => {
     console.log("Resuming tracking");
 
@@ -520,7 +521,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
     // Reset GPS status when resuming
     setGpsStatus("searching");
-    lastUpdateTime.current = Date.now(); // Reset the stale timer
+    lastUpdateTime.current = Date.now();
 
     // Restart duration timer
     durationInterval.current = setInterval(() => {
@@ -594,11 +595,12 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           ? currentDistance / 1000 / (finalDuration / 3600)
           : 0;
 
-      // Create activity object
+      // Create activity object with today's date
       const activity: Activity = {
         id: Date.now().toString(),
         type: currentActivity,
         name: name || `${currentActivity} activity`,
+        activityDate: new Date(), // Today's date for current tracking
         startTime: new Date(startTimeRef.current),
         endTime: new Date(),
         duration: finalDuration,
@@ -607,8 +609,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         averageSpeed: avgSpeed,
         maxSpeed: maxSpeedRef.current,
         notes: notes,
-        photos: photos, // Add this line
+        photos: photos,
         isManualEntry: false,
+        createdAt: new Date(),
       };
 
       // Save activity
@@ -654,6 +657,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           user_id: user.id,
           type: activity.type,
           name: activity.name,
+          activity_date: activity.activityDate.toISOString(),
           start_time: activity.startTime.toISOString(),
           end_time: activity.endTime.toISOString(),
           duration: activity.duration,
@@ -662,7 +666,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           average_speed: activity.averageSpeed,
           max_speed: activity.maxSpeed,
           notes: activity.notes,
-          photos: activity.photos, // Add this line
+          photos: activity.photos,
           is_manual_entry: activity.isManualEntry,
         })
         .select()
@@ -700,13 +704,11 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const updateActivity = async (activityId: string, updatedData: Partial<Activity>) => {
-  if (!user) throw new Error("No user logged in");
+    if (!user) throw new Error("No user logged in");
 
-  try {
-    // Update in database
-    const { error } = await supabase
-      .from("activities")
-      .update({
+    try {
+      // Prepare update data
+      const updateData: any = {
         name: updatedData.name,
         notes: updatedData.notes,
         route: updatedData.route,
@@ -715,30 +717,53 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         photos: updatedData.photos,
         average_speed: updatedData.averageSpeed,
         max_speed: updatedData.maxSpeed,
-      })
-      .eq("id", activityId)
-      .eq("user_id", user.id);
+      };
 
-    if (error) throw error;
+      // Add activity_date if provided
+      if (updatedData.activityDate) {
+        updateData.activity_date = updatedData.activityDate.toISOString();
+      }
 
-    // Update local state
-    setActivities((prev) =>
-      prev.map((activity) =>
-        activity.id === activityId
-          ? { ...activity, ...updatedData }
-          : activity
-      )
-    );
-  } catch (err: any) {
-    console.error("Error updating activity:", err);
-    throw err;
-  }
-};
+      // Update in database
+      const { error } = await supabase
+        .from("activities")
+        .update(updateData)
+        .eq("id", activityId)
+        .eq("user_id", user.id);
 
-  const addManualActivity = async (activity: Omit<Activity, "id">) => {
+      if (error) throw error;
+
+      // Update local state
+      setActivities((prev) =>
+        prev.map((activity) =>
+          activity.id === activityId
+            ? { ...activity, ...updatedData }
+            : activity
+        )
+      );
+    } catch (err: any) {
+      console.error("Error updating activity:", err);
+      throw err;
+    }
+  };
+
+  const addManualActivity = async (activity: Partial<Activity>) => {
     const newActivity: Activity = {
-      ...activity,
       id: Date.now().toString(),
+      type: activity.type || "other",
+      name: activity.name || "Manual activity",
+      activityDate: activity.activityDate || new Date(),
+      startTime: activity.startTime || new Date(),
+      endTime: activity.endTime || new Date(),
+      duration: activity.duration || 0,
+      distance: activity.distance || 0,
+      route: activity.route || [],
+      averageSpeed: activity.averageSpeed || 0,
+      maxSpeed: activity.maxSpeed || 0,
+      notes: activity.notes,
+      photos: activity.photos,
+      isManualEntry: true,
+      createdAt: new Date(),
     };
     await saveActivity(newActivity);
   };
@@ -772,8 +797,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     </ActivityContext.Provider>
   );
 };
-
-
 
 export const useActivity = () => {
   const context = useContext(ActivityContext);

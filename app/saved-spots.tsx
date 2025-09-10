@@ -1,4 +1,4 @@
-// app/saved-spots.tsx - Updated without wishlist hearts
+// app/saved-spots.tsx - Complete file with date display
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -28,7 +28,7 @@ import { ShareService } from "../services/shareService";
 
 const { width, height } = Dimensions.get("window");
 
-// Filter modal component - Updated colors
+// Filter modal component
 const FilterModal = ({
   visible,
   onClose,
@@ -120,7 +120,7 @@ const FilterModal = ({
   );
 };
 
-// Spot Detail Modal Component - Updated colors
+// Spot Detail Modal Component
 const SpotDetailModal = ({
   visible,
   spot,
@@ -148,6 +148,19 @@ const SpotDetailModal = ({
     return `${Math.abs(lat).toFixed(4)}°${latDir}, ${Math.abs(lng).toFixed(
       4
     )}°${lngDir}`;
+  };
+
+  const formatDetailDate = () => {
+    const dateToFormat = spot.locationDate || spot.timestamp;
+    if (!dateToFormat) return "";
+    
+    const d = new Date(dateToFormat);
+    return d.toLocaleDateString("en-US", {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
   return (
@@ -187,6 +200,14 @@ const SpotDetailModal = ({
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={detailStyles.name}>{spot.name}</Text>
+            
+            {/* Date display in detail modal */}
+            <View style={detailStyles.dateContainer}>
+              <Ionicons name="calendar" size={16} color={theme.colors.forest} />
+              <Text style={detailStyles.dateText}>
+                Visited {formatDetailDate()}
+              </Text>
+            </View>
 
             {spot.rating && spot.rating > 0 && (
               <View style={detailStyles.rating}>
@@ -295,7 +316,7 @@ const SpotDetailModal = ({
   );
 };
 
-// Animated List Item Component - Updated without wishlist heart
+// Animated List Item Component with Date Display
 const AnimatedListItem = ({
   item,
   index,
@@ -331,6 +352,35 @@ const AnimatedListItem = ({
     outputRange: [0, 1],
   });
 
+  const formatLocationDate = () => {
+    const dateToFormat = item.locationDate || item.timestamp;
+    
+    if (!dateToFormat) return "";
+    
+    const d = new Date(dateToFormat);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const compareDate = new Date(d);
+    compareDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = today.getTime() - compareDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) {
+      const weeks = Math.floor(diffDays / 7);
+      return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+    }
+    
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+    });
+  };
+
   return (
     <Animated.View
       style={[
@@ -343,6 +393,14 @@ const AnimatedListItem = ({
     >
       <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.7}>
         <View style={styles.cardContent}>
+          {/* Date row at the top of the card */}
+          <View style={styles.dateRow}>
+            <Ionicons name="calendar-outline" size={14} color={theme.colors.gray} />
+            <Text style={styles.dateText}>
+              {formatLocationDate()}
+            </Text>
+          </View>
+
           <View style={styles.cardHeader}>
             <View style={styles.cardLeft}>
               <View
@@ -430,7 +488,7 @@ export default function SavedSpotsScreen() {
   const [selectedCategories, setSelectedCategories] = useState<
     Set<CategoryType>
   >(new Set(Object.keys(categories) as CategoryType[]));
-  const [sortBy, setSortBy] = useState<"date" | "name" | "rating">("date");
+  const [sortBy, setSortBy] = useState<"date" | "visited" | "name" | "rating">("visited");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -455,8 +513,14 @@ export default function SavedSpotsScreen() {
           return a.name.localeCompare(b.name);
         case "rating":
           return (b.rating || 0) - (a.rating || 0);
+        case "visited":
+          // Sort by when the location was visited
+          const dateA = new Date(a.locationDate || a.timestamp).getTime();
+          const dateB = new Date(b.locationDate || b.timestamp).getTime();
+          return dateB - dateA;
         case "date":
         default:
+          // Sort by when added to app
           return (
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
@@ -683,7 +747,7 @@ export default function SavedSpotsScreen() {
           <TouchableOpacity
             style={styles.sortButton}
             onPress={() => {
-              const options = ["date", "name", "rating"] as const;
+              const options = ["visited", "date", "name", "rating"] as const;
               const currentIndex = options.indexOf(sortBy);
               setSortBy(options[(currentIndex + 1) % options.length]);
             }}
@@ -693,7 +757,9 @@ export default function SavedSpotsScreen() {
               size={20}
               color={theme.colors.navy}
             />
-            <Text style={styles.sortText}>{sortBy}</Text>
+            <Text style={styles.sortText}>
+              {sortBy === "visited" ? "visited" : sortBy}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -729,7 +795,6 @@ export default function SavedSpotsScreen() {
       {viewMode === "list" ? (
         <FlatList
           data={filteredSpots}
-          keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
             <AnimatedListItem
               item={item}
@@ -739,6 +804,7 @@ export default function SavedSpotsScreen() {
               onDelete={handleDeleteSpot}
             />
           )}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.listContainer,
             filteredSpots.length === 0 && styles.emptyContainer,
@@ -806,7 +872,7 @@ export default function SavedSpotsScreen() {
         onNavigate={handleNavigateToSpot}
       />
 
-      {/* FAB with options */}
+      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => {
@@ -912,14 +978,15 @@ const styles = StyleSheet.create({
     right: -4,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
-    width: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 4,
   },
   filterBadgeText: {
     color: "white",
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "bold",
   },
   sortButton: {
@@ -989,6 +1056,20 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: 15,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray + '30',
+  },
+  dateText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   cardHeader: {
     flexDirection: "row",
@@ -1107,9 +1188,7 @@ const styles = StyleSheet.create({
   },
 });
 
-// filterStyles and detailStyles remain the same as before
 const filterStyles = StyleSheet.create({
-  // ... same as before
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1196,7 +1275,6 @@ const filterStyles = StyleSheet.create({
 });
 
 const detailStyles = StyleSheet.create({
-  // ... same as before
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1244,6 +1322,17 @@ const detailStyles = StyleSheet.create({
     color: theme.colors.navy,
     marginHorizontal: 20,
     marginTop: 15,
+  },
+  dateContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginTop: 10,
+  },
+  dateText: {
+    fontSize: 14,
+    color: theme.colors.forest,
+    marginLeft: 6,
   },
   rating: {
     flexDirection: "row",

@@ -496,6 +496,29 @@ export default function PastActivitiesScreen() {
   const renderActivityItem = ({ item }: { item: any }) => {
     const iconName = (activityIcons as any)[item.type] || "fitness";
 
+    // Format activity date
+    const formatActivityDate = (date: Date | string) => {
+      const d = new Date(date);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      // Check if today
+      if (d.toDateString() === today.toDateString()) {
+        return "Today";
+      }
+      // Check if yesterday
+      if (d.toDateString() === yesterday.toDateString()) {
+        return "Yesterday";
+      }
+      // Otherwise show date
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+      });
+    };
+
     return (
       <TouchableOpacity
         style={styles.activityCard}
@@ -512,9 +535,14 @@ export default function PastActivitiesScreen() {
           </View>
           <View style={styles.activityInfo}>
             <Text style={styles.activityName}>{item.name}</Text>
-            <Text style={styles.activityDate}>
-              {formatDate(item.startTime)} at {formatTime(item.startTime)}
-            </Text>
+            <View style={styles.activityDateRow}>
+              <Text style={styles.activityDate}>
+                {formatActivityDate(item.activityDate || item.startTime)}
+              </Text>
+              <Text style={styles.activityTime}>
+                {" at " + formatTime(item.startTime)}
+              </Text>
+            </View>
           </View>
           {item.isManualEntry && (
             <View style={styles.manualBadge}>
@@ -1110,11 +1138,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
   },
-  activityDate: {
-    fontSize: 14,
-    color: theme.colors.gray,
-    marginTop: 2,
-  },
   filterIndicatorDot: {
     position: "absolute",
     top: 8,
@@ -1513,5 +1536,19 @@ const styles = StyleSheet.create({
   photoIndicatorText: {
     color: "white",
     fontSize: 14,
+  },
+  activityDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  activityDate: {
+    fontSize: 14,
+    color: theme.colors.navy,
+    fontWeight: "500",
+  },
+  activityTime: {
+    fontSize: 14,
+    color: theme.colors.gray,
   },
 });

@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
@@ -17,7 +18,7 @@ import {
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { CategoryType } from "../constants/categories";
+import { CategoryType, categoryList } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useLocation } from "../contexts/LocationContext";
 
@@ -42,6 +43,10 @@ export default function AddLocationScreen() {
     useState<CategoryType>("other");
   const [mapReady, setMapReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // NEW: Date state for manual location entry
+  const [locationDate, setLocationDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
@@ -213,7 +218,8 @@ export default function AddLocationScreen() {
         selectedLocation,
         locationDescription.trim(),
         photos, // Pass local URIs - context will upload them
-        selectedCategory
+        selectedCategory,
+        locationDate // Pass the selected date
       );
 
       // Clear form data
@@ -223,6 +229,7 @@ export default function AddLocationScreen() {
       setSelectedLocation(null);
       setShowForm(false);
       setSelectedCategory("other");
+      setLocationDate(new Date()); // Reset to today
 
       // Clear the marker from the map
       const js = `
@@ -260,6 +267,15 @@ export default function AddLocationScreen() {
     setLocationName("");
     setLocationDescription("");
     // Keep the marker on the map but hide the form
+  };
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   const generateMapHTML = () => {
@@ -463,18 +479,16 @@ export default function AddLocationScreen() {
       {showForm && selectedLocation && (
         <KeyboardAvoidingView
           style={styles.formContainer}
-          behavior={Platform.OS === "ios" ? "padding" : undefined} // No behavior for Android
-          keyboardVerticalOffset={0} // No offset needed for Android
-          enabled={Platform.OS === "ios"} // Only enable for iOS
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={0}
+          enabled={Platform.OS === "ios"}
         >
           <ScrollView
             style={styles.form}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.formContent}
-            // This is the key prop for Android:
             keyboardDismissMode="on-drag"
-            // Ensure we can scroll when keyboard is open
             nestedScrollEnabled={true}
           >
             <View style={styles.formHeader}>
@@ -510,6 +524,80 @@ export default function AddLocationScreen() {
               returnKeyType="next"
               onSubmitEditing={() => descriptionInputRef.current?.focus()}
             />
+
+            {/* NEW: Date Picker Section */}
+            <Text style={styles.label}>Date Visited</Text>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowDatePicker(true)}
+              disabled={isSaving}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={20}
+                color={theme.colors.navy}
+              />
+              <Text style={styles.dateButtonText}>{formatDate(locationDate)}</Text>
+              <Ionicons
+                name="chevron-down"
+                size={20}
+                color={theme.colors.gray}
+              />
+            </TouchableOpacity>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={locationDate}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event, selectedDate) => {
+                  setShowDatePicker(false);
+                  if (selectedDate) {
+                    setLocationDate(selectedDate);
+                  }
+                }}
+                maximumDate={new Date()} // Can't select future dates
+              />
+            )}
+
+            {/* Category Selection */}
+            <Text style={styles.label}>Category</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoryScroll}
+            >
+              {categoryList.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.categoryChip,
+                    selectedCategory === category.id && {
+                      backgroundColor: category.color,
+                      borderColor: category.color,
+                    },
+                  ]}
+                  onPress={() => setSelectedCategory(category.id)}
+                  disabled={isSaving}
+                >
+                  <Ionicons
+                    name={category.icon}
+                    size={18}
+                    color={
+                      selectedCategory === category.id ? "white" : category.color
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.categoryChipText,
+                      selectedCategory === category.id && { color: "white" },
+                    ]}
+                  >
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <Text style={styles.label}>Description (Optional)</Text>
             <TextInput
@@ -719,7 +807,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: Platform.OS === "android" ? "70%" : "75%", // Less height on Android
+    maxHeight: Platform.OS === "android" ? "70%" : "75%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -731,7 +819,6 @@ const styles = StyleSheet.create({
   },
   formContent: {
     padding: 20,
-    // More padding at bottom for Android to ensure scroll
     paddingBottom: Platform.OS === "android" ? 200 : 100,
   },
   formHeader: {
@@ -780,12 +867,49 @@ const styles = StyleSheet.create({
     minHeight: 45,
   },
   textArea: {
-    height: 100, // Increased height
+    height: 100,
     textAlignVertical: "top",
     paddingTop: 12,
-    minHeight: 100, // Ensure minimum height
+    minHeight: 100,
   },
-
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.colors.offWhite,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
+  },
+  dateButtonText: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.navy,
+    marginLeft: 10,
+  },
+  categoryScroll: {
+    marginBottom: 15,
+    maxHeight: 50,
+  },
+  categoryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  categoryChipText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: theme.colors.gray,
+    fontWeight: "500",
+  },
   formButtons: {
     flexDirection: "row",
     justifyContent: "space-between",

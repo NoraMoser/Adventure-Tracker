@@ -170,7 +170,6 @@ const generateLocationMapHTML = (location: any, name: string) => {
   `;
 };
 
-// Keep your existing FeedItemCard but REMOVE the view toggle from it
 const FeedItemCard = ({
   item,
   onLike,
@@ -207,8 +206,41 @@ const FeedItemCard = ({
     return "Just now";
   };
 
+  // Format the activity or location date
+  const formatItemDate = () => {
+    if (item.type === "activity" && item.data.activityDate) {
+      const d = new Date(item.data.activityDate);
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    } else if (item.type === "location" && item.data.locationDate) {
+      const d = new Date(item.data.locationDate);
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+    return null;
+  };
+
   const renderActivityContent = (activity: any) => (
     <View style={styles.activityContent}>
+      {/* Add date badge if available */}
+      {activity.activityDate && (
+        <View style={styles.dateBadge}>
+          <Ionicons name="calendar" size={14} color={theme.colors.forest} />
+          <Text style={styles.dateBadgeText}>
+            Activity on{" "}
+            {new Date(activity.activityDate).toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.activityStats}>
         <View style={styles.statItem}>
           <Ionicons name="navigate" size={16} color={theme.colors.forest} />
@@ -236,7 +268,24 @@ const FeedItemCard = ({
   const renderLocationContent = (location: any) => (
     <View style={styles.locationContent}>
       <View style={styles.locationHeader}>
-        <Text style={styles.locationName}>{location.name}</Text>
+        <View style={styles.locationTitleSection}>
+          <Text style={styles.locationName}>{location.name}</Text>
+          {/* Add visited date if available */}
+          {location.locationDate && (
+            <Text style={styles.locationDate}>
+              Visited{" "}
+              {new Date(location.locationDate).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year:
+                  new Date(location.locationDate).getFullYear() !==
+                  new Date().getFullYear()
+                    ? "numeric"
+                    : undefined,
+              })}
+            </Text>
+          )}
+        </View>
         <TouchableOpacity
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -318,7 +367,14 @@ const FeedItemCard = ({
               {item.data.sharedBy.displayName ||
                 item.data.sharedBy.display_name}
             </Text>
-            <Text style={styles.timeAgo}>{getTimeAgo(item.data.sharedAt)}</Text>
+            <View style={styles.timeRow}>
+              <Text style={styles.timeAgo}>
+                {getTimeAgo(item.data.sharedAt)}
+              </Text>
+              {formatItemDate() && (
+                <Text style={styles.itemDate}>• {formatItemDate()}</Text>
+              )}
+            </View>
           </View>
         </View>
       </View>
@@ -1584,5 +1640,40 @@ const styles = StyleSheet.create({
   replyToMention: {
     color: theme.colors.forest,
     fontWeight: "600",
+  },
+  dateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "10",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    alignSelf: "flex-start",
+    marginBottom: 10,
+  },
+  dateBadgeText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginLeft: 5,
+    fontWeight: "500",
+  },
+  locationTitleSection: {
+    flex: 1,
+  },
+  locationDate: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  itemDate: {
+    fontSize: 12,
+    color: theme.colors.navy,
+    marginLeft: 4,
+    fontWeight: "500",
   },
 });

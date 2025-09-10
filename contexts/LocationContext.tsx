@@ -1,4 +1,4 @@
-// contexts/LocationContext.tsx - Complete fixed version
+// contexts/LocationContext.tsx - Complete with date support
 import * as Location from "expo-location";
 import React, {
   createContext,
@@ -21,8 +21,9 @@ interface SavedSpot {
   id: string;
   name: string;
   location: LocationCoords;
+  locationDate: Date; // When the location was visited
   photos?: string[];
-  timestamp: Date;
+  timestamp: Date; // When saved to DB
   description?: string;
   category: CategoryType;
   rating?: number;
@@ -36,14 +37,16 @@ interface LocationContextType {
     name: string,
     description?: string,
     photos?: string[],
-    category?: CategoryType
+    category?: CategoryType,
+    locationDate?: Date
   ) => Promise<void>;
   saveManualLocation: (
     name: string,
     coords: LocationCoords,
     description?: string,
     photos?: string[],
-    category?: CategoryType
+    category?: CategoryType,
+    locationDate?: Date
   ) => Promise<void>;
   updateSpot: (spotId: string, updatedSpot: SavedSpot) => Promise<void>;
   addPhotoToSpot: (spotId: string, photoUri: string) => Promise<void>;
@@ -139,6 +142,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         .from("locations")
         .select("*")
         .eq("user_id", user.id)
+        .order("location_date", { ascending: false }) // Order by location date
         .order("created_at", { ascending: false });
 
       if (fetchError) {
@@ -156,6 +160,9 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             latitude: spot.latitude,
             longitude: spot.longitude,
           },
+          locationDate: spot.location_date 
+            ? new Date(spot.location_date) 
+            : new Date(spot.created_at),
           photos: spot.photos || [],
           timestamp: new Date(spot.created_at),
           description: spot.description,
@@ -240,7 +247,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const saveSpot = async (
-    spot: Omit<SavedSpot, "id" | "timestamp">
+    spot: Omit<SavedSpot, "id" | "timestamp"> & { locationDate?: Date }
   ): Promise<SavedSpot | null> => {
     if (!user) {
       setError("Please sign in to save locations");
@@ -263,6 +270,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         .insert({
           user_id: user.id,
           name: spot.name,
+          location_date: (spot.locationDate || new Date()).toISOString(),
           latitude: spot.location.latitude,
           longitude: spot.location.longitude,
           description: spot.description || null,
@@ -283,6 +291,9 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             latitude: data.latitude,
             longitude: data.longitude,
           },
+          locationDate: data.location_date 
+            ? new Date(data.location_date) 
+            : new Date(),
           photos: data.photos || [],
           timestamp: new Date(data.created_at),
           description: data.description,
@@ -307,7 +318,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     name: string,
     description?: string,
     photos?: string[],
-    category: CategoryType = "other"
+    category: CategoryType = "other",
+    locationDate?: Date
   ) => {
     if (!location) {
       setError("No location available to save");
@@ -326,6 +338,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       await saveSpot({
         name,
         location,
+        locationDate: locationDate || new Date(),
         description,
         photos: photos || [],
         category,
@@ -346,7 +359,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     coords: LocationCoords,
     description?: string,
     photos?: string[],
-    category: CategoryType = "other"
+    category: CategoryType = "other",
+    locationDate?: Date
   ) => {
     if (!user) {
       setError("Please sign in to save locations");
@@ -360,6 +374,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       await saveSpot({
         name,
         location: coords,
+        locationDate: locationDate || new Date(),
         description,
         photos: photos || [],
         category,
@@ -391,6 +406,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         .from("locations")
         .update({
           name: updatedSpot.name,
+          location_date: updatedSpot.locationDate.toISOString(),
           latitude: updatedSpot.location.latitude,
           longitude: updatedSpot.location.longitude,
           description: updatedSpot.description || null,
@@ -406,7 +422,9 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
       setSavedSpots((prev) =>
         prev.map((spot) =>
-          spot.id === spotId ? { ...updatedSpot, photos: photoUrls } : spot
+          spot.id === spotId 
+            ? { ...updatedSpot, photos: photoUrls } 
+            : spot
         )
       );
 

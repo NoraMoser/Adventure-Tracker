@@ -244,11 +244,13 @@ export default function SaveLocationScreen() {
 
     try {
       // Pass photos directly - LocationContext will handle upload
+      // NEW: Pass current date as locationDate
       await saveCurrentLocation(
         locationName.trim(),
         locationDescription.trim(),
         photos, // Pass local URIs - context will upload them
-        selectedCategory
+        selectedCategory,
+        new Date() // AUTOMATICALLY USE TODAY'S DATE
       );
 
       // Clear form and navigate back

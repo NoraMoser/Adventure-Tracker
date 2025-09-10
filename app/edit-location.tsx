@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -48,6 +49,10 @@ export default function EditLocationScreen() {
   const [loading, setLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // NEW: Date states
+  const [locationDate, setLocationDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     // Load the spot data
@@ -58,6 +63,14 @@ export default function EditLocationScreen() {
       setDescription(currentSpot.description || "");
       setPhotos(currentSpot.photos || []);
       setCategory(currentSpot.category || "other");
+      // NEW: Set the location date
+      setLocationDate(
+        currentSpot.locationDate 
+          ? new Date(currentSpot.locationDate) 
+          : currentSpot.timestamp 
+          ? new Date(currentSpot.timestamp)
+          : new Date()
+      );
     } else {
       Alert.alert("Error", "Location not found", [
         { text: "OK", onPress: () => router.back() },
@@ -67,17 +80,38 @@ export default function EditLocationScreen() {
   }, [spotId, savedSpots]);
 
   useEffect(() => {
-    // Check if any changes were made
+    // Check if any changes were made (including date)
     if (spot) {
+      const originalDate = spot.locationDate 
+        ? new Date(spot.locationDate) 
+        : spot.timestamp 
+        ? new Date(spot.timestamp)
+        : null;
+      
+      const dateChanged = originalDate 
+        ? locationDate.toDateString() !== originalDate.toDateString()
+        : false;
+      
       const changed =
         name !== spot.name ||
         description !== (spot.description || "") ||
         category !== (spot.category || "other") ||
         photos.length !== (spot.photos || []).length ||
-        photos.some((photo, index) => photo !== (spot.photos || [])[index]);
+        photos.some((photo, index) => photo !== (spot.photos || [])[index]) ||
+        dateChanged;
+      
       setHasChanges(changed);
     }
-  }, [name, description, category, photos, spot]);
+  }, [name, description, category, photos, locationDate, spot]);
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
 
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -185,6 +219,7 @@ export default function EditLocationScreen() {
         description: description.trim(),
         photos: finalPhotoUrls,
         category,
+        locationDate, // NEW: Include the updated date
       };
 
       await updateSpot(spotId as string, updatedSpot);
@@ -287,7 +322,7 @@ export default function EditLocationScreen() {
           </Text>
         </View>
         <Text style={styles.savedDate}>
-          Saved on {new Date(spot?.timestamp).toLocaleDateString()}
+          Added to collection on {new Date(spot?.timestamp).toLocaleDateString()}
         </Text>
 
         {/* Get Directions Button */}
@@ -342,6 +377,41 @@ export default function EditLocationScreen() {
           placeholder="Enter location name"
           placeholderTextColor={theme.colors.lightGray}
         />
+
+        {/* NEW: Date Visited Section */}
+        <Text style={styles.label}>Date Visited</Text>
+        <TouchableOpacity
+          style={styles.dateButton}
+          onPress={() => setShowDatePicker(true)}
+          disabled={isSaving}
+        >
+          <Ionicons
+            name="calendar-outline"
+            size={20}
+            color={theme.colors.navy}
+          />
+          <Text style={styles.dateButtonText}>{formatDate(locationDate)}</Text>
+          <Ionicons
+            name="chevron-down"
+            size={20}
+            color={theme.colors.gray}
+          />
+        </TouchableOpacity>
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={locationDate}
+            mode="date"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(false);
+              if (selectedDate) {
+                setLocationDate(selectedDate);
+              }
+            }}
+            maximumDate={new Date()} // Can't select future dates
+          />
+        )}
 
         <Text style={styles.label}>Description</Text>
         <TextInput
@@ -511,6 +581,23 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: "top",
+  },
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.colors.white,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+  },
+  dateButtonText: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.navy,
+    marginLeft: 10,
   },
   photoActions: {
     flexDirection: "row",

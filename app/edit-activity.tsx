@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
@@ -34,6 +35,14 @@ export default function EditActivityScreen() {
   const [duration, setDuration] = useState(activity?.duration || 0);
   const [photos, setPhotos] = useState<string[]>(activity?.photos || []);
   const [showMap, setShowMap] = useState(false);
+  
+  // Add date state
+  const [activityDate, setActivityDate] = useState(
+    activity?.activityDate 
+      ? new Date(activity.activityDate) 
+      : new Date(activity?.startTime || Date.now())
+  );
+  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
   const [durationHours, setDurationHours] = useState(
     Math.floor((activity?.duration || 0) / 3600).toString()
@@ -51,43 +60,44 @@ export default function EditActivityScreen() {
   }, [activity]);
 
   const handleSave = async () => {
-  if (!activity) return;
+    if (!activity) return;
 
-  const updatedDuration =
-    parseInt(durationHours || "0") * 3600 +
-    parseInt(durationMinutes || "0") * 60;
+    const updatedDuration =
+      parseInt(durationHours || "0") * 3600 +
+      parseInt(durationMinutes || "0") * 60;
 
-  // Calculate average speed safely
-  let averageSpeed = 0;
-  if (distance > 0 && updatedDuration > 0) {
-    averageSpeed = (distance / 1000) / (updatedDuration / 3600);
-  }
+    // Calculate average speed safely
+    let averageSpeed = 0;
+    if (distance > 0 && updatedDuration > 0) {
+      averageSpeed = distance / 1000 / (updatedDuration / 3600);
+    }
 
-  const updatedActivity = {
-    ...activity,
-    name: name.trim(),
-    notes: notes.trim(),
-    route,
-    distance,
-    duration: updatedDuration,
-    photos,
-    averageSpeed: averageSpeed, // Use the safely calculated speed
+    const updatedActivity = {
+      ...activity,
+      name: name.trim(),
+      notes: notes.trim(),
+      route,
+      distance,
+      duration: updatedDuration,
+      photos,
+      averageSpeed: averageSpeed,
+      activityDate: activityDate, // Use the Date object directly
+    };
+
+    try {
+      await updateActivity(activity.id, updatedActivity);
+      Alert.alert("Success", "Activity updated successfully!", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      Alert.alert("Error", "Failed to update activity");
+    }
   };
-
-  try {
-    await updateActivity(activity.id, updatedActivity);
-    Alert.alert("Success", "Activity updated successfully!", [
-      { text: "OK", onPress: () => router.back() },
-    ]);
-  } catch (error) {
-    Alert.alert("Error", "Failed to update activity");
-  }
-};
 
   const handleMapMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      
+
       if (data.type === "routeUpdated") {
         setRoute(data.route);
         setDistance(data.distance);
@@ -474,6 +484,24 @@ export default function EditActivityScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.label}>Activity Date</Text>
+        <TouchableOpacity
+          style={styles.dateInput}
+          onPress={() => setDatePickerVisibility(true)}
+        >
+          <Ionicons name="calendar" size={20} color={theme.colors.forest} />
+          <Text style={styles.dateText}>
+            {activityDate.toLocaleDateString('en-US', { 
+              weekday: 'short', 
+              year: 'numeric', 
+              month: 'short', 
+              day: 'numeric' 
+            })}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.label}>Distance: {formatDistance(distance)}</Text>
         <TouchableOpacity
           style={styles.mapButton}
@@ -555,6 +583,18 @@ export default function EditActivityScreen() {
           />
         </View>
       )}
+
+      <DateTimePickerModal
+        isVisible={isDatePickerVisible}
+        mode="date"
+        onConfirm={(date) => {
+          setActivityDate(date);
+          setDatePickerVisibility(false);
+        }}
+        onCancel={() => setDatePickerVisibility(false)}
+        date={activityDate}
+        maximumDate={new Date()} // Can't pick future dates
+      />
     </ScrollView>
   );
 }
@@ -626,6 +666,21 @@ const styles = StyleSheet.create({
   durationLabel: {
     fontSize: 14,
     color: theme.colors.gray,
+  },
+  dateInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 12,
+    gap: 10,
+  },
+  dateText: {
+    fontSize: 16,
+    color: theme.colors.navy,
+    flex: 1,
   },
   mapButton: {
     flexDirection: "row",

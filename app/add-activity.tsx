@@ -1,4 +1,4 @@
-// add-activity.tsx - Updated with Route Drawing on Map
+// add-activity.tsx - Updated with Date Selection
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
@@ -15,7 +15,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
@@ -47,7 +47,8 @@ export default function AddActivityScreen() {
     settings.defaultActivityType || "bike"
   );
   const [name, setName] = useState("");
-  const [date, setDate] = useState(new Date());
+  const [activityDate, setActivityDate] = useState(new Date()); // NEW: Activity date separate from time
+  const [startTime, setStartTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [duration, setDuration] = useState({ hours: "0", minutes: "0" });
@@ -91,19 +92,25 @@ export default function AddActivityScreen() {
         ? distanceInMeters / 1000 / (durationInSeconds / 3600)
         : 0;
 
+    // Combine date and time
+    const combinedDateTime = new Date(activityDate);
+    combinedDateTime.setHours(startTime.getHours());
+    combinedDateTime.setMinutes(startTime.getMinutes());
+
     // Create activity object
     const activity = {
       type: activityType,
       name: name.trim(),
-      startTime: date,
-      endTime: new Date(date.getTime() + durationInSeconds * 1000),
+      activityDate: activityDate, // NEW: Store the activity date
+      startTime: combinedDateTime,
+      endTime: new Date(combinedDateTime.getTime() + durationInSeconds * 1000),
       duration: durationInSeconds,
       distance: distanceInMeters,
       route: drawnRoute,
       averageSpeed: avgSpeed,
       maxSpeed: avgSpeed,
       notes: notes.trim(),
-      photos: photos, // Add this line
+      photos: photos,
       isManualEntry: true,
     };
 
@@ -132,28 +139,6 @@ export default function AddActivityScreen() {
       minute: "2-digit",
       hour12: true,
     });
-  };
-
-  const handleMapMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-
-      if (data.type === "routeUpdated") {
-        setDrawnRoute(data.route);
-        setRouteDistance(data.distance);
-
-        // Update the distance field with the calculated distance
-        if (data.distance > 0) {
-          const displayDistance =
-            distanceUnit === "km"
-              ? (data.distance / 1000).toFixed(2)
-              : (data.distance / 1609.34).toFixed(2);
-          setDistance(displayDistance);
-        }
-      }
-    } catch (error) {
-      console.error("Error parsing map message:", error);
-    }
   };
 
   const handleTakePhoto = async () => {
@@ -206,10 +191,33 @@ export default function AddActivityScreen() {
     setPhotos(newPhotos);
   };
 
+  const handleMapMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+
+      if (data.type === "routeUpdated") {
+        setDrawnRoute(data.route);
+        setRouteDistance(data.distance);
+
+        // Update the distance field with the calculated distance
+        if (data.distance > 0) {
+          const displayDistance =
+            distanceUnit === "km"
+              ? (data.distance / 1000).toFixed(2)
+              : (data.distance / 1609.34).toFixed(2);
+          setDistance(displayDistance);
+        }
+      }
+    } catch (error) {
+      console.error("Error parsing map message:", error);
+    }
+  };
+
   const generateMapHTML = () => {
     const centerLat = currentLocation?.latitude || 47.6062;
     const centerLng = currentLocation?.longitude || -122.3321;
 
+    // ... (rest of the map HTML generation stays the same)
     return `
       <!DOCTYPE html>
       <html>
@@ -243,7 +251,7 @@ export default function AddActivityScreen() {
             font-size: 16px;
             font-weight: bold;
           }
-          .leaflet-draw-toolbar a {
+             .leaflet-draw-toolbar a {
             background-color: white !important;
           }
           .instructions {
@@ -272,11 +280,11 @@ export default function AddActivityScreen() {
           Click points on the map to draw your route
         </div>
         <script>
-          // Initialize map
+          // Map initialization code (same as before)
           var map = L.map('map', {
             tap: true,
             zoomControl: true,
-            doubleClickZoom: false  // Prevent double click zoom
+            doubleClickZoom: false
           }).setView([${centerLat}, ${centerLng}], 13);
           
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -284,7 +292,8 @@ export default function AddActivityScreen() {
             maxZoom: 19
           }).addTo(map);
 
-          // Variables for route drawing
+          // Route drawing code remains the same...
+          // // Variables for route drawing
           var routePoints = [];
           var routeLine = null;
           var markers = [];
@@ -535,8 +544,8 @@ export default function AddActivityScreen() {
               var group = new L.featureGroup(markers);
               map.fitBounds(group.getBounds().pad(0.1));
             }
-          }
-        </script>
+          }        
+            </script>
       </body>
       </html>
     `;
@@ -608,12 +617,12 @@ export default function AddActivityScreen() {
         />
       </View>
 
-      {/* Date & Time */}
+      {/* Date & Time - UPDATED */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Date & Time</Text>
         <View style={styles.dateTimeContainer}>
           <TouchableOpacity
-            style={styles.dateTimeButton}
+            style={[styles.dateTimeButton, styles.dateButton]}
             onPress={() => setShowDatePicker(true)}
           >
             <Ionicons
@@ -621,26 +630,32 @@ export default function AddActivityScreen() {
               size={20}
               color={theme.colors.navy}
             />
-            <Text style={styles.dateTimeText}>{formatDate(date)}</Text>
+            <View style={styles.dateTimeContent}>
+              <Text style={styles.dateTimeLabel}>Date</Text>
+              <Text style={styles.dateTimeValue}>{formatDate(activityDate)}</Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.dateTimeButton}
             onPress={() => setShowTimePicker(true)}
           >
             <Ionicons name="time-outline" size={20} color={theme.colors.navy} />
-            <Text style={styles.dateTimeText}>{formatTime(date)}</Text>
+            <View style={styles.dateTimeContent}>
+              <Text style={styles.dateTimeLabel}>Start Time</Text>
+              <Text style={styles.dateTimeValue}>{formatTime(startTime)}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
 
       {showDatePicker && (
         <DateTimePicker
-          value={date}
+          value={activityDate}
           mode="date"
           display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={(event, selectedDate) => {
             setShowDatePicker(false);
-            if (selectedDate) setDate(selectedDate);
+            if (selectedDate) setActivityDate(selectedDate);
           }}
           maximumDate={new Date()}
         />
@@ -648,16 +663,17 @@ export default function AddActivityScreen() {
 
       {showTimePicker && (
         <DateTimePicker
-          value={date}
+          value={startTime}
           mode="time"
           display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={(event, selectedDate) => {
+          onChange={(event, selectedTime) => {
             setShowTimePicker(false);
-            if (selectedDate) setDate(selectedDate);
+            if (selectedTime) setStartTime(selectedTime);
           }}
         />
       )}
 
+      {/* Rest of the component remains the same */}
       {/* Duration */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Duration *</Text>
@@ -689,6 +705,7 @@ export default function AddActivityScreen() {
         </View>
       </View>
 
+      {/* Photos Section */}
       {/* Route Drawing Button */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Route (Optional)</Text>
@@ -774,11 +791,10 @@ export default function AddActivityScreen() {
           numberOfLines={4}
           textAlignVertical="top"
         />
-      </View>
-
+      </View>      
+      
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Photos (Optional)</Text>
-
         <View style={styles.photoActions}>
           <TouchableOpacity
             style={styles.photoButton}
@@ -821,6 +837,8 @@ export default function AddActivityScreen() {
         )}
       </View>
 
+      {/* Route, Distance, Notes sections remain the same */}
+      
       {/* Save Button */}
       <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
         <Ionicons name="save-outline" size={20} color={theme.colors.white} />
@@ -950,10 +968,22 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.borderGray,
     marginHorizontal: 5,
   },
-  dateTimeText: {
+  dateButton: {
+    flex: 1.2, // Slightly wider for date
+  },
+  dateTimeContent: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  dateTimeLabel: {
+    fontSize: 11,
+    color: theme.colors.gray,
+    marginBottom: 2,
+  },
+  dateTimeValue: {
     fontSize: 14,
     color: theme.colors.navy,
-    marginLeft: 8,
+    fontWeight: "500",
   },
   durationContainer: {
     flexDirection: "row",
@@ -980,6 +1010,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
   },
+
   drawRouteButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1030,7 +1061,7 @@ const styles = StyleSheet.create({
   },
   notesInput: {
     height: 100,
-  },
+  },  
   saveButton: {
     backgroundColor: theme.colors.forest,
     flexDirection: "row",
@@ -1088,7 +1119,7 @@ const styles = StyleSheet.create({
   },
   mapWebView: {
     flex: 1,
-  },
+  },  
   photoActions: {
     flexDirection: "row",
     justifyContent: "space-around",

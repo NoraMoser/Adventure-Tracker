@@ -1,4 +1,4 @@
-// app/track-activity.tsx
+// app/track-activity.tsx - Updated with date selection
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useSettings } from "../contexts/SettingsContext";
@@ -70,6 +71,10 @@ export default function TrackActivityScreen() {
   const [manualLoading, setManualLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Add date state
+  const [activityDate, setActivityDate] = useState(new Date());
+  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -212,7 +217,6 @@ export default function TrackActivityScreen() {
     setShowSaveDialog(true);
   };
 
-  // Update the handleSaveActivity function (around line 273)
   const handleSaveActivity = async () => {
     setIsSaving(true);
     setSaveError(null);
@@ -220,21 +224,26 @@ export default function TrackActivityScreen() {
     try {
       const name = activityName.trim() || `${selectedActivity} activity`;
 
-      console.log("Saving activity...", {
+      // Create the activity object with the date
+      const activityData = {
         name,
+        notes: activityNotes,
+        photos,
+        activityDate, // Add the date here
         distance: finalDistance,
         duration: finalDuration,
-        photos: photos.length, // Add this for debugging
-      });
+      };
 
-      // Pass photos as the third parameter
-      await stopTracking(name, activityNotes, photos); // Update this line
+      console.log("Saving activity with date...", activityData);
+
+      await stopTracking(name, activityNotes, photos);
 
       setActivityName("");
       setActivityNotes("");
-      setPhotos([]); // Clear photos after saving
+      setPhotos([]);
       setShowSaveDialog(false);
       setIsSaving(false);
+      setActivityDate(new Date()); // Reset to today for next activity
 
       Alert.alert("Success", "Activity saved successfully!", [
         { text: "OK", onPress: () => router.back() },
@@ -526,6 +535,23 @@ export default function TrackActivityScreen() {
             editable={!isSaving}
           />
 
+          <Text style={styles.label}>Activity Date</Text>
+          <TouchableOpacity
+            style={styles.dateInput}
+            onPress={() => setDatePickerVisibility(true)}
+            disabled={isSaving}
+          >
+            <Ionicons name="calendar" size={20} color={theme.colors.forest} />
+            <Text style={styles.dateText}>
+              {activityDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              })}
+            </Text>
+          </TouchableOpacity>
+
           <Text style={styles.label}>Notes (Optional)</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
@@ -576,21 +602,24 @@ export default function TrackActivityScreen() {
             <Text style={styles.discardButtonText}>Discard Activity</Text>
           </TouchableOpacity>
         </View>
+
+        <DateTimePickerModal
+          isVisible={isDatePickerVisible}
+          mode="date"
+          onConfirm={(date) => {
+            setActivityDate(date);
+            setDatePickerVisibility(false);
+          }}
+          onCancel={() => setDatePickerVisibility(false)}
+          date={activityDate}
+          maximumDate={new Date()}
+        />
       </ScrollView>
     );
   }
 
   // In the tracking view section
   if (isTracking) {
-    console.log("Tracking state:", {
-      currentDistance,
-      currentDuration,
-      currentSpeed,
-      isPaused,
-      gpsStatus,
-      formatDistance: typeof formatDistance,
-      formatSpeed: typeof formatSpeed,
-    });
     return (
       <View style={styles.container}>
         <View style={styles.trackingContainer}>
@@ -626,6 +655,7 @@ export default function TrackActivityScreen() {
               </Text>
             </View>
           </View>
+
           <View style={styles.photoSection}>
             <View style={styles.photoHeader}>
               <Text style={styles.photoTitle}>
@@ -779,6 +809,7 @@ export default function TrackActivityScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
       <View style={styles.disclaimerContainer}>
         <Ionicons
           name="information-circle-outline"
@@ -1217,6 +1248,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
     color: theme.colors.navy,
+  },
+  dateInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    gap: 10,
+  },
+  dateText: {
+    fontSize: 16,
+    color: theme.colors.navy,
+    flex: 1,
   },
   textArea: {
     height: 100,

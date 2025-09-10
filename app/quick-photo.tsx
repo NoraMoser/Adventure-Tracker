@@ -121,7 +121,8 @@ export default function QuickPhotoScreen() {
         title || caption || `Quick log ${new Date().toLocaleDateString()}`, // Use title first if available
         caption, // description stays as caption
         photos,
-        selectedCategory
+        selectedCategory,
+        new Date()
       );
 
       Alert.alert(
