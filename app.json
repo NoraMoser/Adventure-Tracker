@@ -1,29 +1,116 @@
 {
   "expo": {
-    "name": "MyAdventureTrackerNew",
-    "slug": "MyAdventureTrackerNew",
-    "version": "1.0.0",
+    "name": "explorAble",
+    "slug": "explorable",
+    "version": "1.0.17",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#1e3a5f"
     },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.noramoser.explorable",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "explorAble needs access to your location to track your activities and save your favorite spots.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "explorAble needs access to your location to track your activities in the background.",
+        "NSCameraUsageDescription": "explorAble needs access to your camera to take photos of your adventure spots.",
+        "NSPhotoLibraryUsageDescription": "explorAble needs access to your photo library to add photos to your saved locations.",
+        "NSPhotoLibraryAddUsageDescription": "explorAble needs permission to save photos to your photo library.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "processing",
+          "remote-notification"
+        ]
+      }
     },
+    "scheme": "explorable",
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#F5F5F0"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.moser.explorable",
+      "versionCode": 18,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
+      ],
+      "softwareKeyboardLayoutMode": "pan",
+      "useNextNotificationsApi": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow ExplorAble to track your activities in the background for accurate route recording.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-task-manager",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#2d5a3d",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow explorAble to access your camera to capture your adventure moments.",
+          "microphonePermission": "Allow explorAble to access your microphone for video recording.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow explorAble to access your photos to add to your saved spots.",
+          "savePhotosPermission": "Allow explorAble to save photos to your gallery.",
+          "isAccessMediaLocationEnabled": true,
+          "isAudioEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them with your adventure spots.",
+          "cameraPermission": "The app accesses your camera to let you take photos of your adventures."
+        }
+      ],
+      "expo-router",
+      "expo-mail-composer",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0e548ecd-901d-40e5-a107-3a05329592e9"
+      }
     }
   }
 }
