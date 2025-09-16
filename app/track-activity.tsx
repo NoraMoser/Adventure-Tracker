@@ -110,47 +110,24 @@ export default function TrackActivityScreen() {
   }, [error]);
 
   const handleStart = async () => {
-    try {
-      setManualLoading(true);
+  try {
+    setManualLoading(true);
 
-      // Check location services BEFORE permissions
-      const servicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled) {
-        setManualLoading(false);
-        Alert.alert(
-          "Location Services Disabled",
-          "Please enable location services in your device settings",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Settings", onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
-      }
-
-      // Now check permissions
-      let { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== "granted") {
-        const permResult = await Location.requestForegroundPermissionsAsync();
-        status = permResult.status;
-      }
-
-      if (status !== "granted") {
-        setManualLoading(false);
-        setShowPermissionScreen(true);
-        return;
-      }
-
-      // Add delay before starting
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await startTracking(selectedActivity);
-      setManualLoading(false);
-    } catch (err) {
-      setManualLoading(false);
-      console.error("Error starting activity:", err);
-      Alert.alert("Error", "Failed to start tracking. Please try again.");
-    }
-  };
+    // Skip the permission checks and service checks for now
+    console.log("Starting tracking without permission checks...");
+    
+    // Add delay before starting
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    
+    // Just start tracking directly
+    await startTracking(selectedActivity);
+    setManualLoading(false);
+  } catch (err) {
+    setManualLoading(false);
+    console.error("Error starting activity:", err);
+    Alert.alert("Error", "Failed to start tracking. Please try again.");
+  }
+};
 
   const handleRequestPermission = async () => {
     setShowPermissionScreen(false);

@@ -158,8 +158,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             latitude: spot.latitude,
             longitude: spot.longitude,
           },
-          locationDate: spot.location_date 
-            ? new Date(spot.location_date) 
+          locationDate: spot.location_date
+            ? new Date(spot.location_date)
             : new Date(spot.created_at),
           photos: spot.photos || [],
           timestamp: new Date(spot.created_at),
@@ -184,31 +184,52 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const getLocation = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    console.log("LocationContext: Getting location directly (permissions already granted)...");
+    
+    // Skip permission check if hanging - just try to get location
     try {
-      setLoading(true);
-      setError(null);
-
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setError("Permission to access location was denied");
-        return;
-      }
-
       const currentLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
-
+      
+      console.log("LocationContext: Got location:", currentLocation.coords);
+      
       setLocation({
         latitude: currentLocation.coords.latitude,
         longitude: currentLocation.coords.longitude,
       });
+      
+      return; // Exit after success
     } catch (err) {
-      console.error("Error getting location:", err);
-      setError("Failed to get location");
-    } finally {
-      setLoading(false);
+      console.log("getCurrentPositionAsync failed:", err);
     }
-  };
+    
+    // Try last known as fallback
+    try {
+      const lastKnown = await Location.getLastKnownPositionAsync();
+      if (lastKnown) {
+        console.log("LocationContext: Using last known location:", lastKnown.coords);
+        setLocation({
+          latitude: lastKnown.coords.latitude,
+          longitude: lastKnown.coords.longitude,
+        });
+        return;
+      }
+    } catch (err) {
+      console.log("getLastKnownPositionAsync failed:", err);
+    }
+    
+    throw new Error("Could not get location");
+  } catch (err) {
+    console.error("LocationContext: Error getting location:", err);
+    setError("Failed to get location");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const processPhotosForUpload = async (
     photos: string[]
@@ -289,8 +310,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             latitude: data.latitude,
             longitude: data.longitude,
           },
-          locationDate: data.location_date 
-            ? new Date(data.location_date) 
+          locationDate: data.location_date
+            ? new Date(data.location_date)
             : new Date(),
           photos: data.photos || [],
           timestamp: new Date(data.created_at),
@@ -420,9 +441,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
       setSavedSpots((prev) =>
         prev.map((spot) =>
-          spot.id === spotId 
-            ? { ...updatedSpot, photos: photoUrls } 
-            : spot
+          spot.id === spotId ? { ...updatedSpot, photos: photoUrls } : spot
         )
       );
 

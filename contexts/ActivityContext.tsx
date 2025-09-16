@@ -379,21 +379,34 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const startTracking = async (activityType: ActivityType) => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    try {
-      console.log("Starting tracking for:", activityType);
-      setLoading(true);
-      setError(null);
+const startTracking = async (activityType: ActivityType) => {
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  try {
+    console.log("Starting tracking for:", activityType);
+    setLoading(true);
+    setError(null);
 
+    // Try to get location directly first (assumes permission already granted)
+    let initialLocation;
+    try {
+      initialLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+      console.log("Got initial location without permission check");
+    } catch (err) {
+      console.log("Failed to get location, checking permissions...");
+      // Only check permissions if the first attempt failed
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         throw new Error("Location permission is required");
       }
-
-      const initialLocation = await Location.getCurrentPositionAsync({
+      // Try again after permission check
+      initialLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.BestForNavigation,
       });
+    }
+
+    // Rest of your existing code starting from const initialPoint...
 
       const initialPoint: LocationPoint = {
         latitude: initialLocation.coords.latitude,

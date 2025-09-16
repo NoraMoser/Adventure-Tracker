@@ -14,9 +14,7 @@
     "updates": {
       "fallbackToCacheTimeout": 0
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.noramoser.explorable",
@@ -99,8 +97,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "The app accesses your photos to let you share them with your adventure spots.",
-          "cameraPermission": "The app accesses your camera to let you take photos of your adventures."
+          "cameraPermission": "Allow app to access camera",
+          "useLegacyImagePicker": true
         }
       ],
       "expo-router",

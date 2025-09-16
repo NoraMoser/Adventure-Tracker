@@ -1,22 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Camera, CameraType, CameraView } from "expo-camera";
 import { categories, CategoryType } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useLocation as useLocationContext } from "../contexts/LocationContext";
@@ -24,8 +24,9 @@ import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 
 export default function QuickPhotoScreen() {
   const router = useRouter();
-  const { saveCurrentLocation, getLocation, location } = useLocationContext();
-  const { checkAndAddToTrip } = useAutoAddToTrip(); // NEW: Add the hook
+  const { saveCurrentLocation, saveManualLocation, getLocation, location } =
+    useLocationContext();
+  const { checkAndAddToTrip } = useAutoAddToTrip();
   const [photos, setPhotos] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
   const [selectedCategory, setSelectedCategory] =
@@ -33,101 +34,138 @@ export default function QuickPhotoScreen() {
   const [saving, setSaving] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [title, setTitle] = useState("");
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
-    // Get current location when screen opens
-    getLocation();
-    // Add a delay for production builds
-    const timer = setTimeout(() => {
-      takePhoto();
-    }, 500); // Give the screen time to mount
+    console.log("QuickPhotoScreen mounted");
 
-    return () => clearTimeout(timer);
+    // Try multiple times to get location
+    const attemptLocation = async () => {
+      console.log("Attempting to get location...");
+      try {
+        await getLocation();
+
+        // If still no location, try again after a delay
+        setTimeout(async () => {
+          if (!location) {
+            console.log("First location attempt failed, trying again...");
+            await getLocation();
+          }
+        }, 2000);
+
+        // Try once more after longer delay
+        setTimeout(async () => {
+          if (!location) {
+            console.log("Second location attempt failed, trying again...");
+            await getLocation();
+          }
+        }, 4000);
+      } catch (error) {
+        console.log("Location error:", error);
+      }
+    };
+
+    attemptLocation();
+
+    // Check camera permissions
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === "granted");
+      console.log("Camera permission:", status);
+    })();
   }, []);
 
-  const takePhoto = async () => {
-    try {
-      // Add this check
-      const { status: existingStatus } =
-        await ImagePicker.getCameraPermissionsAsync();
-      if (existingStatus !== "granted") {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Denied", "Camera permission is required");
-          router.back();
-          return;
-        }
-      }
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture with Camera component...");
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
 
-      // Add a small delay for production builds
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use the enum, not array
-        quality: 0.8,
-        allowsEditing: false,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setPhotos((prev) => [...prev, result.assets[0].uri]);
-
-        // Try to save to gallery - wrapped in try/catch so it doesn't break if permission denied
-        try {
-          const { status: mediaStatus } =
-            await MediaLibrary.requestPermissionsAsync();
-
-          if (mediaStatus === "granted") {
-            const asset = await MediaLibrary.createAssetAsync(
-              result.assets[0].uri
-            );
-
-            const album = await MediaLibrary.getAlbumAsync("explorAble");
-            if (album == null) {
-              await MediaLibrary.createAlbumAsync("explorAble", asset, false);
-            } else {
-              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+        if (photo) {
+          console.log("Photo taken:", photo.uri);
+          setPhotos((prev) => {
+            console.log("Previous photos:", prev);
+            const newPhotos = [...prev, photo.uri];
+            console.log("New photos array:", newPhotos);
+            return newPhotos;
+          });
+          setShowCamera(false);
+          console.log("Camera should be hidden now");
+          // Try to save to gallery
+          try {
+            const { status: mediaStatus } =
+              await MediaLibrary.requestPermissionsAsync();
+            if (mediaStatus === "granted") {
+              const asset = await MediaLibrary.createAssetAsync(photo.uri);
+              const album = await MediaLibrary.getAlbumAsync("explorAble");
+              if (album == null) {
+                await MediaLibrary.createAlbumAsync("explorAble", asset, false);
+              } else {
+                await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+              }
+              console.log("Saved to gallery successfully");
             }
+          } catch (galleryError) {
+            console.log("Could not save to gallery:", galleryError);
           }
-        } catch (galleryError) {
-          console.log("Could not save to gallery:", galleryError);
-          // Photo is still saved in app, just not in gallery
         }
-      } else if (photos.length === 0) {
-        router.back();
-      }
-    } catch (error) {
-      console.error("Error taking photo:", error);
-      Alert.alert("Error", "Failed to take photo");
-      if (photos.length === 0) {
-        router.back();
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
       }
     }
   };
 
   const removePhoto = (index: number) => {
+    console.log("Removing photo at index:", index);
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   const saveQuickLog = async () => {
+    console.log("Saving quick log...");
+
     if (photos.length === 0) {
       Alert.alert("Error", "Please take at least one photo");
       return;
     }
 
-    if (!location) {
-      Alert.alert(
-        "Error",
-        "Location not available. Please enable location services."
-      );
-      return;
-    }
-
     setSaving(true);
     try {
-      // Save using current location from context
       const spotName =
         title || caption || `Quick log ${new Date().toLocaleDateString()}`;
+      console.log("Saving spot with name:", spotName);
 
+      // Check if we have location
+      if (!location) {
+        console.log("No location available, trying to get it now...");
+        await getLocation();
+
+        // Wait for location to potentially update
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        if (!location) {
+          console.log("Still no location, using fallback");
+          // Use fallback with saveManualLocation
+          await saveManualLocation(
+            spotName,
+            { latitude: 37.7749, longitude: -122.4194 },
+            caption,
+            photos,
+            selectedCategory,
+            new Date()
+          );
+          return;
+        }
+      }
+
+      // If we have location, use saveCurrentLocation
+      console.log("Have location, saving with real coordinates:", location);
       await saveCurrentLocation(
         spotName,
         caption,
@@ -136,7 +174,7 @@ export default function QuickPhotoScreen() {
         new Date()
       );
 
-      // Create a spot object for the trip check
+      console.log("Save completed");
       const savedSpot = {
         id: Date.now().toString(),
         name: spotName,
@@ -151,9 +189,8 @@ export default function QuickPhotoScreen() {
         locationDate: new Date().toISOString(),
       };
 
-      // Try to add to trip - wrapped in try/catch to handle any errors
       try {
-        const trip: any = await checkAndAddToTrip(
+        const trip = (await checkAndAddToTrip(
           savedSpot,
           "spot",
           savedSpot.name,
@@ -161,10 +198,9 @@ export default function QuickPhotoScreen() {
             latitude: location.latitude,
             longitude: location.longitude,
           },
-          true // prompt user
-        );
+          true
+        )) as { name?: string; id?: string } | null;
 
-        // Show success message based on whether it was added to a trip
         if (trip && trip.name && trip.id) {
           Alert.alert(
             "Saved to Trip!",
@@ -177,7 +213,7 @@ export default function QuickPhotoScreen() {
                   setCaption("");
                   setTitle("");
                   setSelectedCategory("other");
-                  takePhoto();
+                  setShowCamera(true);
                 },
               },
               {
@@ -191,41 +227,32 @@ export default function QuickPhotoScreen() {
             ]
           );
         } else {
-          // No trip selected, just show normal success
-          Alert.alert(
-            "Saved!",
-            "Your moment has been logged. You can add more details later.",
-            [
-              {
-                text: "Take Another",
-                onPress: () => {
-                  setPhotos([]);
-                  setCaption("");
-                  setTitle("");
-                  setSelectedCategory("other");
-                  takePhoto();
-                },
+          Alert.alert("Saved!", "Your moment has been logged.", [
+            {
+              text: "Take Another",
+              onPress: () => {
+                setPhotos([]);
+                setCaption("");
+                setTitle("");
+                setSelectedCategory("other");
+                setShowCamera(true);
               },
-              {
-                text: "Done",
-                onPress: () => router.back(),
-              },
-            ]
-          );
+            },
+            {
+              text: "Done",
+              onPress: () => router.back(),
+            },
+          ]);
         }
       } catch (tripError) {
-        // If there's any error with the trip functionality, just show success for the save
-        console.log("Trip add failed, but spot saved:", tripError);
+        console.log("Trip add failed:", tripError);
         Alert.alert("Saved!", "Your moment has been logged.", [
-          {
-            text: "Done",
-            onPress: () => router.back(),
-          },
+          { text: "Done", onPress: () => router.back() },
         ]);
       }
     } catch (error) {
-      console.error("Error saving quick log:", error);
-      Alert.alert("Error", "Failed to save. Please try again.");
+      console.error("Error in saveQuickLog:", error);
+      Alert.alert("Error", `Failed to save: ${error.message || error}`);
     } finally {
       setSaving(false);
     }
@@ -307,6 +334,36 @@ export default function QuickPhotoScreen() {
     );
   };
 
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="back"
+          onCameraReady={() => console.log("Camera ready")}
+        />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => setShowCamera(false)}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+  console.log(
+    "Main UI should render - showCamera:",
+    showCamera,
+    "photos:",
+    photos.length
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -344,9 +401,23 @@ export default function QuickPhotoScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {photos.length > 0 ? (
+          {photos.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <TouchableOpacity
+                style={styles.cameraButton}
+                onPress={() => setShowCamera(true)}
+                disabled={hasPermission === false}
+              >
+                <Ionicons name="camera" size={50} color={theme.colors.forest} />
+                <Text style={styles.cameraButtonText}>
+                  {hasPermission === false
+                    ? "Camera permission denied"
+                    : "Tap to open camera"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <>
-              {/* Photo Gallery */}
               <View style={styles.photoSection}>
                 <ScrollView
                   horizontal
@@ -355,7 +426,16 @@ export default function QuickPhotoScreen() {
                 >
                   {photos.map((photo, index) => (
                     <View key={index} style={styles.photoWrapper}>
-                      <Image source={{ uri: photo }} style={styles.photo} />
+                      <Image
+                        source={{ uri: photo }}
+                        style={styles.photo}
+                        onError={(e) =>
+                          console.log("Image load error:", e.nativeEvent.error)
+                        }
+                        onLoad={() =>
+                          console.log("Image loaded successfully:", photo)
+                        }
+                      />
                       <TouchableOpacity
                         style={styles.removePhotoButton}
                         onPress={() => removePhoto(index)}
@@ -366,7 +446,7 @@ export default function QuickPhotoScreen() {
                   ))}
                   <TouchableOpacity
                     style={styles.addPhotoButton}
-                    onPress={takePhoto}
+                    onPress={() => setShowCamera(true)}
                   >
                     <Ionicons
                       name="add-circle-outline"
@@ -381,7 +461,6 @@ export default function QuickPhotoScreen() {
                 </Text>
               </View>
 
-              {/* Title Input */}
               <View style={styles.titleContainer}>
                 <Text style={styles.label}>Title (optional)</Text>
                 <TextInput
@@ -395,7 +474,6 @@ export default function QuickPhotoScreen() {
                 />
               </View>
 
-              {/* Caption Input */}
               <View style={styles.captionContainer}>
                 <Text style={styles.label}>What is happening here?</Text>
                 <TextInput
@@ -411,10 +489,8 @@ export default function QuickPhotoScreen() {
                 <Text style={styles.charCount}>{caption.length}/200</Text>
               </View>
 
-              {/* Category Selector */}
               <CategorySelector />
 
-              {/* Location Indicator */}
               {location && (
                 <View style={styles.locationInfo}>
                   <Ionicons
@@ -433,11 +509,6 @@ export default function QuickPhotoScreen() {
                 </Text>
               </View>
             </>
-          ) : (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={theme.colors.forest} />
-              <Text style={styles.loadingText}>Opening camera...</Text>
-            </View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -477,6 +548,62 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 400,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: theme.colors.gray,
+  },
+  cameraButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 30,
+  },
+  cameraButtonText: {
+    marginTop: 12,
+    fontSize: 18,
+    color: theme.colors.forest,
+    fontWeight: "500",
+  },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraButtonContainer: {
+    flex: 1,
+    backgroundColor: "transparent",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "flex-end",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 40,
+    right: 20,
   },
   photoSection: {
     marginBottom: 16,
@@ -523,6 +650,19 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     textAlign: "center",
     marginTop: 8,
+  },
+  titleContainer: {
+    marginHorizontal: 16,
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  titleInput: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    paddingVertical: 8,
   },
   captionContainer: {
     marginHorizontal: 16,
@@ -618,16 +758,6 @@ const styles = StyleSheet.create({
     color: theme.colors.forest,
     marginLeft: 6,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: theme.colors.gray,
-  },
   footer: {
     padding: 16,
     marginHorizontal: 16,
@@ -639,18 +769,14 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     textAlign: "center",
   },
-  titleContainer: {
-    marginHorizontal: 16,
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  titleInput: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: theme.colors.navy,
-    paddingVertical: 8,
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
   },
 });
-// for later
