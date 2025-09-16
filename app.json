@@ -72,7 +72,6 @@
       ],
       "expo-task-manager",
       [
-        "expo-notifications",
         {
           "icon": "./assets/adaptive-icon.png",
           "color": "#2d5a3d",
