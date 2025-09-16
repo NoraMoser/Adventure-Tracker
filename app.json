@@ -14,9 +14,7 @@
     "updates": {
       "fallbackToCacheTimeout": 0
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.noramoser.explorable",
@@ -72,27 +70,9 @@
       ],
       "expo-task-manager",
       [
-        {
-          "icon": "./assets/adaptive-icon.png",
-          "color": "#2d5a3d",
-          "sounds": []
-        }
-      ],
-      [
         "expo-camera",
         {
-          "cameraPermission": "Allow explorAble to access your camera to capture your adventure moments.",
-          "microphonePermission": "Allow explorAble to access your microphone for video recording.",
-          "recordAudioAndroid": true
-        }
-      ],
-      [
-        "expo-media-library",
-        {
-          "photosPermission": "Allow explorAble to access your photos to add to your saved spots.",
-          "savePhotosPermission": "Allow explorAble to save photos to your gallery.",
-          "isAccessMediaLocationEnabled": true,
-          "isAudioEnabled": false
+          "cameraPermission": "Allow explorAble to access camera for photos"
         }
       ],
       [
@@ -100,6 +80,14 @@
         {
           "photosPermission": "The app accesses your photos to let you share them with your adventure spots.",
           "cameraPermission": "The app accesses your camera to let you take photos of your adventures."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow explorAble to access your photos to add to your saved spots.",
+          "savePhotosPermission": "Allow explorAble to save photos to your gallery.",
+          "isAccessMediaLocationEnabled": true
         }
       ],
       "expo-router"
