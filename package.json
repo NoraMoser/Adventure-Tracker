@@ -20,7 +20,6 @@
     "base64-arraybuffer": "^1.0.2",
     "expo": "~51.0.28",
     "expo-asset": "~9.0.0",
-    "expo-camera": "~14.1.0",
     "expo-clipboard": "~5.0.0",
     "expo-dev-client": "~3.3.0",
     "expo-device": "~5.9.0",
