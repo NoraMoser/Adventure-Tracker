@@ -70,12 +70,6 @@
       ],
       "expo-task-manager",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow explorAble to access camera for photos"
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "The app accesses your photos to let you share them with your adventure spots.",
