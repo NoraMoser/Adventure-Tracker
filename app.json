@@ -104,8 +104,6 @@
         }
       ],
       "expo-router",
-      "expo-mail-composer",
-      "expo-web-browser"
     ],
     "extra": {
       "eas": {
