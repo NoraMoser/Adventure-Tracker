@@ -66,10 +66,17 @@ interface ActivityContextType {
   startTracking: (activityType: ActivityType) => Promise<void>;
   pauseTracking: () => void;
   resumeTracking: () => void;
-  stopTracking: (name: string, notes?: string, photos?: string[]) => Promise<void>;
+  stopTracking: (
+    name: string,
+    notes?: string,
+    photos?: string[]
+  ) => Promise<void>;
   deleteActivity: (activityId: string) => Promise<void>;
   addManualActivity: (activity: Partial<Activity>) => Promise<void>;
-  updateActivity: (activityId: string, updatedData: Partial<Activity>) => Promise<void>;
+  updateActivity: (
+    activityId: string,
+    updatedData: Partial<Activity>
+  ) => Promise<void>;
   loading: boolean;
   error: string | null;
   refreshActivities: () => Promise<void>;
@@ -77,7 +84,9 @@ interface ActivityContextType {
 
 export type { Activity };
 
-const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
+const ActivityContext = createContext<ActivityContextType | undefined>(
+  undefined
+);
 
 // Background task definition
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
@@ -105,7 +114,10 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       pending.push(...newLocations);
       const trimmed = pending.slice(-500);
 
-      await AsyncStorage.setItem(PENDING_LOCATIONS_KEY, JSON.stringify(trimmed));
+      await AsyncStorage.setItem(
+        PENDING_LOCATIONS_KEY,
+        JSON.stringify(trimmed)
+      );
     } catch (err) {
       console.error("Error storing background locations:", err);
     }
@@ -133,7 +145,9 @@ const calculateDistance = (
   return R * c;
 };
 
-export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [currentActivity, setCurrentActivity] = useState<ActivityType>("bike");
@@ -141,21 +155,29 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentDuration, setCurrentDuration] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
-  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<"active" | "searching" | "stale" | "error">("searching");
+  const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(
+    null
+  );
+  const [gpsStatus, setGpsStatus] = useState<
+    "active" | "searching" | "stale" | "error"
+  >("searching");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { user, refreshSession } = useAuth();
 
-  const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const locationSubscription = useRef<Location.LocationSubscription | null>(
+    null
+  );
   const startTimeRef = useRef<number | null>(null);
   const pausedTimeRef = useRef<number>(0);
   const pauseStartRef = useRef<number | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastUpdateTime = useRef<number>(Date.now());
-  const staleCheckInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const staleCheckInterval = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
   const maxSpeedRef = useRef<number>(0);
 
   useEffect(() => {
@@ -195,8 +217,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
           name: act.name,
           startTime: new Date(act.start_time),
           endTime: new Date(act.end_time),
-          activityDate: act.activity_date 
-            ? new Date(act.activity_date) 
+          activityDate: act.activity_date
+            ? new Date(act.activity_date)
             : new Date(act.start_time),
           duration: act.duration || 0,
           distance: act.distance || 0,
@@ -242,7 +264,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     try {
-      const hasTask = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
+      const hasTask = await TaskManager.isTaskRegisteredAsync(
+        LOCATION_TASK_NAME
+      );
       if (hasTask) {
         await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
       }
@@ -306,7 +330,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
         const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
         if (timeDiff > 0) {
           const speed = distance / 1000 / (timeDiff / 3600);
-          
+
           if (speed < 200) {
             setCurrentSpeed(speed);
             if (speed > maxSpeedRef.current) {
@@ -323,7 +347,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
           const first = newRoute[0];
           const recent = newRoute.slice(-100);
           const middle = newRoute.slice(1, -100);
-          const sampleRate = Math.ceil(middle.length / (MAX_ROUTE_POINTS_MEMORY - 101));
+          const sampleRate = Math.ceil(
+            middle.length / (MAX_ROUTE_POINTS_MEMORY - 101)
+          );
           const sampled = middle.filter((_, index) => index % sampleRate === 0);
           newRoute = [first, ...sampled, ...recent];
         }
@@ -354,6 +380,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const startTracking = async (activityType: ActivityType) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
     try {
       console.log("Starting tracking for:", activityType);
       setLoading(true);
@@ -470,14 +497,18 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
       clearInterval(durationInterval.current);
       durationInterval.current = null;
     }
-    
+
     if (locationSubscription.current) {
       locationSubscription.current.remove();
       locationSubscription.current = null;
     }
   };
 
-  const stopTracking = async (name: string, notes?: string, photos?: string[]) => {
+  const stopTracking = async (
+    name: string,
+    notes?: string,
+    photos?: string[]
+  ) => {
     try {
       console.log("Stopping tracking...");
 
@@ -494,9 +525,10 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
         (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
       );
 
-      const avgSpeed = currentDistance > 0
-        ? currentDistance / 1000 / (finalDuration / 3600)
-        : 0;
+      const avgSpeed =
+        currentDistance > 0
+          ? currentDistance / 1000 / (finalDuration / 3600)
+          : 0;
 
       const activity: Activity = {
         id: Date.now().toString(),
@@ -534,10 +566,15 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (refreshSession) {
       const sessionValid = await refreshSession();
       if (!sessionValid) {
-        const pendingActivities = await AsyncStorage.getItem("pending_activities");
+        const pendingActivities = await AsyncStorage.getItem(
+          "pending_activities"
+        );
         const pending = pendingActivities ? JSON.parse(pendingActivities) : [];
         pending.push(activity);
-        await AsyncStorage.setItem("pending_activities", JSON.stringify(pending));
+        await AsyncStorage.setItem(
+          "pending_activities",
+          JSON.stringify(pending)
+        );
         throw new Error("Session expired - activity saved locally");
       }
     }
@@ -592,21 +629,30 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   };
 
-  const updateActivity = async (activityId: string, updatedData: Partial<Activity>) => {
+  const updateActivity = async (
+    activityId: string,
+    updatedData: Partial<Activity>
+  ) => {
     if (!user) throw new Error("No user logged in");
 
     try {
       const updateData: any = {};
-      
+
       if (updatedData.name !== undefined) updateData.name = updatedData.name;
       if (updatedData.notes !== undefined) updateData.notes = updatedData.notes;
       if (updatedData.route !== undefined) updateData.route = updatedData.route;
-      if (updatedData.distance !== undefined) updateData.distance = updatedData.distance;
-      if (updatedData.duration !== undefined) updateData.duration = updatedData.duration;
-      if (updatedData.photos !== undefined) updateData.photos = updatedData.photos;
-      if (updatedData.averageSpeed !== undefined) updateData.average_speed = updatedData.averageSpeed;
-      if (updatedData.maxSpeed !== undefined) updateData.max_speed = updatedData.maxSpeed;
-      if (updatedData.activityDate) updateData.activity_date = updatedData.activityDate.toISOString();
+      if (updatedData.distance !== undefined)
+        updateData.distance = updatedData.distance;
+      if (updatedData.duration !== undefined)
+        updateData.duration = updatedData.duration;
+      if (updatedData.photos !== undefined)
+        updateData.photos = updatedData.photos;
+      if (updatedData.averageSpeed !== undefined)
+        updateData.average_speed = updatedData.averageSpeed;
+      if (updatedData.maxSpeed !== undefined)
+        updateData.max_speed = updatedData.maxSpeed;
+      if (updatedData.activityDate)
+        updateData.activity_date = updatedData.activityDate.toISOString();
 
       const { error } = await supabase
         .from("activities")
@@ -647,7 +693,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({ children }
       isManualEntry: true,
       createdAt: new Date(),
     };
-    
+
     await saveActivity(newActivity);
   };
 

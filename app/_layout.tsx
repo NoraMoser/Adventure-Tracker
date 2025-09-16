@@ -83,9 +83,8 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
 
     return () => {
       if (notificationListener.current && Notifications) {
-        Notifications.removeNotificationSubscription(
-          notificationListener.current
-        );
+        Notifications.removeSubscriptionAsync(notificationListener.current);
+
       }
       if (responseListener.current && Notifications) {
         Notifications.removeNotificationSubscription(responseListener.current);

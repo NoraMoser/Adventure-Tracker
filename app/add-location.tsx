@@ -43,7 +43,7 @@ export default function AddLocationScreen() {
     useState<CategoryType>("other");
   const [mapReady, setMapReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // NEW: Date state for manual location entry
   const [locationDate, setLocationDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -154,7 +154,7 @@ export default function AddLocationScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Correct
       allowsEditing: false,
       allowsMultipleSelection: true,
       quality: 0.8,
@@ -177,7 +177,7 @@ export default function AddLocationScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Correct
       allowsMultipleSelection: true,
       allowsEditing: false,
       quality: 0.8,
@@ -537,7 +537,9 @@ export default function AddLocationScreen() {
                 size={20}
                 color={theme.colors.navy}
               />
-              <Text style={styles.dateButtonText}>{formatDate(locationDate)}</Text>
+              <Text style={styles.dateButtonText}>
+                {formatDate(locationDate)}
+              </Text>
               <Ionicons
                 name="chevron-down"
                 size={20}
@@ -584,7 +586,9 @@ export default function AddLocationScreen() {
                     name={category.icon}
                     size={18}
                     color={
-                      selectedCategory === category.id ? "white" : category.color
+                      selectedCategory === category.id
+                        ? "white"
+                        : category.color
                     }
                   />
                   <Text

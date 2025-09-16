@@ -18,6 +18,8 @@ import { categories, CategoryType } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useLocation } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
+import * as ImagePicker from "expo-image-picker";
+import { Image } from "react-native";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
@@ -28,6 +30,7 @@ export default function SaveLocationScreen() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<CategoryType>("other");
   const [saving, setSaving] = useState(false);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -49,7 +52,7 @@ export default function SaveLocationScreen() {
       await saveCurrentLocation(
         name.trim(),
         description.trim(),
-        [], // photos can be added later
+        photos, // Pass the photos array
         category,
         new Date()
       );
@@ -105,6 +108,49 @@ export default function SaveLocationScreen() {
     }
   };
 
+  const handleTakePhoto = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 500)); // React 19 delay
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "Camera permission is required");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setPhotos([...photos, result.assets[0].uri]);
+    }
+  };
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "Media library permission is required");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const newPhotos = result.assets.map((asset) => asset.uri);
+      setPhotos([...photos, ...newPhotos]);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setPhotos(photos.filter((_, i) => i !== index));
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -145,6 +191,48 @@ export default function SaveLocationScreen() {
                 autoFocus
               />
             </View>
+            {/* Photo Section */}
+            <Text style={styles.label}>Photos (Optional)</Text>
+            <View style={styles.photoActions}>
+              <TouchableOpacity
+                style={styles.photoButton}
+                onPress={handleTakePhoto}
+              >
+                <Ionicons name="camera" size={20} color={theme.colors.forest} />
+                <Text style={styles.photoButtonText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.photoButton}
+                onPress={handlePickImage}
+              >
+                <Ionicons name="images" size={20} color={theme.colors.forest} />
+                <Text style={styles.photoButtonText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
+
+            {photos.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.photoList}
+              >
+                {photos.map((photo, index) => (
+                  <View key={index} style={styles.photoContainer}>
+                    <Image source={{ uri: photo }} style={styles.photo} />
+                    <TouchableOpacity
+                      style={styles.removePhotoButton}
+                      onPress={() => handleRemovePhoto(index)}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={24}
+                        color={theme.colors.burntOrange}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Description</Text>
@@ -360,5 +448,45 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: theme.colors.burntOrange,
     fontSize: 16,
+  },
+  photoActions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 8,
+  },
+  photoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.forest,
+  },
+  photoButtonText: {
+    color: theme.colors.forest,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  photoList: {
+    marginTop: 10,
+  },
+  photoContainer: {
+    marginRight: 10,
+    position: "relative",
+  },
+  photo: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  removePhotoButton: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "white",
+    borderRadius: 12,
   },
 });

@@ -2,8 +2,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -218,30 +218,28 @@ export default function SettingsScreen() {
 
   // Profile Header Component
   const ProfileHeader = () => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.profileHeader}
-      onPress={() => router.push('/profile')}
+      onPress={() => router.push("/profile")}
       activeOpacity={0.8}
     >
       <View style={styles.profileInfo}>
         {profile?.profile_picture ? (
-          <Image 
-            source={{ uri: profile.profile_picture }} 
-            style={styles.profilePicture} 
+          <Image
+            source={{ uri: profile.profile_picture }}
+            style={styles.profilePicture}
           />
         ) : (
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>
-              {profile?.avatar || '👤'}
-            </Text>
+            <Text style={styles.avatarText}>{profile?.avatar || "👤"}</Text>
           </View>
         )}
         <View style={styles.profileTextInfo}>
           <Text style={styles.profileName}>
-            {profile?.display_name || 'User'}
+            {profile?.display_name || "User"}
           </Text>
           <Text style={styles.profileEmail}>
-            @{profile?.username || user?.email?.split('@')[0]}
+            @{profile?.username || user?.email?.split("@")[0]}
           </Text>
         </View>
       </View>
@@ -259,57 +257,66 @@ export default function SettingsScreen() {
     await updatePrivacySettings({ [key]: value });
   };
 
-  const handleExport = async (format: "json" | "csv", method: "share" | "email") => {
-  setIsExporting(true);
-  try {
-    let content: string;
-    let filename: string;
-    
-    if (format === "json") {
-      const exportData = {
-        exportDate: new Date().toISOString(),
-        settings,
-        savedSpots,
-        activities,
-        wishlistItems,
-      };
-      content = JSON.stringify(exportData, null, 2);
-      filename = `explorable_backup_${new Date().toISOString().split('T')[0]}.json`;
-    } else {
-      // Simple CSV export for activities
-      const csvHeader = "Name,Type,Distance,Duration,Date\n";
-      const csvRows = activities.map(a => 
-        `"${a.name}","${a.type}","${a.distance}","${a.duration}","${a.startTime}"`
-      ).join('\n');
-      content = csvHeader + csvRows;
-      filename = `explorable_activities_${new Date().toISOString().split('T')[0]}.csv`;
+  const handleExport = async (
+    format: "json" | "csv",
+    method: "share" | "email"
+  ) => {
+    setIsExporting(true);
+    try {
+      let content: string;
+      let filename: string;
+
+      if (format === "json") {
+        const exportData = {
+          exportDate: new Date().toISOString(),
+          settings,
+          savedSpots,
+          activities,
+          wishlistItems,
+        };
+        content = JSON.stringify(exportData, null, 2);
+        filename = `explorable_backup_${
+          new Date().toISOString().split("T")[0]
+        }.json`;
+      } else {
+        // Simple CSV export for activities
+        const csvHeader = "Name,Type,Distance,Duration,Date\n";
+        const csvRows = activities
+          .map(
+            (a) =>
+              `"${a.name}","${a.type}","${a.distance}","${a.duration}","${a.startTime}"`
+          )
+          .join("\n");
+        content = csvHeader + csvRows;
+        filename = `explorable_activities_${
+          new Date().toISOString().split("T")[0]
+        }.csv`;
+      }
+
+      // Copy to clipboard as a simple solution
+      const Clipboard = await import("expo-clipboard");
+      await Clipboard.setStringAsync(content);
+
+      Alert.alert(
+        "Export Complete",
+        `Your ${format.toUpperCase()} data has been copied to clipboard.\n\nFilename: ${filename}\n\nPaste it into Notes or any text app to save it.`,
+        [{ text: "OK" }]
+      );
+    } catch (error) {
+      console.error("Export error:", error);
+      Alert.alert("Export Failed", "Could not export your data");
+    } finally {
+      setIsExporting(false);
     }
-
-    // Copy to clipboard as a simple solution
-    const Clipboard = await import('expo-clipboard');
-    await Clipboard.setStringAsync(content);
-    
-    Alert.alert(
-      "Export Complete", 
-      `Your ${format.toUpperCase()} data has been copied to clipboard.\n\nFilename: ${filename}\n\nPaste it into Notes or any text app to save it.`,
-      [{ text: "OK" }]
-    );
-
-  } catch (error) {
-    console.error("Export error:", error);
-    Alert.alert("Export Failed", "Could not export your data");
-  } finally {
-    setIsExporting(false);
-  }
-};
+  };
 
   // Simple import handler
   const handleImport = async () => {
     try {
       setIsImporting(true);
-      
+
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
+        type: "application/json",
         copyToCacheDirectory: true,
       });
 
@@ -323,12 +330,14 @@ export default function SettingsScreen() {
       const file = result.assets[0];
       const content = await FileSystem.readAsStringAsync(file.uri);
       const data = JSON.parse(content);
-      
+
       // Basic validation
       if (data.exportDate && data.settings) {
         Alert.alert(
           "Import Backup",
-          `Import backup from ${new Date(data.exportDate).toLocaleDateString()}?`,
+          `Import backup from ${new Date(
+            data.exportDate
+          ).toLocaleDateString()}?`,
           [
             { text: "Cancel", style: "cancel" },
             {
@@ -342,7 +351,10 @@ export default function SettingsScreen() {
           ]
         );
       } else {
-        Alert.alert("Invalid File", "This doesn't appear to be a valid backup file");
+        Alert.alert(
+          "Invalid File",
+          "This doesn't appear to be a valid backup file"
+        );
       }
     } catch (error) {
       console.error("Import error:", error);
@@ -353,21 +365,19 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to sign out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Out",
-          style: "destructive",
-          onPress: async () => {
-            await signOut();
-            router.replace('/auth/login');
-          },
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          await signOut();
+          // Add delay for React 19
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          router.replace("/auth/login");
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const clearAllData = () => {
@@ -382,11 +392,9 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               await AsyncStorage.clear();
-              Alert.alert(
-                "Data Cleared",
-                "All your data has been deleted.",
-                [{ text: "OK", onPress: () => router.replace("/") }]
-              );
+              Alert.alert("Data Cleared", "All your data has been deleted.", [
+                { text: "OK", onPress: () => router.replace("/") },
+              ]);
             } catch (error) {
               Alert.alert("Error", "Failed to clear data");
             }
@@ -443,39 +451,59 @@ export default function SettingsScreen() {
         </View>
 
         {/* Settings Sections */}
-        
+
         {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.settingItem}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push("/profile")}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="person-circle-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="person-circle-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>View Profile</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.lightGray}
+            />
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingItem}
-            onPress={() => router.push('/profile-edit')}
+            onPress={() => router.push("/profile-edit")}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="create-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="create-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Edit Profile</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.lightGray}
+            />
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingItem}
-            onPress={() => router.push('/friends')}
+            onPress={() => router.push("/friends")}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="people-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="people-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Friends</Text>
             </View>
             <View style={styles.settingRight}>
@@ -484,7 +512,11 @@ export default function SettingsScreen() {
                   <Text style={styles.badgeText}>{friends.length}</Text>
                 </View>
               )}
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
             </View>
           </TouchableOpacity>
         </View>
@@ -492,48 +524,73 @@ export default function SettingsScreen() {
         {/* Preferences Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Preferences</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.settingItem}
             onPress={() => {
-              const newUnit = settings.units === 'metric' ? 'imperial' : 'metric';
-              updateSetting('units', newUnit);
+              const newUnit =
+                settings.units === "metric" ? "imperial" : "metric";
+              updateSetting("units", newUnit);
             }}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="speedometer-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="speedometer-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Distance Units</Text>
             </View>
             <View style={styles.settingRight}>
               <Text style={styles.settingValue}>
-                {settings.units === 'metric' ? 'Kilometers' : 'Miles'}
+                {settings.units === "metric" ? "Kilometers" : "Miles"}
               </Text>
             </View>
           </TouchableOpacity>
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="notifications-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="notifications-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Notifications</Text>
             </View>
             <Switch
               value={settings.notifications}
-              onValueChange={(value) => updateSetting('notifications', value)}
-              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-              thumbColor={settings.notifications ? theme.colors.white : theme.colors.lightGray}
+              onValueChange={(value) => updateSetting("notifications", value)}
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                settings.notifications
+                  ? theme.colors.white
+                  : theme.colors.lightGray
+              }
             />
           </View>
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="save-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="save-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Auto-save Activities</Text>
             </View>
             <Switch
               value={settings.autoSave}
-              onValueChange={(value) => updateSetting('autoSave', value)}
-              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-              thumbColor={settings.autoSave ? theme.colors.white : theme.colors.lightGray}
+              onValueChange={(value) => updateSetting("autoSave", value)}
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                settings.autoSave ? theme.colors.white : theme.colors.lightGray
+              }
             />
           </View>
         </View>
@@ -541,52 +598,97 @@ export default function SettingsScreen() {
         {/* Privacy Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Privacy & Sharing</Text>
-          
+
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="share-social-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="share-social-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <View style={styles.settingTextContainer}>
                 <Text style={styles.settingLabel}>Auto-share Activities</Text>
-                <Text style={styles.settingDescription}>Share new activities with friends</Text>
+                <Text style={styles.settingDescription}>
+                  Share new activities with friends
+                </Text>
               </View>
             </View>
             <Switch
               value={privacySettings.autoShareActivities}
-              onValueChange={(value) => updatePrivacySetting('autoShareActivities', value)}
-              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-              thumbColor={privacySettings.autoShareActivities ? theme.colors.white : theme.colors.lightGray}
+              onValueChange={(value) =>
+                updatePrivacySetting("autoShareActivities", value)
+              }
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                privacySettings.autoShareActivities
+                  ? theme.colors.white
+                  : theme.colors.lightGray
+              }
             />
           </View>
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="location-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="location-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <View style={styles.settingTextContainer}>
                 <Text style={styles.settingLabel}>Share Locations</Text>
-                <Text style={styles.settingDescription}>Let friends see your saved spots</Text>
+                <Text style={styles.settingDescription}>
+                  Let friends see your saved spots
+                </Text>
               </View>
             </View>
             <Switch
               value={privacySettings.shareLocationsWithFriends}
-              onValueChange={(value) => updatePrivacySetting('shareLocationsWithFriends', value)}
-              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-              thumbColor={privacySettings.shareLocationsWithFriends ? theme.colors.white : theme.colors.lightGray}
+              onValueChange={(value) =>
+                updatePrivacySetting("shareLocationsWithFriends", value)
+              }
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                privacySettings.shareLocationsWithFriends
+                  ? theme.colors.white
+                  : theme.colors.lightGray
+              }
             />
           </View>
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="eye-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="eye-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <View style={styles.settingTextContainer}>
                 <Text style={styles.settingLabel}>Online Status</Text>
-                <Text style={styles.settingDescription}>Show when you are active</Text>
+                <Text style={styles.settingDescription}>
+                  Show when you are active
+                </Text>
               </View>
             </View>
             <Switch
               value={privacySettings.showOnlineStatus}
-              onValueChange={(value) => updatePrivacySetting('showOnlineStatus', value)}
-              trackColor={{ false: theme.colors.borderGray, true: theme.colors.forest }}
-              thumbColor={privacySettings.showOnlineStatus ? theme.colors.white : theme.colors.lightGray}
+              onValueChange={(value) =>
+                updatePrivacySetting("showOnlineStatus", value)
+              }
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                privacySettings.showOnlineStatus
+                  ? theme.colors.white
+                  : theme.colors.lightGray
+              }
             />
           </View>
         </View>
@@ -594,91 +696,150 @@ export default function SettingsScreen() {
         {/* Data Management Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Data Management</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.settingItem}
             onPress={() => setShowExportModal(true)}
             disabled={isExporting}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="download-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="download-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Export Data</Text>
             </View>
             {isExporting ? (
               <ActivityIndicator size="small" color={theme.colors.forest} />
             ) : (
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.settingItem}
             onPress={handleImport}
             disabled={isImporting}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="cloud-upload-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="cloud-upload-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Import Backup</Text>
             </View>
             {isImporting ? (
               <ActivityIndicator size="small" color={theme.colors.forest} />
             ) : (
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.settingItem, styles.dangerItem]}
             onPress={clearAllData}
           >
             <View style={styles.settingLeft}>
-              <Ionicons name="trash-outline" size={22} color={theme.colors.burntOrange} />
-              <Text style={[styles.settingLabel, styles.dangerText]}>Clear All Data</Text>
+              <Ionicons
+                name="trash-outline"
+                size={22}
+                color={theme.colors.burntOrange}
+              />
+              <Text style={[styles.settingLabel, styles.dangerText]}>
+                Clear All Data
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.burntOrange} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.burntOrange}
+            />
           </TouchableOpacity>
         </View>
 
         {/* Support Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support & About</Text>
-          
+
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="help-circle-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="help-circle-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Help Center</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.lightGray}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="mail-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="mail-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Contact Support</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.lightGray}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="star-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="star-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Rate explorAble</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.lightGray}
+            />
           </TouchableOpacity>
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons name="information-circle-outline" size={22} color={theme.colors.gray} />
+              <Ionicons
+                name="information-circle-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
               <Text style={styles.settingLabel}>Version</Text>
             </View>
-            <Text style={styles.settingValue}>{appVersion} ({buildNumber})</Text>
+            <Text style={styles.settingValue}>
+              {appVersion} ({buildNumber})
+            </Text>
           </View>
         </View>
 
         {/* Sign Out Button */}
         {user && (
-          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+          <TouchableOpacity
+            style={styles.signOutButton}
+            onPress={handleSignOut}
+          >
             <Ionicons name="log-out-outline" size={22} color="#FF4757" />
             <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
@@ -707,18 +868,18 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.offWhite,
   },
   profileHeader: {
-    backgroundColor: 'white',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: "white",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 20,
     marginBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   profileInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   profilePicture: {
@@ -732,8 +893,8 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 15,
     borderWidth: 2,
     borderColor: theme.colors.borderGray,
@@ -746,7 +907,7 @@ const styles = StyleSheet.create({
   },
   profileName: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 4,
   },
@@ -758,22 +919,22 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   statsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 15,
     paddingVertical: 10,
     marginBottom: 10,
   },
   statCard: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 12,
-    alignItems: 'center',
+    alignItems: "center",
     marginHorizontal: 5,
   },
   statNumber: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: theme.colors.navy,
     marginVertical: 4,
   },
@@ -782,34 +943,34 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
   },
   section: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     marginBottom: 10,
     paddingVertical: 10,
   },
   sectionTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.gray,
     paddingHorizontal: 20,
     paddingBottom: 10,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
   },
   dangerItem: {
-    backgroundColor: theme.colors.burntOrange + '05',
+    backgroundColor: theme.colors.burntOrange + "05",
   },
   settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   settingTextContainer: {
@@ -832,8 +993,8 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   badge: {
     backgroundColor: theme.colors.forest,
@@ -843,33 +1004,33 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   badgeText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   dangerText: {
     color: theme.colors.burntOrange,
   },
   signOutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white",
     marginHorizontal: 20,
     marginVertical: 20,
     paddingVertical: 15,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FF4757',
+    borderColor: "#FF4757",
   },
   signOutText: {
-    color: '#FF4757',
+    color: "#FF4757",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   footer: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 30,
   },
   footerText: {
@@ -884,25 +1045,25 @@ const styles = StyleSheet.create({
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: '80%',
+    maxHeight: "80%",
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   modalSubtitle: {
@@ -912,25 +1073,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   formatOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 15,
     backgroundColor: theme.colors.offWhite,
     borderRadius: 12,
     marginBottom: 10,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   formatOptionSelected: {
     borderColor: theme.colors.forest,
-    backgroundColor: theme.colors.forest + '10',
+    backgroundColor: theme.colors.forest + "10",
   },
   formatIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 15,
   },
   formatInfo: {
@@ -938,7 +1099,7 @@ const styles = StyleSheet.create({
   },
   formatName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   formatDescription: {
@@ -953,14 +1114,14 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.borderGray,
   },
   methodButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 15,
   },
   methodButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     marginHorizontal: 5,
     backgroundColor: theme.colors.offWhite,
@@ -975,11 +1136,11 @@ const styles = StyleSheet.create({
   methodButtonText: {
     marginLeft: 8,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.gray,
   },
   methodButtonTextActive: {
-    color: 'white',
+    color: "white",
   },
   emailInput: {
     backgroundColor: theme.colors.offWhite,
@@ -992,17 +1153,17 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     backgroundColor: theme.colors.forest,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 14,
     borderRadius: 8,
     marginTop: 20,
   },
   exportButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
 });
