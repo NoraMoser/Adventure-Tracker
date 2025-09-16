@@ -103,7 +103,7 @@
           "cameraPermission": "The app accesses your camera to let you take photos of your adventures."
         }
       ],
-      "expo-router",
+      "expo-router"
     ],
     "extra": {
       "eas": {
