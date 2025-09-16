@@ -26,7 +26,7 @@ import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
-import * as Clipboard from "expo-clipboard";
+// import * as Clipboard from "expo-clipboard";
 
 // Export Modal Component
 const ExportModal = ({
@@ -295,7 +295,7 @@ export default function SettingsScreen() {
       }
 
 
-      await Clipboard.setStringAsync(content);
+      // await Clipboard.setStringAsync(content);
 
       Alert.alert(
         "Export Complete",

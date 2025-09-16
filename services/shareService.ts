@@ -1,5 +1,5 @@
 // services/shareService.ts - Fixed with unit preferences
-import * as Clipboard from 'expo-clipboard';
+// import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as Linking from 'expo-linking';
 import * as Sharing from 'expo-sharing';
@@ -154,9 +154,9 @@ export class ShareService {
       message += `\n• Max Speed: ${this.formatSpeed(activity.maxSpeed, units)}`;
     }
     
-    if (activity.elevationGain && activity.elevationGain > 0) {
-      message += `\n• Elevation Gain: ${this.formatElevation(activity.elevationGain, units)}`;
-    }
+    // if (activity.elevationGain && activity.elevationGain > 0) {
+    //   message += `\n• Elevation Gain: ${this.formatElevation(activity.elevationGain, units)}`;
+    // }
     
     if (activity.notes) {
       message += `\n\n💭 ${activity.notes}`;
@@ -278,7 +278,7 @@ export class ShareService {
           const message = this.createLocationMessage(spot);
           
           // Copy message to clipboard so user can paste it
-          await Clipboard.setStringAsync(message);
+          // await Clipboard.setStringAsync(message);
           
           // Share the photo
           await Sharing.shareAsync(photoUri, {
@@ -579,7 +579,7 @@ export class ShareService {
   static async copyLocationToClipboard(spot: SavedSpot) {
     try {
       const message = this.createLocationMessage(spot);
-      await Clipboard.setStringAsync(message);
+      // await Clipboard.setStringAsync(message);
       return message;
     } catch (error) {
       console.error('Error copying to clipboard:', error);
@@ -593,7 +593,7 @@ export class ShareService {
   static async copyActivityToClipboard(activity: Activity, options: ShareOptions = {}) {
     try {
       const message = this.createActivityMessage(activity, options);
-      await Clipboard.setStringAsync(message);
+      // await Clipboard.setStringAsync(message);
       return message;
     } catch (error) {
       console.error('Error copying to clipboard:', error);
@@ -622,7 +622,7 @@ export class ShareService {
       message += `Shared from ExplorAble 🌲`;
       
       // Copy to clipboard for easy pasting
-      await Clipboard.setStringAsync(message);
+      // await Clipboard.setStringAsync(message);
       
       const result = await Share.share({
         message,

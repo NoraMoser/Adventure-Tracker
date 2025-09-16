@@ -50,7 +50,7 @@
       <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>Allow explorAble to access camera for photos</string>
+    <string>The app accesses your camera to let you take photos of your adventures.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>Allow ExplorAble to track your activities in the background for accurate route recording.</string>
     <key>NSLocationAlwaysUsageDescription</key>
