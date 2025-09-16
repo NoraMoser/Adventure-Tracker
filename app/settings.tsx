@@ -1,7 +1,7 @@
 // app/settings.tsx - Complete Settings Screen with Profile Access
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Application from "expo-application";
+// import * as Application from "expo-application";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { Stack, useRouter } from "expo-router";
@@ -26,6 +26,7 @@ import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
+import * as Clipboard from "expo-clipboard";
 
 // Export Modal Component
 const ExportModal = ({
@@ -293,8 +294,7 @@ export default function SettingsScreen() {
         }.csv`;
       }
 
-      // Copy to clipboard as a simple solution
-      const Clipboard = await import("expo-clipboard");
+
       await Clipboard.setStringAsync(content);
 
       Alert.alert(
@@ -404,8 +404,8 @@ export default function SettingsScreen() {
     );
   };
 
-  const appVersion = Application.nativeApplicationVersion || "1.0.0";
-  const buildNumber = Application.nativeBuildVersion || "1";
+  // const appVersion = Application.nativeApplicationVersion || "1.0.0";
+  // const buildNumber = Application.nativeBuildVersion || "1";
 
   return (
     <View style={styles.container}>
@@ -828,9 +828,7 @@ export default function SettingsScreen() {
               />
               <Text style={styles.settingLabel}>Version</Text>
             </View>
-            <Text style={styles.settingValue}>
-              {appVersion} ({buildNumber})
-            </Text>
+           
           </View>
         </View>
 

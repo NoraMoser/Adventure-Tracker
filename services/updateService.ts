@@ -1,5 +1,5 @@
 // services/updateService.tsx
-import * as Application from "expo-application";
+// import * as Application from "expo-application";
 import * as Linking from "expo-linking";
 import React, { useEffect } from "react";
 import { Alert, Platform } from "react-native";
@@ -19,16 +19,16 @@ export class UpdateService {
   static async checkForUpdates(): Promise<boolean> {
     try {
       // Add safety check for app initialization
-      if (!Application.nativeApplicationVersion) {
-        console.log("App not fully initialized, skipping update check");
-        return false;
-      }
+      // if (!Application.nativeApplicationVersion) {
+      //   console.log("App not fully initialized, skipping update check");
+      //   return false;
+      // }
 
-      // Get current app version
-      const currentVersion = Application.nativeApplicationVersion || "1.0.0";
-      const currentBuildNumber = Application.nativeBuildVersion || "1";
+      // // Get current app version
+      // const currentVersion = Application.nativeApplicationVersion || "1.0.0";
+      // const currentBuildNumber = Application.nativeBuildVersion || "1";
 
-      console.log(`Checking for updates - current version: ${currentVersion}`);
+      // console.log(`Checking for updates - current version: ${currentVersion}`);
 
       // Fetch latest version from your database
       const { data: latestVersion, error } = await supabase
@@ -46,13 +46,13 @@ export class UpdateService {
       if (!latestVersion) return false;
 
       // Compare versions
-      const needsUpdate =
-        this.compareVersions(currentVersion, latestVersion.version) < 0;
+      // const needsUpdate =
+      //   // this.compareVersions(currentVersion, latestVersion.version) < 0;
 
-      if (needsUpdate) {
-        this.promptForUpdate(latestVersion, latestVersion.is_required);
-        return true;
-      }
+      // if (needsUpdate) {
+      //   this.promptForUpdate(latestVersion, latestVersion.is_required);
+      //   return true;
+      // }
 
       return false;
     } catch (error) {
