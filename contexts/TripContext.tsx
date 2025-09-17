@@ -1,10 +1,10 @@
 // contexts/TripContext.tsx
 import React, {
-    createContext,
-    useContext,
-    useEffect,
-    useRef,
-    useState,
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
 } from "react";
 import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
@@ -103,11 +103,17 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         runAutoDetection();
       }, 1000);
     }
-  }, [currentUserId, loading, trips.length, activities?.length, savedSpots?.length]);
+  }, [
+    currentUserId,
+    loading,
+    trips.length,
+    activities?.length,
+    savedSpots?.length,
+  ]);
 
   const subscribeToTrips = () => {
     if (!currentUserId) return;
-    
+
     const subscription = supabase
       .channel("trips_channel")
       .on(
@@ -181,7 +187,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       let taggedTrips: any[] = [];
       if (tagData && tagData.length > 0) {
         const taggedTripIds = tagData.map((t) => t.trip_id);
-        
+
         const { data: taggedTripsData, error: taggedError } = await supabase
           .from("trips")
           .select(
@@ -247,12 +253,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!currentUserId) throw new Error("User not authenticated");
 
     try {
-      const startDate = tripData.start_date instanceof Date 
-        ? tripData.start_date 
-        : new Date(tripData.start_date);
-      const endDate = tripData.end_date instanceof Date 
-        ? tripData.end_date 
-        : new Date(tripData.end_date);
+      const startDate =
+        tripData.start_date instanceof Date
+          ? tripData.start_date
+          : new Date(tripData.start_date);
+      const endDate =
+        tripData.end_date instanceof Date
+          ? tripData.end_date
+          : new Date(tripData.end_date);
 
       const { data, error } = await supabase
         .from("trips")
@@ -305,24 +313,35 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const updateTrip = async (tripId: string, updates: Partial<Trip>) => {
     try {
+      console.log("updateTrip called with:", { tripId, updates });
+
       const updateData: any = {};
 
       if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.start_date !== undefined)
-        updateData.start_date = updates.start_date.toISOString();
-      if (updates.end_date !== undefined)
-        updateData.end_date = updates.end_date.toISOString();
-      if (updates.cover_photo !== undefined)
-        updateData.cover_photo = updates.cover_photo;
-      if (updates.auto_generated !== undefined)
-        updateData.auto_generated = updates.auto_generated;
-      if (updates.merged_from !== undefined)
-        updateData.merged_from = updates.merged_from;
+      if (updates.start_date !== undefined) {
+        updateData.start_date =
+          updates.start_date instanceof Date
+            ? updates.start_date.toISOString()
+            : updates.start_date;
+        console.log("Setting start_date to:", updateData.start_date);
+      }
+      if (updates.end_date !== undefined) {
+        updateData.end_date =
+          updates.end_date instanceof Date
+            ? updates.end_date.toISOString()
+            : updates.end_date;
+        console.log("Setting end_date to:", updateData.end_date);
+      }
 
-      const { error } = await supabase
+      console.log("Final updateData being sent to Supabase:", updateData);
+
+      const { data, error } = await supabase
         .from("trips")
         .update(updateData)
-        .eq("id", tripId);
+        .eq("id", tripId)
+        .select(); // Add .select() to see what comes back
+
+      console.log("Supabase response:", { data, error });
 
       if (error) throw error;
 
@@ -394,6 +413,43 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       });
 
       if (error) throw error;
+
+      // Auto-adjust trip dates if the new item falls outside current range
+      const trip = trips.find((t) => t.id === tripId);
+      if (trip) {
+        let itemDate: Date | null = null;
+
+        if (type === "activity" && item.activityDate) {
+          itemDate = new Date(item.activityDate);
+        } else if (type === "spot" && (item.locationDate || item.timestamp)) {
+          itemDate = new Date(item.locationDate || item.timestamp);
+        }
+
+        if (itemDate) {
+          const tripStart = new Date(trip.start_date);
+          const tripEnd = new Date(trip.end_date);
+          let needsUpdate = false;
+          let newStartDate = tripStart;
+          let newEndDate = tripEnd;
+
+          if (itemDate < tripStart) {
+            newStartDate = itemDate;
+            needsUpdate = true;
+          }
+          if (itemDate > tripEnd) {
+            newEndDate = itemDate;
+            needsUpdate = true;
+          }
+
+          if (needsUpdate) {
+            await updateTrip(tripId, {
+              start_date: newStartDate,
+              end_date: newEndDate,
+            });
+          }
+        }
+      }
+
       await loadTrips();
     } catch (error) {
       console.error("Error adding to trip:", error);
@@ -426,7 +482,10 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         .single();
 
       if (existing) {
-        Alert.alert("Already Tagged", "This friend is already tagged in the trip");
+        Alert.alert(
+          "Already Tagged",
+          "This friend is already tagged in the trip"
+        );
         return;
       }
 
@@ -490,7 +549,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       const trip = trips.find((t) => t.id === tripId);
       const mergedFrom = [...(trip?.merged_from || []), sharedTripId];
       await updateTrip(tripId, { merged_from: mergedFrom });
-      
+
       Alert.alert("Success", "Trips merged successfully!");
     } catch (error) {
       console.error("Error merging trips:", error);
@@ -517,26 +576,28 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     const end1 = new Date(trip1.end_date).getTime();
     const start2 = new Date(trip2.start_date).getTime();
     const end2 = new Date(trip2.end_date).getTime();
-    
-    const hasDateOverlap = (start1 <= end2 && end1 >= start2);
+
+    const hasDateOverlap = start1 <= end2 && end1 >= start2;
     const hasLocationOverlap = true; // Simplified for now
-    
+
     return hasDateOverlap && hasLocationOverlap;
   };
 
   const getSuggestedMerges = (): { autoTrip: Trip; sharedTrip: Trip }[] => {
     const suggestions: { autoTrip: Trip; sharedTrip: Trip }[] = [];
-    
+
     if (!currentUserId) return suggestions;
-    
-    const myAutoTrips = trips.filter(t => 
-      t.created_by === currentUserId && t.auto_generated
+
+    const myAutoTrips = trips.filter(
+      (t) => t.created_by === currentUserId && t.auto_generated
     );
-    
-    const sharedWithMe = trips.filter(t => 
-      t.tagged_friends?.includes(currentUserId) && t.created_by !== currentUserId
+
+    const sharedWithMe = trips.filter(
+      (t) =>
+        t.tagged_friends?.includes(currentUserId) &&
+        t.created_by !== currentUserId
     );
-    
+
     for (const autoTrip of myAutoTrips) {
       for (const sharedTrip of sharedWithMe) {
         if (canTripsBeJoined(autoTrip, sharedTrip)) {
@@ -544,7 +605,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
     }
-    
+
     return suggestions;
   };
 

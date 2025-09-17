@@ -31,7 +31,6 @@ import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { supabase } from "../lib/supabase";
 
-
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
 const BOTTOM_SHEET_MIN_HEIGHT = 80;
@@ -192,7 +191,6 @@ export default function DashboardScreen() {
     }).start();
   };
 
-  // Initialize app - simplified version that doesn't redirect
   useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -207,19 +205,26 @@ export default function DashboardScreen() {
           setHasCheckedAuth(true);
         }
 
-        // Check onboarding
-        const onboardingComplete = await AsyncStorage.getItem(
-          "onboardingComplete"
-        );
-        if (onboardingComplete !== "true") {
-          router.replace("/onboarding");
-          return;
-        }
-
         // Get current auth state
         const currentUser = authContext.user;
         const currentSession = authContext.session;
         const hasAuth = !!(currentUser?.id || currentSession?.user?.id);
+
+        // Only check onboarding if user is authenticated
+        if (hasAuth) {
+          const onboardingComplete = await AsyncStorage.getItem(
+            "onboardingComplete"
+          );
+
+          if (onboardingComplete !== "true") {
+            // Use dismissAll to prevent shaking
+            setTimeout(() => {
+              router.dismissAll();
+              router.replace("/onboarding");
+            }, 200);
+            return;
+          }
+        }
 
         console.log(
           "Dashboard: Ready - HasAuth:",
@@ -252,7 +257,7 @@ export default function DashboardScreen() {
     getLocation,
     router,
     authContext.session,
-    authContext.user
+    authContext.user,
   ]);
 
   // Fetch notification count with real-time updates
@@ -820,7 +825,7 @@ export default function DashboardScreen() {
     },
     { icon: "location", label: "Saved Spots", route: "/saved-spots" },
     { icon: "fitness", label: "Activities", route: "/past-activities" },
-    { icon: "airplane", label: "My Trips", route: "/trips" }, 
+    { icon: "airplane", label: "My Trips", route: "/trips" },
     {
       icon: "people",
       label: "Friends Feed",
@@ -849,7 +854,6 @@ export default function DashboardScreen() {
     climb: "trending-up",
     other: "fitness",
   };
-
 
   // Main dashboard render
   return (

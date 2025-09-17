@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "870022913043",
+    "project_id": "com-moser-explorable",
+    "storage_bucket": "com-moser-explorable.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:870022913043:android:a67da6d62cda3583c2b3e6",
+        "android_client_info": {
+          "package_name": "com.moser.explorable"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQy3XPQoYLD0X4ra9kWVQw_kd3hM4GjsA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

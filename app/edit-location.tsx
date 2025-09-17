@@ -21,6 +21,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLocation } from "../contexts/LocationContext";
 import { PhotoService } from "../services/photoService";
 import { Camera, CameraView } from "expo-camera";
+import * as Location from "expo-location";
 
 // Theme colors
 const theme = {
@@ -50,7 +51,7 @@ export default function EditLocationScreen() {
   const [loading, setLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // NEW: Date states
   const [locationDate, setLocationDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -71,9 +72,9 @@ export default function EditLocationScreen() {
       setCategory(currentSpot.category || "other");
       // NEW: Set the location date
       setLocationDate(
-        currentSpot.locationDate 
-          ? new Date(currentSpot.locationDate) 
-          : currentSpot.timestamp 
+        currentSpot.locationDate
+          ? new Date(currentSpot.locationDate)
+          : currentSpot.timestamp
           ? new Date(currentSpot.timestamp)
           : new Date()
       );
@@ -88,16 +89,16 @@ export default function EditLocationScreen() {
   useEffect(() => {
     // Check if any changes were made (including date)
     if (spot) {
-      const originalDate = spot.locationDate 
-        ? new Date(spot.locationDate) 
-        : spot.timestamp 
+      const originalDate = spot.locationDate
+        ? new Date(spot.locationDate)
+        : spot.timestamp
         ? new Date(spot.timestamp)
         : null;
-      
-      const dateChanged = originalDate 
+
+      const dateChanged = originalDate
         ? locationDate.toDateString() !== originalDate.toDateString()
         : false;
-      
+
       const changed =
         name !== spot.name ||
         description !== (spot.description || "") ||
@@ -105,7 +106,7 @@ export default function EditLocationScreen() {
         photos.length !== (spot.photos || []).length ||
         photos.some((photo, index) => photo !== (spot.photos || [])[index]) ||
         dateChanged;
-      
+
       setHasChanges(changed);
     }
   }, [name, description, category, photos, locationDate, spot]);
@@ -127,28 +128,27 @@ export default function EditLocationScreen() {
     if (cameraRef.current) {
       try {
         console.log("Taking picture...");
-        
+
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
           skipProcessing: true,
         });
-        
+
         console.log("Photo result:", photo);
-        
+
         if (photo && photo.uri) {
           console.log("Adding photo URI:", photo.uri);
-          setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
-          
+          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
+
           // Force camera to unmount and remount
-          setCameraKey(prev => prev + 1);
-          
+          setCameraKey((prev) => prev + 1);
+
           // Close camera
           setTimeout(() => {
             setShowCamera(false);
           }, 200);
         }
-        
       } catch (error) {
         console.error("Camera error:", error);
         Alert.alert("Error", "Failed to take picture");
@@ -192,6 +192,20 @@ export default function EditLocationScreen() {
   };
 
   const handleSave = async () => {
+    // Check location permission first
+    const { status } = await Location.getForegroundPermissionsAsync();
+    if (status !== "granted") {
+      const { status: newStatus } =
+        await Location.requestForegroundPermissionsAsync();
+      if (newStatus !== "granted") {
+        Alert.alert(
+          "Location Required",
+          "Location permission is needed to save this spot.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
     if (!name.trim()) {
       Alert.alert("Error", "Location name is required");
       return;
@@ -335,11 +349,11 @@ export default function EditLocationScreen() {
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
-        <CameraView 
+        <CameraView
           key={cameraKey}
           ref={cameraRef}
-          style={styles.camera} 
-          facing="back" 
+          style={styles.camera}
+          facing="back"
         />
         <View style={styles.cameraOverlay}>
           <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
@@ -348,7 +362,7 @@ export default function EditLocationScreen() {
           <TouchableOpacity
             style={styles.closeButton}
             onPress={() => {
-              setCameraKey(prev => prev + 1);
+              setCameraKey((prev) => prev + 1);
               setShowCamera(false);
             }}
           >
@@ -371,7 +385,8 @@ export default function EditLocationScreen() {
           </Text>
         </View>
         <Text style={styles.savedDate}>
-          Added to collection on {new Date(spot?.timestamp).toLocaleDateString()}
+          Added to collection on{" "}
+          {new Date(spot?.timestamp).toLocaleDateString()}
         </Text>
 
         {/* Get Directions Button */}
@@ -440,11 +455,7 @@ export default function EditLocationScreen() {
             color={theme.colors.navy}
           />
           <Text style={styles.dateButtonText}>{formatDate(locationDate)}</Text>
-          <Ionicons
-            name="chevron-down"
-            size={20}
-            color={theme.colors.gray}
-          />
+          <Ionicons name="chevron-down" size={20} color={theme.colors.gray} />
         </TouchableOpacity>
 
         {showDatePicker && (

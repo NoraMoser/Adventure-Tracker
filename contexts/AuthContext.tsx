@@ -379,9 +379,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      // Don't set loading immediately - it might cause render issues
-      // setLoading(true);
-
       // Sign out from Supabase first
       try {
         await supabase.auth.signOut();
@@ -389,28 +386,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Supabase signout failed:", supabaseError);
       }
 
-      // Clear storage
+      // Clear storage - but DON'T clear onboardingComplete
       await AsyncStorage.multiRemove([
         "isAuthenticated",
         "userId",
         "userProfile",
         "lastSyncTime",
         "offlineMode",
+        // NOT "onboardingComplete" - keep this!
       ]);
 
-      // Use setTimeout to ensure state updates happen after navigation
-      setTimeout(() => {
-        setUser(null);
-        setProfile(null);
-        setSession(null);
-        setIsOfflineMode(false);
-        hasSyncedThisSession.current = false;
-        setLoading(false);
-      }, 100);
+      // Update state immediately - no setTimeout
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      setIsOfflineMode(false);
+      hasSyncedThisSession.current = false;
+      setLoading(false);
 
       console.log("Sign out completed");
     } catch (error) {
       console.error("Sign out error:", error);
+      // Still clear state on error
       setUser(null);
       setProfile(null);
       setSession(null);

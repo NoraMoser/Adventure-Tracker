@@ -54,7 +54,6 @@ export default function AddLocationScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [cameraKey, setCameraKey] = useState(0);
 
-
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
     latitude: 47.6062,
@@ -154,40 +153,38 @@ export default function AddLocationScreen() {
     setShowCamera(true);
   };
 
-const takePicture = async () => {
-  if (cameraRef.current) {
-    try {
-      console.log("Taking picture...");
-      
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        base64: false,
-        skipProcessing: true,
-      });
-      
-      console.log("Photo result:", photo);
-      
-      if (photo && photo.uri) {
-        console.log("Adding photo URI:", photo.uri);
-        setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
-        
-        // Force camera to unmount and remount
-        setCameraKey(prev => prev + 1);
-        
-        // Close camera
-        setTimeout(() => {
-          setShowCamera(false);
-        }, 200);
-      }
-      
-    } catch (error) {
-      console.error("Camera error:", error);
-      Alert.alert("Error", "Failed to take picture");
-      setShowCamera(false);
-    }
-  }
-};
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture...");
 
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
+
+        console.log("Photo result:", photo);
+
+        if (photo && photo.uri) {
+          console.log("Adding photo URI:", photo.uri);
+          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
+
+          // Force camera to unmount and remount
+          setCameraKey((prev) => prev + 1);
+
+          // Close camera
+          setTimeout(() => {
+            setShowCamera(false);
+          }, 200);
+        }
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
+        setShowCamera(false);
+      }
+    }
+  };
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -263,15 +260,17 @@ const takePicture = async () => {
       `;
       webViewRef.current?.injectJavaScript(js);
 
-      // Navigate back after showing success
+      // Replace the entire alert callback section with:
       Alert.alert("Success", "Location saved successfully!", [
         {
           text: "OK",
           onPress: () => {
+            // Check if we can go back
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace("/saved-spots");
+              // Use push instead of replace for safer navigation
+              router.push("/saved-spots");
             }
           },
         },
@@ -428,32 +427,32 @@ const takePicture = async () => {
   };
 
   // Update your camera view render with a key
-if (showCamera) {
-  return (
-    <View style={styles.cameraContainer}>
-      <CameraView 
-        key={cameraKey} // Add this key
-        ref={cameraRef} 
-        style={styles.camera} 
-        facing="back" 
-      />
-      <View style={styles.cameraOverlay}>
-        <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-          <View style={styles.captureButtonInner} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.closeButton}
-          onPress={() => {
-            setCameraKey(prev => prev + 1);
-            setShowCamera(false);
-          }}
-        >
-          <Ionicons name="close" size={30} color="white" />
-        </TouchableOpacity>
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView
+          key={cameraKey} // Add this key
+          ref={cameraRef}
+          style={styles.camera}
+          facing="back"
+        />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              setCameraKey((prev) => prev + 1);
+              setShowCamera(false);
+            }}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  );
-}
+    );
+  }
 
   return (
     <View style={styles.container}>

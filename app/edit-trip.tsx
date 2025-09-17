@@ -1,20 +1,20 @@
-// app/edit-trip.tsx - Updated with friend tagging
+// app/edit-trip.tsx - Fixed with proper date handling
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    Image,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../constants/theme";
@@ -22,7 +22,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useFriends } from "../contexts/FriendsContext";
 import { useTrips } from "../contexts/TripContext";
 
-// Friend Selection Modal
+// Friend Selection Modal (unchanged)
 const FriendSelectionModal = ({
   visible,
   onClose,
@@ -150,6 +150,59 @@ export default function EditTripScreen() {
         trip.end_date instanceof Date ? trip.end_date : new Date(trip.end_date)
       );
       setTaggedFriends(trip.tagged_friends || []);
+
+      // Check if trip items extend beyond current dates and auto-adjust
+      if (trip.items && trip.items.length > 0) {
+        const itemDates = trip.items
+          .map((item) => {
+            // Access the data property which contains the actual activity/spot
+            const itemData = item.data;
+
+            if (item.type === "activity" && itemData) {
+              // Check for activity date properties
+              if (itemData.activityDate) return new Date(itemData.activityDate);
+              if (itemData.date) return new Date(itemData.date);
+            }
+
+            if (item.type === "spot" && itemData) {
+              // Check for spot date properties
+              if (itemData.locationDate) return new Date(itemData.locationDate);
+              if (itemData.timestamp) return new Date(itemData.timestamp);
+            }
+
+            // Fallback to added_at which is directly on the TripItem
+            if (item.added_at) return new Date(item.added_at);
+
+            return null;
+          })
+          .filter((date): date is Date => date !== null);
+
+        if (itemDates.length > 0) {
+          const earliestItemDate = new Date(
+            Math.min(...itemDates.map((d) => d.getTime()))
+          );
+          const latestItemDate = new Date(
+            Math.max(...itemDates.map((d) => d.getTime()))
+          );
+
+          // Adjust dates if items are outside the current range
+          const currentStart =
+            trip.start_date instanceof Date
+              ? trip.start_date
+              : new Date(trip.start_date);
+          const currentEnd =
+            trip.end_date instanceof Date
+              ? trip.end_date
+              : new Date(trip.end_date);
+
+          if (earliestItemDate < currentStart) {
+            setStartDate(earliestItemDate);
+          }
+          if (latestItemDate > currentEnd) {
+            setEndDate(latestItemDate);
+          }
+        }
+      }
     }
   }, [trip]);
 
@@ -192,17 +245,26 @@ export default function EditTripScreen() {
 
     setSaving(true);
     try {
-      await updateTrip(trip.id, {
-        ...trip,
-        name: name.trim(),
-        start_date: startDate, // Changed from start_date to startDate
-        end_date: endDate, // Changed from end_date to endDate
-        tagged_friends: taggedFriends, // This one was already correct
+      console.log("Attempting to save with dates:", {
+        start_date: startDate,
+        end_date: endDate,
+        start_date_string: startDate.toISOString(),
+        end_date_string: endDate.toISOString(),
+        tripId: trip.id,
       });
+
+      await updateTrip(trip.id, {
+        name: name.trim(),
+        start_date: startDate,
+        end_date: endDate,
+        tagged_friends: taggedFriends,
+      });
+
       Alert.alert("Success", "Trip updated successfully!", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (error) {
+      console.error("Error updating trip:", error);
       Alert.alert("Error", "Failed to update trip");
       setSaving(false);
     }
@@ -288,6 +350,46 @@ export default function EditTripScreen() {
     } others`;
   };
 
+  const datesAutoAdjusted = () => {
+    if (!trip || !trip.items || trip.items.length === 0) return false;
+
+    const itemDates = trip.items
+      .map((item) => {
+        const itemData = item.data;
+
+        if (item.type === "activity" && itemData) {
+          if (itemData.activityDate) return new Date(itemData.activityDate);
+          if (itemData.date) return new Date(itemData.date);
+        }
+
+        if (item.type === "spot" && itemData) {
+          if (itemData.locationDate) return new Date(itemData.locationDate);
+          if (itemData.timestamp) return new Date(itemData.timestamp);
+        }
+
+        if (item.added_at) return new Date(item.added_at);
+        return null;
+      })
+      .filter((date): date is Date => date !== null);
+
+    if (itemDates.length === 0) return false;
+
+    const earliestItemDate = new Date(
+      Math.min(...itemDates.map((d) => d.getTime()))
+    );
+    const latestItemDate = new Date(
+      Math.max(...itemDates.map((d) => d.getTime()))
+    );
+    const originalStart =
+      trip.start_date instanceof Date
+        ? trip.start_date
+        : new Date(trip.start_date);
+    const originalEnd =
+      trip.end_date instanceof Date ? trip.end_date : new Date(trip.end_date);
+
+    return earliestItemDate < originalStart || latestItemDate > originalEnd;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -335,6 +437,19 @@ export default function EditTripScreen() {
         {/* Date Range */}
         <View style={styles.section}>
           <Text style={styles.label}>Date Range</Text>
+
+          {datesAutoAdjusted() && (
+            <View style={styles.autoAdjustNotice}>
+              <Ionicons
+                name="information-circle"
+                size={16}
+                color={theme.colors.forest}
+              />
+              <Text style={styles.autoAdjustText}>
+                Dates adjusted to include all trip items
+              </Text>
+            </View>
+          )}
 
           <TouchableOpacity
             style={styles.dateButton}
@@ -426,9 +541,6 @@ export default function EditTripScreen() {
           </TouchableOpacity>
 
           <View style={styles.permissionRow}>
-            <Text style={styles.permissionText}>
-              Allow friends to add items to this trip
-            </Text>
             <Switch
               value={allowFriendsToEdit}
               onValueChange={setAllowFriendsToEdit}
@@ -536,6 +648,7 @@ export default function EditTripScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ... all existing styles remain the same ...
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
@@ -624,6 +737,20 @@ const styles = StyleSheet.create({
     color: theme.colors.lightGray,
     marginTop: 5,
     textAlign: "right",
+  },
+  autoAdjustNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "10",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  autoAdjustText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginLeft: 8,
+    flex: 1,
   },
   dateButton: {
     backgroundColor: theme.colors.offWhite,

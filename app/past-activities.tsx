@@ -494,185 +494,207 @@ export default function PastActivitiesScreen() {
     `;
   };
 
-// This is the updated renderActivityItem function for past-activities.tsx
-// Replace the existing renderActivityItem function with this one:
+  // This is the updated renderActivityItem function for past-activities.tsx
+  // Replace the existing renderActivityItem function with this one:
 
-const renderActivityItem = ({ item }: { item: any }) => {
-  const iconName = (activityIcons as any)[item.type] || "fitness";
+  const renderActivityItem = ({ item }: { item: any }) => {
+    const iconName = (activityIcons as any)[item.type] || "fitness";
 
-  // Format activity date
-  const formatActivityDate = (date: Date | string) => {
-    const d = new Date(date);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    // Format activity date
+    // Replace the formatActivityDate function inside renderActivityItem with this:
+    const formatActivityDate = (date: Date | string) => {
+      const d = new Date(date);
+      const today = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(today.getDate() - 1);
 
-    // Check if today
-    if (d.toDateString() === today.toDateString()) {
-      return "Today";
-    }
-    // Check if yesterday
-    if (d.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
-    }
-    // Otherwise show date
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
-    });
-  };
+      // Debug logging
+      console.log("Activity date:", d.toISOString());
+      console.log("Today:", today.toISOString());
+      console.log("Yesterday:", yesterday.toISOString());
 
-  return (
-    <TouchableOpacity
-      style={styles.activityCard}
-      onPress={() => handleViewMap(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.activityHeader}>
-        <View style={styles.activityIcon}>
-          <Ionicons
-            name={iconName as any}
-            size={24}
-            color={theme.colors.forest}
-          />
+      // Reset time parts for accurate date comparison
+      const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const todayOnly = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const yesterdayOnly = new Date(
+        yesterday.getFullYear(),
+        yesterday.getMonth(),
+        yesterday.getDate()
+      );
+
+      console.log("Date only:", dateOnly.toISOString());
+      console.log("Today only:", todayOnly.toISOString());
+      console.log("Yesterday only:", yesterdayOnly.toISOString());
+
+      // Check if today
+      if (dateOnly.getTime() === todayOnly.getTime()) {
+        return "Today";
+      }
+      // Check if yesterday
+      if (dateOnly.getTime() === yesterdayOnly.getTime()) {
+        return "Yesterday";
+      }
+      // Otherwise show date
+      return d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+      });
+    };
+    return (
+      <TouchableOpacity
+        style={styles.activityCard}
+        onPress={() => handleViewMap(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.activityHeader}>
+          <View style={styles.activityIcon}>
+            <Ionicons
+              name={iconName as any}
+              size={24}
+              color={theme.colors.forest}
+            />
+          </View>
+          <View style={styles.activityInfo}>
+            <Text style={styles.activityName}>{item.name}</Text>
+            <View style={styles.activityDateRow}>
+              <Text style={styles.activityDate}>
+                {formatActivityDate(item.activityDate || item.startTime)}
+              </Text>
+              <Text style={styles.activityTime}>
+                {" at " + formatTime(item.startTime)}
+              </Text>
+            </View>
+          </View>
+          {item.isManualEntry && (
+            <View style={styles.manualBadge}>
+              <Text style={styles.manualBadgeText}>Manual</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.activityInfo}>
-          <Text style={styles.activityName}>{item.name}</Text>
-          <View style={styles.activityDateRow}>
-            <Text style={styles.activityDate}>
-              {formatActivityDate(item.activityDate || item.startTime)}
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Distance</Text>
+            <Text style={styles.statValue}>
+              {formatDistance(item.distance)}
             </Text>
-            <Text style={styles.activityTime}>
-              {" at " + formatTime(item.startTime)}
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Duration</Text>
+            <Text style={styles.statValue}>
+              {formatDuration(item.duration)}
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Avg Speed</Text>
+            <Text style={styles.statValue}>
+              {formatSpeed(item.averageSpeed)}
             </Text>
           </View>
         </View>
-        {item.isManualEntry && (
-          <View style={styles.manualBadge}>
-            <Text style={styles.manualBadgeText}>Manual</Text>
-          </View>
+
+        {item.photos && item.photos.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.activityPhotos}
+          >
+            {item.photos.map((photo: string, index: number) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => {
+                  setSelectedPhotoIndex(index);
+                  setSelectedActivityPhotos(item.photos);
+                  setSelectedPhoto(photo);
+                }}
+              >
+                <Image source={{ uri: photo }} style={styles.activityPhoto} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         )}
-      </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Distance</Text>
-          <Text style={styles.statValue}>
-            {formatDistance(item.distance)}
+        {item.notes && (
+          <Text style={styles.notes} numberOfLines={2}>
+            {item.notes}
           </Text>
+        )}
+
+        <View style={styles.activityActions}>
+          {/* Add to Trip Button - NEW */}
+          <AddToTripButton
+            item={item}
+            type="activity"
+            iconSize={22}
+            style={styles.actionButton}
+          />
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.shareButton]}
+            onPress={() => handleShareActivity(item)}
+          >
+            <Ionicons
+              name="share-social-outline"
+              size={22}
+              color={theme.colors.forest}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.friendsButton]}
+            onPress={() => handleShareWithFriends(item)}
+          >
+            <Ionicons
+              name="people-outline"
+              size={22}
+              color={theme.colors.navy}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.mapButton]}
+            onPress={() => handleViewMap(item)}
+          >
+            <Ionicons name="map-outline" size={22} color={theme.colors.gray} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.editButton]}
+            onPress={() => router.push(`/edit-activity?activityId=${item.id}`)}
+          >
+            <Ionicons
+              name="create-outline"
+              size={22}
+              color={theme.colors.navy}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.copyButton]}
+            onPress={() => handleCopyActivity(item)}
+          >
+            <Ionicons name="copy-outline" size={22} color={theme.colors.gray} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.deleteButton]}
+            onPress={() => handleDeleteActivity(item.id, item.name)}
+          >
+            <Ionicons
+              name="trash-outline"
+              size={22}
+              color={theme.colors.burntOrange}
+            />
+          </TouchableOpacity>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Duration</Text>
-          <Text style={styles.statValue}>
-            {formatDuration(item.duration)}
-          </Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Avg Speed</Text>
-          <Text style={styles.statValue}>
-            {formatSpeed(item.averageSpeed)}
-          </Text>
-        </View>
-      </View>
-      
-      {item.photos && item.photos.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.activityPhotos}
-        >
-          {item.photos.map((photo: string, index: number) => (
-            <TouchableOpacity
-              key={index}
-              onPress={() => {
-                setSelectedPhotoIndex(index);
-                setSelectedActivityPhotos(item.photos);
-                setSelectedPhoto(photo);
-              }}
-            >
-              <Image source={{ uri: photo }} style={styles.activityPhoto} />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      {item.notes && (
-        <Text style={styles.notes} numberOfLines={2}>
-          {item.notes}
-        </Text>
-      )}
-
-      <View style={styles.activityActions}>
-        {/* Add to Trip Button - NEW */}
-        <AddToTripButton
-          item={item}
-          type="activity"
-          iconSize={22}
-          style={styles.actionButton}
-        />
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.shareButton]}
-          onPress={() => handleShareActivity(item)}
-        >
-          <Ionicons
-            name="share-social-outline"
-            size={22}
-            color={theme.colors.forest}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.friendsButton]}
-          onPress={() => handleShareWithFriends(item)}
-        >
-          <Ionicons
-            name="people-outline"
-            size={22}
-            color={theme.colors.navy}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.mapButton]}
-          onPress={() => handleViewMap(item)}
-        >
-          <Ionicons name="map-outline" size={22} color={theme.colors.gray} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => router.push(`/edit-activity?activityId=${item.id}`)}
-        >
-          <Ionicons
-            name="create-outline"
-            size={22}
-            color={theme.colors.navy}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.copyButton]}
-          onPress={() => handleCopyActivity(item)}
-        >
-          <Ionicons name="copy-outline" size={22} color={theme.colors.gray} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDeleteActivity(item.id, item.name)}
-        >
-          <Ionicons
-            name="trash-outline"
-            size={22}
-            color={theme.colors.burntOrange}
-          />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
-};
+      </TouchableOpacity>
+    );
+  };
 
   if (showMap && selectedActivity) {
     return (

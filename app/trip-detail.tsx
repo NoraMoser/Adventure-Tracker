@@ -1,21 +1,23 @@
 // app/trip-detail.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { useSettings } from "../contexts/SettingsContext";
 import { useTrips } from "../contexts/TripContext";
+import { useFocusEffect } from '@react-navigation/native';
+
 
 // Weather API configuration (using Open-Meteo free API)
 // Weather API configuration (using Open-Meteo free API)
@@ -195,7 +197,7 @@ const generateTripMapHTML = (tripActivities: any[], tripSpots: any[]) => {
 export default function TripDetailScreen() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const { trips, removeFromTrip } = useTrips();
+  const { trips, removeFromTrip, refreshTrips } = useTrips();
 
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [weatherData, setWeatherData] = useState<any>(null);
@@ -203,15 +205,22 @@ export default function TripDetailScreen() {
   const { settings } = useSettings();
   const useImperial = settings?.units === "imperial";
 
+
   const trip = trips.find((t) => t.id === tripId);
 
-  // Get activities and spots directly from trip.items.data (before conditional return)
+  // Updated section for handling activities with proper date fields
   const tripActivities = trip
     ? trip.items
         .filter((item) => item.type === "activity")
         .map((item) => ({
-          tripItemId: item.id, // Store the TripItem ID for removal
-          ...item.data, // Spread the actual activity data
+          tripItemId: item.id,
+          ...item.data,
+          // Ensure we have a consistent date field
+          displayDate:
+            item.data.activityDate ||
+            item.data.startTime ||
+            item.data.date ||
+            item.added_at,
         }))
     : [];
 
@@ -219,8 +228,11 @@ export default function TripDetailScreen() {
     ? trip.items
         .filter((item) => item.type === "spot")
         .map((item) => ({
-          tripItemId: item.id, // Store the TripItem ID for removal
-          ...item.data, // Spread the actual spot data
+          tripItemId: item.id,
+          ...item.data,
+          // Ensure we have a consistent date field
+          displayDate:
+            item.data.locationDate || item.data.timestamp || item.added_at,
         }))
     : [];
 
@@ -234,6 +246,12 @@ export default function TripDetailScreen() {
       loadWeatherData();
     }
   }, [trip, tripActivities.length, tripSpots.length]);
+
+  useFocusEffect(
+  useCallback(() => {
+    refreshTrips();
+  }, [])
+);
 
   const loadWeatherData = async () => {
     if (!trip || (tripActivities.length === 0 && tripSpots.length === 0))
@@ -532,6 +550,7 @@ export default function TripDetailScreen() {
               <Text style={styles.sectionTitle}>
                 Activities ({tripActivities.length})
               </Text>
+              {/* Activities Section - update the date display */}
               {tripActivities.map((activity: any) => (
                 <TouchableOpacity
                   key={activity.tripItemId}
@@ -551,8 +570,8 @@ export default function TripDetailScreen() {
                       {activity.name || "Unnamed Activity"}
                     </Text>
                     <Text style={styles.itemMeta}>
-                      {activity.startTime
-                        ? new Date(activity.startTime).toLocaleDateString()
+                      {activity.displayDate
+                        ? new Date(activity.displayDate).toLocaleDateString()
                         : "No date"}
                       {activity.distance
                         ? ` • ${(activity.distance / 1000).toFixed(1)} km`
@@ -564,7 +583,7 @@ export default function TripDetailScreen() {
                   </View>
                   <TouchableOpacity
                     onPress={(e) => {
-                      e.stopPropagation(); // Prevent navigation when clicking remove
+                      e.stopPropagation();
                       handleRemoveItem(
                         activity.tripItemId,
                         activity.name || "this activity"
@@ -576,15 +595,8 @@ export default function TripDetailScreen() {
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
-            </View>
-          )}
 
-          {/* Spots Section */}
-          {tripSpots.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Saved Spots ({tripSpots.length})
-              </Text>
+              {/* Spots Section - update the date display */}
               {tripSpots.map((spot: any) => (
                 <TouchableOpacity
                   key={spot.tripItemId}
@@ -612,9 +624,9 @@ export default function TripDetailScreen() {
                     </Text>
                     <Text style={styles.itemMeta}>
                       {spot.category || "No category"}
-                      {spot.locationDate
+                      {spot.displayDate
                         ? ` • ${new Date(
-                            spot.locationDate
+                            spot.displayDate
                           ).toLocaleDateString()}`
                         : ""}
                     </Text>
@@ -626,7 +638,7 @@ export default function TripDetailScreen() {
                   </View>
                   <TouchableOpacity
                     onPress={(e) => {
-                      e.stopPropagation(); // Prevent navigation when clicking remove
+                      e.stopPropagation();
                       handleRemoveItem(
                         spot.tripItemId,
                         spot.name || "this spot"

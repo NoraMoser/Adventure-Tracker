@@ -1,4 +1,4 @@
-// contexts/FriendsContext.tsx - Fixed version with proper table usage
+// contexts/FriendsContext.tsx - Complete with push notifications
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { Alert } from "react-native";
 import { supabase } from "../lib/supabase";
+import { PushNotificationHelper } from "../lib/notifications";
 import { Activity } from "./ActivityContext";
 import { useAuth } from "./AuthContext";
 
@@ -155,7 +156,7 @@ const FriendsContext = createContext<FriendsContextType | undefined>(undefined);
 export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
@@ -219,7 +220,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         console.error("Error loading friendships:", friendshipsError);
       }
 
-      // Get friend profiles
       // Get friend profiles
       if (friendships && friendships.length > 0) {
         // Use a Set to ensure unique friend IDs
@@ -407,10 +407,33 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
 
-      // 3. Update local state immediately
+      // 3. Send notification to requester that their request was accepted
+      await supabase.from("notifications").insert({
+        user_id: request.from_user_id,
+        from_user_id: user.id,
+        type: "friend_accepted",
+        title: "Friend Request Accepted",
+        message: `${profile?.display_name || profile?.username} accepted your friend request!`,
+        data: { friend_id: user.id },
+        read: false,
+      });
+
+      // Send push notification
+      await PushNotificationHelper.sendNotificationToUser(
+        request.from_user_id,
+        "friend_accepted",
+        "Friend Request Accepted",
+        `${profile?.display_name || profile?.username} is now your friend!`,
+        {
+          type: "friend_accepted",
+          friend_id: user.id,
+        }
+      );
+
+      // 4. Update local state immediately
       setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
 
-      // 4. Add to friends list
+      // 5. Add to friends list
       if (request.from_user) {
         const newFriend: Friend = {
           id: request.from_user_id,
@@ -541,16 +564,48 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       // Send the request to friend_requests table
-      const { error: requestError } = await supabase
+      const { data: newRequest, error: requestError } = await supabase
         .from("friend_requests")
         .insert({
           from_user_id: user.id,
           to_user_id: targetUser.id,
           message,
           sent_at: new Date().toISOString(),
-        });
+        })
+        .select()
+        .single();
 
       if (requestError) throw requestError;
+
+      // Create notification in database
+      await supabase.from("notifications").insert({
+        user_id: targetUser.id,
+        from_user_id: user.id,
+        type: "friend_request",
+        title: "New Friend Request",
+        message: `${
+          profile?.display_name || profile?.username || "Someone"
+        } sent you a friend request`,
+        data: {
+          request_id: newRequest.id,
+          message: message,
+        },
+        read: false,
+      });
+
+      // Send push notification
+      await PushNotificationHelper.sendNotificationToUser(
+        targetUser.id,
+        "friend_request",
+        "New Friend Request",
+        `${
+          profile?.display_name || profile?.username
+        } wants to be your friend!`,
+        {
+          type: "friend_request",
+          request_id: newRequest.id,
+        }
+      );
 
       Alert.alert(
         "Success",

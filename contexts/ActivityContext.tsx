@@ -380,91 +380,108 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
 const startTracking = async (activityType: ActivityType) => {
-  await new Promise((resolve) => setTimeout(resolve, 500));
   try {
     console.log("Starting tracking for:", activityType);
     setLoading(true);
     setError(null);
 
-    // Try to get location directly first (assumes permission already granted)
-    let initialLocation;
-    try {
-      initialLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.BestForNavigation,
-      });
-      console.log("Got initial location without permission check");
-    } catch (err) {
-      console.log("Failed to get location, checking permissions...");
-      // Only check permissions if the first attempt failed
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        throw new Error("Location permission is required");
+    // First, try to get last known position immediately (fast)
+    let initialLocation = await Location.getLastKnownPositionAsync({
+      maxAge: 60000, // Accept location up to 1 minute old
+      requiredAccuracy: 1000, // Accept within 1km accuracy for quick start
+    });
+
+    // If no last known location or it's too old, get current position
+    if (!initialLocation || Date.now() - initialLocation.timestamp > 60000) {
+      console.log("No recent last known location, getting current...");
+      
+      // Try with balanced accuracy first (faster)
+      try {
+        initialLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      } catch (err) {
+        console.log("Balanced accuracy failed, trying high accuracy...");
+        // Fall back to high accuracy if balanced fails
+        initialLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
       }
-      // Try again after permission check
-      initialLocation = await Location.getCurrentPositionAsync({
+    }
+
+    // Start tracking immediately with whatever location we have
+    const initialPoint: LocationPoint = {
+      latitude: initialLocation.coords.latitude,
+      longitude: initialLocation.coords.longitude,
+      timestamp: Date.now(),
+      accuracy: initialLocation.coords.accuracy || undefined,
+    };
+
+    // Set initial state immediately
+    setCurrentLocation(initialPoint);
+    setCurrentRoute([initialPoint]);
+    setGpsStatus(initialLocation.coords.accuracy && initialLocation.coords.accuracy > 50 ? "searching" : "active");
+    setCurrentActivity(activityType);
+    setIsTracking(true);
+    setIsPaused(false);
+    setCurrentDistance(0);
+    setCurrentDuration(0);
+    setCurrentSpeed(0);
+    setLoading(false); // Stop loading immediately once we have any position
+
+    startTimeRef.current = Date.now();
+    pausedTimeRef.current = 0;
+    pauseStartRef.current = null;
+    lastUpdateTime.current = Date.now();
+    maxSpeedRef.current = 0;
+
+    // Start duration timer
+    durationInterval.current = setInterval(() => {
+      if (startTimeRef.current && !pauseStartRef.current) {
+        const elapsed = Math.floor(
+          (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
+        );
+        setCurrentDuration(elapsed);
+      }
+    }, 1000);
+
+    // Start high-accuracy tracking in the background (upgrades accuracy over time)
+    locationSubscription.current = await Location.watchPositionAsync(
+      {
         accuracy: Location.Accuracy.BestForNavigation,
-      });
-    }
-
-    // Rest of your existing code starting from const initialPoint...
-
-      const initialPoint: LocationPoint = {
-        latitude: initialLocation.coords.latitude,
-        longitude: initialLocation.coords.longitude,
-        timestamp: Date.now(),
-        accuracy: initialLocation.coords.accuracy || undefined,
-      };
-
-      setCurrentLocation(initialPoint);
-      setCurrentRoute([initialPoint]);
-      setGpsStatus("active");
-      setCurrentActivity(activityType);
-      setIsTracking(true);
-      setIsPaused(false);
-      setCurrentDistance(0);
-      setCurrentDuration(0);
-      setCurrentSpeed(0);
-
-      startTimeRef.current = Date.now();
-      pausedTimeRef.current = 0;
-      pauseStartRef.current = null;
-      lastUpdateTime.current = Date.now();
-      maxSpeedRef.current = 0;
-
-      durationInterval.current = setInterval(() => {
-        if (startTimeRef.current && !pauseStartRef.current) {
-          const elapsed = Math.floor(
-            (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-          );
-          setCurrentDuration(elapsed);
+        timeInterval: 2000,
+        distanceInterval: 2,
+      },
+      (location) => {
+        handleLocationUpdate(location);
+        // Update GPS status based on accuracy
+        if (location.coords.accuracy && location.coords.accuracy <= 20) {
+          setGpsStatus("active");
+        } else if (location.coords.accuracy && location.coords.accuracy <= 50) {
+          setGpsStatus("searching");
         }
-      }, 1000);
+      }
+    );
 
-      locationSubscription.current = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 2000,
-          distanceInterval: 2,
-        },
-        handleLocationUpdate
-      );
+    // Check for stale GPS
+    staleCheckInterval.current = setInterval(() => {
+      const timeSinceLastUpdate = Date.now() - lastUpdateTime.current;
+      if (timeSinceLastUpdate > 60000) {
+        setGpsStatus("stale");
+      } else if (timeSinceLastUpdate > 30000) {
+        setGpsStatus("searching");
+      }
+    }, 10000);
 
-      staleCheckInterval.current = setInterval(() => {
-        const timeSinceLastUpdate = Date.now() - lastUpdateTime.current;
-        if (timeSinceLastUpdate > 60000) {
-          setGpsStatus("stale");
-        }
-      }, 10000);
-
-      setLoading(false);
-      console.log("Tracking started successfully");
-    } catch (err: any) {
-      console.error("Error starting tracking:", err);
-      setError(err.message || "Failed to start tracking");
-      setLoading(false);
-      await cleanupTracking();
-    }
-  };
+    console.log("Tracking started successfully");
+  } catch (err: any) {
+    console.error("Error starting tracking:", err);
+    setError(err.message || "Failed to start tracking");
+    setLoading(false);
+    await cleanupTracking();
+    throw err; // Re-throw to handle in the UI
+  }
+};
 
   const resumeTracking = async () => {
     console.log("Resuming tracking");

@@ -21,6 +21,7 @@ import { useLocation } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 import * as ImagePicker from "expo-image-picker";
 import { Camera, CameraView } from "expo-camera";
+import * as Location from 'expo-location';
 
 export default function SaveLocationScreen() {
   const router = useRouter();
@@ -38,7 +39,20 @@ export default function SaveLocationScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [cameraKey, setCameraKey] = useState(0);
 
-  const handleSave = async () => {
+const handleSave = async () => {
+  // Check location permission first
+  const { status } = await Location.getForegroundPermissionsAsync();
+  if (status !== 'granted') {
+    const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+    if (newStatus !== 'granted') {
+      Alert.alert(
+        "Location Required",
+        "Location permission is needed to save this spot.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+  }
     if (!name.trim()) {
       Alert.alert("Error", "Please enter a location name");
       return;
@@ -567,7 +581,7 @@ const styles = StyleSheet.create({
     borderRadius: 35,
     backgroundColor: "rgba(255,255,255,0.3)",
     justifyContent: "center",
-    alignItems: "center",
+    alignItems: "center"
   },
   captureButtonInner: {
     width: 60,

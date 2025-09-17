@@ -118,14 +118,23 @@ export default function TrackActivityScreen() {
   const handleStart = async () => {
     try {
       setManualLoading(true);
-      console.log("Starting tracking without permission checks...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const { status: existingStatus } =
+        await Location.getForegroundPermissionsAsync();
+
+      if (existingStatus !== "granted") {
+        // Show the permission screen instead of directly requesting
+        setShowPermissionScreen(true);
+        setManualLoading(false);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
       await startTracking(selectedActivity);
-      setManualLoading(false);
     } catch (err) {
       setManualLoading(false);
       console.error("Error starting activity:", err);
       Alert.alert("Error", "Failed to start tracking. Please try again.");
+    } finally {
+      setManualLoading(false); // Only need it once here
     }
   };
 
@@ -280,26 +289,25 @@ export default function TrackActivityScreen() {
     if (cameraRef.current) {
       try {
         console.log("Taking picture...");
-        
+
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
           skipProcessing: true,
         });
-        
+
         console.log("Photo result:", photo);
-        
+
         if (photo && photo.uri) {
           console.log("Adding photo URI:", photo.uri);
-          setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
-          
-          setCameraKey(prev => prev + 1);
-          
+          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
+
+          setCameraKey((prev) => prev + 1);
+
           setTimeout(() => {
             setShowCamera(false);
           }, 200);
         }
-        
       } catch (error) {
         console.error("Camera error:", error);
         Alert.alert("Error", "Failed to take picture");
@@ -360,10 +368,10 @@ export default function TrackActivityScreen() {
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
-        <CameraView 
+        <CameraView
           key={cameraKey}
           ref={cameraRef}
-          style={styles.camera} 
+          style={styles.camera}
           facing="back"
         />
         <View style={styles.cameraOverlay}>
@@ -373,7 +381,7 @@ export default function TrackActivityScreen() {
           <TouchableOpacity
             style={styles.closeButton}
             onPress={() => {
-              setCameraKey(prev => prev + 1);
+              setCameraKey((prev) => prev + 1);
               setShowCamera(false);
             }}
           >

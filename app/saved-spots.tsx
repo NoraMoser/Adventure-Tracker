@@ -15,7 +15,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import AddToTripButton from "../components/AddToTripButton";
@@ -351,33 +351,52 @@ const AnimatedListItem = ({
 
   const formatLocationDate = () => {
     const dateToFormat = item.locationDate || item.timestamp;
-
     if (!dateToFormat) return "";
 
     const d = new Date(dateToFormat);
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const compareDate = new Date(d);
-    compareDate.setHours(0, 0, 0, 0);
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
 
-    const diffTime = today.getTime() - compareDate.getTime();
+    // Reset time parts for accurate date comparison
+    const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const todayOnly = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    const yesterdayOnly = new Date(
+      yesterday.getFullYear(),
+      yesterday.getMonth(),
+      yesterday.getDate()
+    );
+
+    // Check if today
+    if (dateOnly.getTime() === todayOnly.getTime()) {
+      return "Today";
+    }
+    // Check if yesterday
+    if (dateOnly.getTime() === yesterdayOnly.getTime()) {
+      return "Yesterday";
+    }
+
+    // For older dates, calculate days ago
+    const diffTime = todayOnly.getTime() - dateOnly.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) {
+    if (diffDays < 7 && diffDays > 1) return `${diffDays} days ago`;
+    if (diffDays < 30 && diffDays >= 7) {
       const weeks = Math.floor(diffDays / 7);
       return `${weeks} week${weeks > 1 ? "s" : ""} ago`;
     }
 
+    // Otherwise show date
     return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
     });
   };
-
   return (
     <Animated.View
       style={[

@@ -371,15 +371,30 @@ export default function SettingsScreen() {
         text: "Sign Out",
         style: "destructive",
         onPress: async () => {
-          await signOut();
-          // Add delay for React 19
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          router.replace("/auth/login");
+          try {
+            // Clear local data
+            await AsyncStorage.multiRemove(["userName"]);
+
+            // Sign out from auth
+            await signOut();
+
+            // Wait longer to ensure everything is cleaned up
+            setTimeout(() => {
+              // Use push instead of replace during sign out
+              router.push("/auth/login");
+            }, 500);
+          } catch (error) {
+            console.error("Sign out error:", error);
+
+            setTimeout(() => {
+            router.dismissAll();
+            router.replace("/auth/login");
+          }, 100);
+          }
         },
       },
     ]);
   };
-
   const clearAllData = () => {
     Alert.alert(
       "Clear All Data",
