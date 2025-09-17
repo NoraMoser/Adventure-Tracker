@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -15,13 +15,14 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { ActivityType, useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
+import { Camera, CameraView } from "expo-camera";
 
 const { width, height } = Dimensions.get("window");
 
@@ -61,6 +62,18 @@ export default function AddActivityScreen() {
   const [drawnRoute, setDrawnRoute] = useState<any[]>([]);
   const [routeDistance, setRouteDistance] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState<
+    boolean | null
+  >(null);
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasCameraPermission(status === "granted");
+    })();
+  }, []);
 
   const handleSave = async () => {
     // Validation
@@ -141,27 +154,48 @@ export default function AddActivityScreen() {
     });
   };
 
-  const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission Denied",
-        "Camera permission is required to take photos"
-      );
-      return;
-    }
+ const handleTakePhoto = async () => {
+  console.log("Camera button tapped!");
+  console.log("Current showCamera state:", showCamera);
+  setShowCamera(true);
+  console.log("Set showCamera to true");
+};
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      allowsEditing: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const newPhotos = result.assets.map((asset) => asset.uri);
-      setPhotos([...photos, ...newPhotos]);
+  // Add this function to actually take the picture:
+const takePicture = async () => {
+  if (cameraRef.current) {
+    try {
+      console.log("Taking picture...");
+      
+      // Take the picture
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: false,
+        skipProcessing: true,
+      });
+      
+      console.log("Photo result:", photo);
+      
+      // Add the photo to the array
+      if (photo && photo.uri) {
+        setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
+      }
+      
+      // Always close camera after taking picture
+      setTimeout(() => {
+        setShowCamera(false);
+      }, 100);
+      
+    } catch (error) {
+      console.error("Camera error:", error);
+      Alert.alert("Error", "Failed to take picture");
+      setShowCamera(false);
     }
-  };
+  } else {
+    console.error("Camera ref not available");
+    setShowCamera(false);
+  }
+};
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -550,6 +584,24 @@ export default function AddActivityScreen() {
       </html>
     `;
   };
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => setShowCamera(false)}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -632,7 +684,9 @@ export default function AddActivityScreen() {
             />
             <View style={styles.dateTimeContent}>
               <Text style={styles.dateTimeLabel}>Date</Text>
-              <Text style={styles.dateTimeValue}>{formatDate(activityDate)}</Text>
+              <Text style={styles.dateTimeValue}>
+                {formatDate(activityDate)}
+              </Text>
             </View>
           </TouchableOpacity>
           <TouchableOpacity
@@ -791,8 +845,8 @@ export default function AddActivityScreen() {
           numberOfLines={4}
           textAlignVertical="top"
         />
-      </View>      
-      
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Photos (Optional)</Text>
         <View style={styles.photoActions}>
@@ -838,7 +892,7 @@ export default function AddActivityScreen() {
       </View>
 
       {/* Route, Distance, Notes sections remain the same */}
-      
+
       {/* Save Button */}
       <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
         <Ionicons name="save-outline" size={20} color={theme.colors.white} />
@@ -1061,7 +1115,7 @@ const styles = StyleSheet.create({
   },
   notesInput: {
     height: 100,
-  },  
+  },
   saveButton: {
     backgroundColor: theme.colors.forest,
     flexDirection: "row",
@@ -1119,7 +1173,7 @@ const styles = StyleSheet.create({
   },
   mapWebView: {
     flex: 1,
-  },  
+  },
   photoActions: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -1160,5 +1214,41 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: "white",
     borderRadius: 12,
+  },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 40,
+    right: 20,
   },
 });

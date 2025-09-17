@@ -1,8 +1,8 @@
-// app/profile-edit.tsx - Fixed version with updated ImagePicker API and storage setup
+// app/profile-edit.tsx - Fixed with expo-camera
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -20,6 +20,7 @@ import {
 import { theme } from "../constants/theme";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
+import { Camera, CameraView } from "expo-camera";
 
 // Avatar Selection Modal (unchanged)
 const AvatarModal = ({
@@ -97,6 +98,11 @@ export default function ProfileEditScreen() {
   const [profilePicture, setProfilePicture] = useState(profile?.profile_picture || null);
   const [usernameError, setUsernameError] = useState("");
 
+  // Camera states
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraKey, setCameraKey] = useState(0);
+
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || "");
@@ -172,7 +178,7 @@ export default function ProfileEditScreen() {
     }
   };
 
-  // Pick image from gallery - FIXED for your version
+  // Pick image from gallery
   const pickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
@@ -184,7 +190,6 @@ export default function ProfileEditScreen() {
       return;
     }
 
-    // Try both APIs to support different versions
     const mediaTypes = (ImagePicker as any).MediaTypeOptions?.Images || ['images'];
     
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -202,33 +207,42 @@ export default function ProfileEditScreen() {
     }
   };
 
-  // Take photo with camera - FIXED for your version
+  // Take photo with camera - FIXED with expo-camera
   const takePhoto = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
-    if (!permissionResult.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow access to your camera to take a profile picture."
-      );
-      return;
-    }
+    setShowCamera(true);
+  };
 
-    // Try both APIs to support different versions
-    const mediaTypes = (ImagePicker as any).MediaTypeOptions?.Images || ['images'];
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      mediaTypes: mediaTypes,
-    });
-
-    if (!result.canceled && result.assets && result.assets[0]) {
-      uploadProfilePicture(result.assets[0].uri);
-    } else if (!result.canceled && (result as any).uri) {
-      // Fallback for older API
-      uploadProfilePicture((result as any).uri);
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking profile picture...");
+        
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
+        
+        console.log("Profile photo result:", photo);
+        
+        if (photo && photo.uri) {
+          // Upload the photo
+          uploadProfilePicture(photo.uri);
+          
+          // Force camera to unmount and remount
+          setCameraKey(prev => prev + 1);
+          
+          // Close camera
+          setTimeout(() => {
+            setShowCamera(false);
+          }, 200);
+        }
+        
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
+        setShowCamera(false);
+      }
     }
   };
 
@@ -374,6 +388,34 @@ export default function ProfileEditScreen() {
       ]
     );
   };
+
+  // Camera view
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView 
+          key={cameraKey}
+          ref={cameraRef}
+          style={styles.camera} 
+          facing="front" // Use front camera for profile photos
+        />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              setCameraKey(prev => prev + 1);
+              setShowCamera(false);
+            }}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView 
@@ -718,6 +760,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.navy,
     fontWeight: "500",
+  },
+  // Camera styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });
 

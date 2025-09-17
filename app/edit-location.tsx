@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import { categoryList, CategoryType } from "../constants/categories";
 import { useAuth } from "../contexts/AuthContext";
 import { useLocation } from "../contexts/LocationContext";
 import { PhotoService } from "../services/photoService";
+import { Camera, CameraView } from "expo-camera";
 
 // Theme colors
 const theme = {
@@ -53,6 +54,11 @@ export default function EditLocationScreen() {
   // NEW: Date states
   const [locationDate, setLocationDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Camera states
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraKey, setCameraKey] = useState(0);
 
   useEffect(() => {
     // Load the spot data
@@ -114,25 +120,40 @@ export default function EditLocationScreen() {
   };
 
   const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission Denied",
-        "Camera permission is required to take photos"
-      );
-      return;
-    }
+    setShowCamera(true);
+  };
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const newPhotos = result.assets.map((asset) => asset.uri);
-      setPhotos([...photos, ...newPhotos]);
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture...");
+        
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
+        
+        console.log("Photo result:", photo);
+        
+        if (photo && photo.uri) {
+          console.log("Adding photo URI:", photo.uri);
+          setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
+          
+          // Force camera to unmount and remount
+          setCameraKey(prev => prev + 1);
+          
+          // Close camera
+          setTimeout(() => {
+            setShowCamera(false);
+          }, 200);
+        }
+        
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
+        setShowCamera(false);
+      }
     }
   };
 
@@ -306,6 +327,34 @@ export default function EditLocationScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.forest} />
+      </View>
+    );
+  }
+
+  // Camera view
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView 
+          key={cameraKey}
+          ref={cameraRef}
+          style={styles.camera} 
+          facing="back" 
+        />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              setCameraKey(prev => prev + 1);
+              setShowCamera(false);
+            }}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -702,5 +751,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     color: theme.colors.gray,
+  },
+  // Camera styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });

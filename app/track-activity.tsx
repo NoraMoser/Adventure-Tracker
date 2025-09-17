@@ -1,4 +1,4 @@
-// app/track-activity.tsx - Updated with date selection
+// app/track-activity.tsx - Updated with expo-camera
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -20,6 +20,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useSettings } from "../contexts/SettingsContext";
+import { Camera, CameraView } from "expo-camera";
 
 type ActivityType =
   | "bike"
@@ -83,11 +84,16 @@ export default function TrackActivityScreen() {
   const [finalSpeed, setFinalSpeed] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
 
+  // Camera states
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraKey, setCameraKey] = useState(0);
+
   useEffect(() => {
     if (loading || manualLoading) {
       loadingTimeoutRef.current = setTimeout(() => {
         setLoadingTimeout(true);
-      }, 15000); // Increased from 8000 to 15000
+      }, 15000);
     } else {
       setLoadingTimeout(false);
       if (loadingTimeoutRef.current) {
@@ -110,24 +116,18 @@ export default function TrackActivityScreen() {
   }, [error]);
 
   const handleStart = async () => {
-  try {
-    setManualLoading(true);
-
-    // Skip the permission checks and service checks for now
-    console.log("Starting tracking without permission checks...");
-    
-    // Add delay before starting
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    
-    // Just start tracking directly
-    await startTracking(selectedActivity);
-    setManualLoading(false);
-  } catch (err) {
-    setManualLoading(false);
-    console.error("Error starting activity:", err);
-    Alert.alert("Error", "Failed to start tracking. Please try again.");
-  }
-};
+    try {
+      setManualLoading(true);
+      console.log("Starting tracking without permission checks...");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await startTracking(selectedActivity);
+      setManualLoading(false);
+    } catch (err) {
+      setManualLoading(false);
+      console.error("Error starting activity:", err);
+      Alert.alert("Error", "Failed to start tracking. Please try again.");
+    }
+  };
 
   const handleRequestPermission = async () => {
     setShowPermissionScreen(false);
@@ -204,12 +204,11 @@ export default function TrackActivityScreen() {
     try {
       const name = activityName.trim() || `${selectedActivity} activity`;
 
-      // Create the activity object with the date
       const activityData = {
         name,
         notes: activityNotes,
         photos,
-        activityDate, // Add the date here
+        activityDate,
         distance: finalDistance,
         duration: finalDuration,
       };
@@ -223,7 +222,7 @@ export default function TrackActivityScreen() {
       setPhotos([]);
       setShowSaveDialog(false);
       setIsSaving(false);
-      setActivityDate(new Date()); // Reset to today for next activity
+      setActivityDate(new Date());
 
       Alert.alert("Success", "Activity saved successfully!", [
         { text: "OK", onPress: () => router.back() },
@@ -274,25 +273,38 @@ export default function TrackActivityScreen() {
       Alert.alert("Not Tracking", "Start tracking to add photos");
       return;
     }
+    setShowCamera(true);
+  };
 
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission Denied",
-        "Camera permission is required to take photos"
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      allowsEditing: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const newPhotos = result.assets.map((asset) => asset.uri);
-      setPhotos([...photos, ...newPhotos]);
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture...");
+        
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
+        
+        console.log("Photo result:", photo);
+        
+        if (photo && photo.uri) {
+          console.log("Adding photo URI:", photo.uri);
+          setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
+          
+          setCameraKey(prev => prev + 1);
+          
+          setTimeout(() => {
+            setShowCamera(false);
+          }, 200);
+        }
+        
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
+        setShowCamera(false);
+      }
     }
   };
 
@@ -343,6 +355,34 @@ export default function TrackActivityScreen() {
     }
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
+
+  // Camera view
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView 
+          key={cameraKey}
+          ref={cameraRef}
+          style={styles.camera} 
+          facing="back"
+        />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              setCameraKey(prev => prev + 1);
+              setShowCamera(false);
+            }}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (showPermissionScreen) {
     return (
@@ -598,7 +638,6 @@ export default function TrackActivityScreen() {
     );
   }
 
-  // In the tracking view section
   if (isTracking) {
     return (
       <View style={styles.container}>
@@ -1349,7 +1388,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   photoSection: {
-    backgroundColor: theme.colors.white + "10",
+    backgroundColor: theme.colors.forest + "10",
     borderRadius: 12,
     padding: 15,
     marginBottom: 20,
@@ -1362,7 +1401,7 @@ const styles = StyleSheet.create({
   },
   photoTitle: {
     fontSize: 14,
-    color: theme.colors.white,
+    color: theme.colors.navy,
     fontWeight: "600",
   },
   photoButtons: {
@@ -1395,5 +1434,46 @@ const styles = StyleSheet.create({
     right: -6,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
+  },
+  // Camera styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });

@@ -21,6 +21,7 @@ import { WebView } from "react-native-webview";
 import { CategoryType, categoryList } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useLocation } from "../contexts/LocationContext";
+import { Camera, CameraView } from "expo-camera";
 
 export default function AddLocationScreen() {
   const { saveManualLocation, location: currentLocation } = useLocation();
@@ -47,6 +48,12 @@ export default function AddLocationScreen() {
   // NEW: Date state for manual location entry
   const [locationDate, setLocationDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Camera states
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraKey, setCameraKey] = useState(0);
+
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
@@ -144,27 +151,43 @@ export default function AddLocationScreen() {
   };
 
   const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission Denied",
-        "Camera permission is required to take photos"
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Correct
-      allowsEditing: false,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const newPhotos = result.assets.map((asset) => asset.uri);
-      setPhotos([...photos, ...newPhotos]);
-    }
+    setShowCamera(true);
   };
+
+const takePicture = async () => {
+  if (cameraRef.current) {
+    try {
+      console.log("Taking picture...");
+      
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: false,
+        skipProcessing: true,
+      });
+      
+      console.log("Photo result:", photo);
+      
+      if (photo && photo.uri) {
+        console.log("Adding photo URI:", photo.uri);
+        setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
+        
+        // Force camera to unmount and remount
+        setCameraKey(prev => prev + 1);
+        
+        // Close camera
+        setTimeout(() => {
+          setShowCamera(false);
+        }, 200);
+      }
+      
+    } catch (error) {
+      console.error("Camera error:", error);
+      Alert.alert("Error", "Failed to take picture");
+      setShowCamera(false);
+    }
+  }
+};
+
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -177,7 +200,7 @@ export default function AddLocationScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Correct
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       allowsEditing: false,
       quality: 0.8,
@@ -403,6 +426,34 @@ export default function AddLocationScreen() {
       console.log("Error parsing message:", error);
     }
   };
+
+  // Update your camera view render with a key
+if (showCamera) {
+  return (
+    <View style={styles.cameraContainer}>
+      <CameraView 
+        key={cameraKey} // Add this key
+        ref={cameraRef} 
+        style={styles.camera} 
+        facing="back" 
+      />
+      <View style={styles.cameraOverlay}>
+        <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+          <View style={styles.captureButtonInner} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={() => {
+            setCameraKey(prev => prev + 1);
+            setShowCamera(false);
+          }}
+        >
+          <Ionicons name="close" size={30} color="white" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
   return (
     <View style={styles.container}>
@@ -837,7 +888,12 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
   },
   closeButton: {
-    padding: 4,
+    position: "absolute",
+    top: 40,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.5)", // Add temporary background
+    padding: 10,
+    borderRadius: 20,
   },
   coordinatesDisplay: {
     flexDirection: "row",
@@ -995,5 +1051,37 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: "white",
     borderRadius: 12,
+  },
+  // Camera styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
   },
 });

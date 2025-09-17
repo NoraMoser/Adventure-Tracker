@@ -1,7 +1,9 @@
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Camera, CameraView } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
 
 interface CameraModalProps {
   visible: boolean;
@@ -17,9 +19,12 @@ const CameraModal: React.FC<CameraModalProps> = ({
   spotName 
 }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraKey, setCameraKey] = useState(0);
 
   const requestPermissions = async () => {
-    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+    const cameraPermission = await Camera.requestCameraPermissionsAsync();
     const mediaLibraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
     if (cameraPermission.status !== 'granted' || mediaLibraryPermission.status !== 'granted') {
@@ -34,49 +39,60 @@ const CameraModal: React.FC<CameraModalProps> = ({
   };
 
   const takePhoto = async () => {
-    console.log('Taking photo...');
+    console.log('Opening camera...');
     const hasPermission = await requestPermissions();
     if (!hasPermission) {
       console.log('No camera permission');
       return;
     }
+    setShowCamera(true);
+  };
 
-    setIsLoading(true);
-    try {
-      console.log('Launching camera...');
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
-      });
-
-      console.log('Camera result:', result);
-
-      if (!result.canceled && result.assets[0]) {
-        console.log('Photo URI:', result.assets[0].uri);
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture...");
         
-        // Convert to base64 for WebView compatibility
-        try {
-          const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const dataUrl = `data:image/jpeg;base64,${base64}`;
-          console.log('Photo converted to base64, length:', base64.length);
-          onPhotoTaken(dataUrl);
-        } catch (error) {
-          console.error('Error converting photo to base64:', error);
-          onPhotoTaken(result.assets[0].uri); // Fallback to original URI
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.7,
+          base64: true,
+          skipProcessing: true,
+        });
+        
+        console.log("Photo result:", photo);
+        
+        if (photo) {
+          // If base64 is available, use it for WebView compatibility
+          if (photo.base64) {
+            const dataUrl = `data:image/jpeg;base64,${photo.base64}`;
+            console.log('Photo converted to base64, length:', photo.base64.length);
+            onPhotoTaken(dataUrl);
+          } else if (photo.uri) {
+            // Fallback to URI if base64 not available
+            try {
+              const base64 = await FileSystem.readAsStringAsync(photo.uri, {
+                encoding: 'base64', // Changed from FileSystem.EncodingType.Base64
+              });
+              const dataUrl = `data:image/jpeg;base64,${base64}`;
+              console.log('Photo converted to base64, length:', base64.length);
+              onPhotoTaken(dataUrl);
+            } catch (error) {
+              console.error('Error converting photo to base64:', error);
+              onPhotoTaken(photo.uri);
+            }
+          }
+          
+          // Reset camera
+          setCameraKey(prev => prev + 1);
+          setShowCamera(false);
+          onClose();
         }
         
-        onClose();
-      } else {
-        console.log('Photo was canceled');
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
+        setShowCamera(false);
       }
-    } catch (error) {
-      console.error('Camera error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Error', `Failed to take photo: ${errorMessage}`);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -104,7 +120,7 @@ const CameraModal: React.FC<CameraModalProps> = ({
         // Convert to base64 for WebView compatibility
         try {
           const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, {
-            encoding: FileSystem.EncodingType.Base64,
+            encoding: 'base64', // Changed from FileSystem.EncodingType.Base64
           });
           const dataUrl = `data:image/jpeg;base64,${base64}`;
           console.log('Photo converted to base64, length:', base64.length);
@@ -126,6 +142,36 @@ const CameraModal: React.FC<CameraModalProps> = ({
       setIsLoading(false);
     }
   };
+
+  // Camera view
+  if (showCamera) {
+    return (
+      <Modal visible={visible} animationType="slide" transparent={false}>
+        <View style={styles.cameraContainer}>
+          <CameraView 
+            key={cameraKey}
+            ref={cameraRef}
+            style={styles.camera} 
+            facing="back"
+          />
+          <View style={styles.cameraOverlay}>
+            <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+              <View style={styles.captureButtonInner} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => {
+                setCameraKey(prev => prev + 1);
+                setShowCamera(false);
+              }}
+            >
+              <Ionicons name="close" size={30} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -223,6 +269,47 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#7f8c8d',
     fontSize: 14,
+  },
+  // Camera styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'white',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });
 

@@ -1,7 +1,7 @@
-// app/save-location.tsx - Example implementation with auto-add to trips
+// app/save-location.tsx - Updated with expo-camera
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { categories, CategoryType } from "../constants/categories";
@@ -19,18 +20,23 @@ import { theme } from "../constants/theme";
 import { useLocation } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 import * as ImagePicker from "expo-image-picker";
-import { Image } from "react-native";
+import { Camera, CameraView } from "expo-camera";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
   const { location, saveCurrentLocation } = useLocation();
-  const { checkAndAddToTrip } = useAutoAddToTrip(); // Add the hook
+  const { checkAndAddToTrip } = useAutoAddToTrip();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<CategoryType>("other");
   const [saving, setSaving] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
+
+  // Camera states
+  const [showCamera, setShowCamera] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraKey, setCameraKey] = useState(0);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -52,7 +58,7 @@ export default function SaveLocationScreen() {
       await saveCurrentLocation(
         name.trim(),
         description.trim(),
-        photos, // Pass the photos array
+        photos,
         category,
         new Date()
       );
@@ -81,7 +87,7 @@ export default function SaveLocationScreen() {
           latitude: location.latitude,
           longitude: location.longitude,
         },
-        true // prompt user
+        true
       );
 
       if (trip && trip.name && trip.id) {
@@ -109,21 +115,40 @@ export default function SaveLocationScreen() {
   };
 
   const handleTakePhoto = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 500)); // React 19 delay
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Denied", "Camera permission is required");
-      return;
-    }
+    setShowCamera(true);
+  };
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setPhotos([...photos, result.assets[0].uri]);
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture...");
+        
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
+        
+        console.log("Photo result:", photo);
+        
+        if (photo && photo.uri) {
+          console.log("Adding photo URI:", photo.uri);
+          setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
+          
+          // Force camera to unmount and remount
+          setCameraKey(prev => prev + 1);
+          
+          // Close camera
+          setTimeout(() => {
+            setShowCamera(false);
+          }, 200);
+        }
+        
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
+        setShowCamera(false);
+      }
     }
   };
 
@@ -150,6 +175,34 @@ export default function SaveLocationScreen() {
   const handleRemovePhoto = (index: number) => {
     setPhotos(photos.filter((_, i) => i !== index));
   };
+
+  // Camera view
+  if (showCamera) {
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView 
+          key={cameraKey}
+          ref={cameraRef}
+          style={styles.camera} 
+          facing="back"
+        />
+        <View style={styles.cameraOverlay}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              setCameraKey(prev => prev + 1);
+              setShowCamera(false);
+            }}
+          >
+            <Ionicons name="close" size={30} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -191,6 +244,7 @@ export default function SaveLocationScreen() {
                 autoFocus
               />
             </View>
+            
             {/* Photo Section */}
             <Text style={styles.label}>Photos (Optional)</Text>
             <View style={styles.photoActions}>
@@ -488,5 +542,46 @@ const styles = StyleSheet.create({
     right: -8,
     backgroundColor: "white",
     borderRadius: 12,
+  },
+  // Camera styles
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureButtonInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "white",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });
