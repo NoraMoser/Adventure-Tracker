@@ -63,7 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
-    console.log("🔍 AuthContext: Starting initialization...");
     checkAuthStatus();
 
     // Set up auth state listener

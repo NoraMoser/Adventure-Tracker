@@ -28,8 +28,6 @@ export class UpdateService {
       const currentVersion = Application.nativeApplicationVersion || "1.0.0";
       const currentBuildNumber = Application.nativeBuildVersion || "1";
 
-      console.log(`Checking for updates - current version: ${currentVersion}`);
-
       // Fetch latest version from your database
       const { data: latestVersion, error } = await supabase
         .from("app_versions")

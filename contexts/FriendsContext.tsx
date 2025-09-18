@@ -793,7 +793,89 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         profileMap[p.id] = p;
       });
 
-      // Transform into feed posts
+      // Load likes for all activities and locations
+      const activityIds = activities?.map((a) => a.id) || [];
+      const locationIds = locations?.map((l) => l.id) || [];
+
+      const { data: activityLikes } = await supabase
+        .from("likes")
+        .select("activity_id, user_id")
+        .in("activity_id", activityIds);
+
+      const { data: locationLikes } = await supabase
+        .from("likes")
+        .select("location_id, user_id")
+        .in("location_id", locationIds);
+
+      // Load comments for all activities and locations
+      const { data: activityComments } = await supabase
+        .from("comments")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
+        .in("activity_id", activityIds)
+        .order("created_at", { ascending: false });
+
+      const { data: locationComments } = await supabase
+        .from("comments")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
+        .in("location_id", locationIds)
+        .order("created_at", { ascending: false });
+
+      // Create lookup maps for likes and comments
+      const activityLikesMap: Record<string, string[]> = {};
+      activityLikes?.forEach((like) => {
+        if (!activityLikesMap[like.activity_id]) {
+          activityLikesMap[like.activity_id] = [];
+        }
+        activityLikesMap[like.activity_id].push(like.user_id);
+      });
+
+      const locationLikesMap: Record<string, string[]> = {};
+      locationLikes?.forEach((like) => {
+        if (!locationLikesMap[like.location_id]) {
+          locationLikesMap[like.location_id] = [];
+        }
+        locationLikesMap[like.location_id].push(like.user_id);
+      });
+
+      const activityCommentsMap: Record<string, FeedComment[]> = {};
+      activityComments?.forEach((comment) => {
+        if (!activityCommentsMap[comment.activity_id]) {
+          activityCommentsMap[comment.activity_id] = [];
+        }
+        activityCommentsMap[comment.activity_id].push({
+          id: comment.id,
+          userId: comment.user_id,
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
+          text: comment.text,
+          timestamp: new Date(comment.created_at),
+          replyTo: comment.reply_to_id,
+          replyToUser: undefined, // Would need another query to get this
+        });
+      });
+
+      const locationCommentsMap: Record<string, FeedComment[]> = {};
+      locationComments?.forEach((comment) => {
+        if (!locationCommentsMap[comment.location_id]) {
+          locationCommentsMap[comment.location_id] = [];
+        }
+        locationCommentsMap[comment.location_id].push({
+          id: comment.id,
+          userId: comment.user_id,
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
+          text: comment.text,
+          timestamp: new Date(comment.created_at),
+          replyTo: comment.reply_to_id,
+          replyToUser: undefined,
+        });
+      });
+
+      // Transform into feed posts with actual likes and comments
       const activityPosts: FeedPost[] = (activities || []).map((activity) => ({
         id: `activity-${activity.id}`,
         type: "activity" as const,
@@ -821,8 +903,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             status: "accepted" as const,
           },
           sharedAt: new Date(activity.created_at || activity.start_time),
-          likes: [],
-          comments: [],
+          likes: activityLikesMap[activity.id] || [],
+          comments: activityCommentsMap[activity.id] || [],
         },
       }));
 
@@ -851,8 +933,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             status: "accepted" as const,
           },
           sharedAt: new Date(location.created_at),
-          likes: [],
-          comments: [],
+          likes: locationLikesMap[location.id] || [],
+          comments: locationCommentsMap[location.id] || [],
         },
       }));
 
@@ -862,31 +944,71 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .slice(0, 50);
 
       setFeed(allPosts);
+      console.log(
+        `Loaded ${allPosts.length} feed items with likes and comments`
+      );
     } catch (err) {
       console.error("Error loading feed:", err);
     }
   };
 
   const likeItem = async (itemId: string) => {
-    if (!user) return;
+    if (!user || !profile) return;
 
     try {
-      // Parse the item type and ID
-      const [type, actualId] = itemId.split("-");
+      const [type, ...idParts] = itemId.split("-");
+      const actualId = idParts.join("-");
+
+      console.log("Attempting to like:", { type, actualId, userId: user.id });
+
+      // Get the owner of the item
+      let itemOwnerId: string | null = null;
+      let itemName: string = "";
+      let insertResult;
 
       if (type === "activity") {
-        await supabase.from("likes").insert({
+        const { data: activity } = await supabase
+          .from("activities")
+          .select("user_id, name")
+          .eq("id", actualId)
+          .single();
+
+        itemOwnerId = activity?.user_id;
+        itemName = activity?.name || "activity";
+
+        insertResult = await supabase.from("likes").insert({
           activity_id: actualId,
           user_id: user.id,
         });
+
+        if (insertResult.error) {
+          console.error("Error inserting like:", insertResult.error);
+          throw insertResult.error;
+        }
+        console.log("Like inserted successfully");
       } else if (type === "location") {
-        await supabase.from("likes").insert({
+        const { data: location } = await supabase
+          .from("locations")
+          .select("user_id, name")
+          .eq("id", actualId)
+          .single();
+
+        itemOwnerId = location?.user_id;
+        itemName = location?.name || "location";
+
+        insertResult = await supabase.from("likes").insert({
           location_id: actualId,
           user_id: user.id,
         });
+
+        if (insertResult.error) {
+          console.error("Error inserting like:", insertResult.error);
+          throw insertResult.error;
+        }
+        console.log("Like inserted successfully");
       }
 
-      // Update local feed state
+      // Only update UI and send notifications if insert succeeded
       setFeed((prev) =>
         prev.map((post) =>
           post.id === itemId
@@ -897,8 +1019,37 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             : post
         )
       );
+
+      // Send notification to owner if it's not the liker
+      if (itemOwnerId && itemOwnerId !== user.id) {
+        await supabase.from("notifications").insert({
+          user_id: itemOwnerId,
+          from_user_id: user.id,
+          type: "like",
+          title: "New Like",
+          message: `${
+            profile.display_name || profile.username
+          } liked your ${type}: "${itemName}"`,
+          data: {
+            [`${type}_id`]: actualId,
+          },
+          read: false,
+        });
+
+        await PushNotificationHelper.sendNotificationToUser(
+          itemOwnerId,
+          "like",
+          "❤️ New Like",
+          `${profile.display_name || profile.username} liked your ${type}`,
+          {
+            type: "like",
+            [`${type}_id`]: actualId,
+          }
+        );
+      }
     } catch (error) {
-      console.error("Error liking item:", error);
+      console.error("Error in likeItem:", error);
+      Alert.alert("Error", "Failed to like item");
     }
   };
 
@@ -906,7 +1057,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
     if (!user) return;
 
     try {
-      const [type, actualId] = itemId.split("-");
+      const [type, ...idParts] = itemId.split("-");
+      const actualId = idParts.join("-");
 
       if (type === "activity") {
         await supabase
@@ -921,6 +1073,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           .eq("location_id", actualId)
           .eq("user_id", user.id);
       }
+
+      // No notification for unlikes
 
       // Update local feed state
       setFeed((prev) =>
@@ -950,9 +1104,15 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
     if (!user || !profile) return;
 
     try {
-      // Parse the item type and ID
       const [type, ...idParts] = itemId.split("-");
-      const actualId = idParts.join("-"); // Rejoin in case UUID has dashes
+      const actualId = idParts.join("-");
+
+      console.log("Attempting to add comment:", {
+        type,
+        actualId,
+        text,
+        userId: user.id,
+      });
 
       const commentData: any = {
         user_id: user.id,
@@ -960,15 +1120,31 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         created_at: new Date().toISOString(),
       };
 
+      let itemOwnerId: string | null = null;
+
       if (type === "activity") {
         commentData.activity_id = actualId;
+        const { data: activity } = await supabase
+          .from("activities")
+          .select("user_id")
+          .eq("id", actualId)
+          .single();
+        itemOwnerId = activity?.user_id;
       } else if (type === "location") {
         commentData.location_id = actualId;
+        const { data: location } = await supabase
+          .from("locations")
+          .select("user_id")
+          .eq("id", actualId)
+          .single();
+        itemOwnerId = location?.user_id;
       }
 
       if (replyToCommentId) {
         commentData.reply_to_id = replyToCommentId;
       }
+
+      console.log("Comment data to insert:", commentData);
 
       const { data: newComment, error } = await supabase
         .from("comments")
@@ -976,7 +1152,12 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error inserting comment:", error);
+        throw error;
+      }
+
+      console.log("Comment inserted successfully:", newComment);
 
       // Update local feed state
       const comment: FeedComment = {
@@ -1002,11 +1183,13 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             : post
         )
       );
+
+      // Send notification if needed...
     } catch (error) {
-      console.error("Error adding comment:", error);
+      console.error("Error in addComment:", error);
+      Alert.alert("Error", "Failed to add comment");
     }
   };
-
   const deleteComment = async (itemId: string, commentId: string) => {
     if (!user) return;
 
