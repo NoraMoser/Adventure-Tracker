@@ -358,7 +358,7 @@ const AnimatedListItem = ({
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
 
-    // Reset time parts for accurate date comparison
+    // Create date-only versions (midnight local time)
     const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const todayOnly = new Date(
       today.getFullYear(),
@@ -371,11 +371,10 @@ const AnimatedListItem = ({
       yesterday.getDate()
     );
 
-    // Check if today
+    // Compare the date-only versions
     if (dateOnly.getTime() === todayOnly.getTime()) {
       return "Today";
     }
-    // Check if yesterday
     if (dateOnly.getTime() === yesterdayOnly.getTime()) {
       return "Yesterday";
     }

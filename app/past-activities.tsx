@@ -508,12 +508,7 @@ export default function PastActivitiesScreen() {
       const yesterday = new Date();
       yesterday.setDate(today.getDate() - 1);
 
-      // Debug logging
-      console.log("Activity date:", d.toISOString());
-      console.log("Today:", today.toISOString());
-      console.log("Yesterday:", yesterday.toISOString());
-
-      // Reset time parts for accurate date comparison
+      // Create date-only versions (midnight local time)
       const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       const todayOnly = new Date(
         today.getFullYear(),
@@ -526,19 +521,15 @@ export default function PastActivitiesScreen() {
         yesterday.getDate()
       );
 
-      console.log("Date only:", dateOnly.toISOString());
-      console.log("Today only:", todayOnly.toISOString());
-      console.log("Yesterday only:", yesterdayOnly.toISOString());
-
-      // Check if today
+      // Compare the date-only versions
       if (dateOnly.getTime() === todayOnly.getTime()) {
         return "Today";
       }
-      // Check if yesterday
       if (dateOnly.getTime() === yesterdayOnly.getTime()) {
         return "Yesterday";
       }
-      // Otherwise show date
+
+      // Otherwise show the date
       return d.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
