@@ -184,33 +184,33 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const getLocation = async () => {
-    try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== "granted") {
-        const { status: newStatus } =
-          await Location.requestForegroundPermissionsAsync();
-        if (newStatus !== "granted") {
-          setError("Location permission denied");
-          return;
-        }
+  try {
+    const { status } = await Location.getForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+      if (newStatus !== 'granted') {
+        setError("Location permission denied");
+        return;
       }
-
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      setLocation({
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
-      });
-    } catch (err) {
-      console.error("Error getting location:", err);
-      setError("Failed to get location");
-      throw new Error("Could not get location");
-    } finally {
-      setLoading(false);
     }
-  };
+
+    const currentLocation = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High
+    });
+
+    setLocation({
+      latitude: currentLocation.coords.latitude,
+      longitude: currentLocation.coords.longitude,
+    });
+  } catch (err) {
+    console.error("Error getting location:", err);
+    setError("Failed to get location");
+  
+    throw new Error("Could not get location");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const processPhotosForUpload = async (
     photos: string[]

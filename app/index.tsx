@@ -196,7 +196,6 @@ export default function DashboardScreen() {
       try {
         // Wait for auth to be ready
         if (authLoading) {
-          console.log("Dashboard: Waiting for auth...");
           return;
         }
 
@@ -225,15 +224,6 @@ export default function DashboardScreen() {
             return;
           }
         }
-
-        console.log(
-          "Dashboard: Ready - HasAuth:",
-          hasAuth,
-          "User:",
-          currentUser?.id,
-          "Offline:",
-          isOfflineMode
-        );
         setIsInitializing(false);
 
         // Get location if available

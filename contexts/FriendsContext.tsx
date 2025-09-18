@@ -413,7 +413,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         from_user_id: user.id,
         type: "friend_accepted",
         title: "Friend Request Accepted",
-        message: `${profile?.display_name || profile?.username} accepted your friend request!`,
+        message: `${
+          profile?.display_name || profile?.username
+        } accepted your friend request!`,
         data: { friend_id: user.id },
         read: false,
       });
@@ -860,19 +862,83 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .slice(0, 50);
 
       setFeed(allPosts);
-      console.log(`Loaded ${allPosts.length} feed items`);
     } catch (err) {
       console.error("Error loading feed:", err);
     }
   };
 
-  // Stub implementations for other functions
   const likeItem = async (itemId: string) => {
-    // Implementation here
+    if (!user) return;
+
+    try {
+      // Parse the item type and ID
+      const [type, actualId] = itemId.split("-");
+
+      if (type === "activity") {
+        await supabase.from("likes").insert({
+          activity_id: actualId,
+          user_id: user.id,
+        });
+      } else if (type === "location") {
+        await supabase.from("likes").insert({
+          location_id: actualId,
+          user_id: user.id,
+        });
+      }
+
+      // Update local feed state
+      setFeed((prev) =>
+        prev.map((post) =>
+          post.id === itemId
+            ? {
+                ...post,
+                data: { ...post.data, likes: [...post.data.likes, user.id] },
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error("Error liking item:", error);
+    }
   };
 
   const unlikeItem = async (itemId: string) => {
-    // Implementation here
+    if (!user) return;
+
+    try {
+      const [type, actualId] = itemId.split("-");
+
+      if (type === "activity") {
+        await supabase
+          .from("likes")
+          .delete()
+          .eq("activity_id", actualId)
+          .eq("user_id", user.id);
+      } else if (type === "location") {
+        await supabase
+          .from("likes")
+          .delete()
+          .eq("location_id", actualId)
+          .eq("user_id", user.id);
+      }
+
+      // Update local feed state
+      setFeed((prev) =>
+        prev.map((post) =>
+          post.id === itemId
+            ? {
+                ...post,
+                data: {
+                  ...post.data,
+                  likes: post.data.likes.filter((id) => id !== user.id),
+                },
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error("Error unliking item:", error);
+    }
   };
 
   const addComment = async (
@@ -881,11 +947,98 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
     replyToCommentId?: string,
     replyToUserName?: string
   ) => {
-    // Implementation here
+    if (!user || !profile) return;
+
+    try {
+      // Parse the item type and ID
+      const [type, ...idParts] = itemId.split("-");
+      const actualId = idParts.join("-"); // Rejoin in case UUID has dashes
+
+      const commentData: any = {
+        user_id: user.id,
+        text: text.trim(),
+        created_at: new Date().toISOString(),
+      };
+
+      if (type === "activity") {
+        commentData.activity_id = actualId;
+      } else if (type === "location") {
+        commentData.location_id = actualId;
+      }
+
+      if (replyToCommentId) {
+        commentData.reply_to_id = replyToCommentId;
+      }
+
+      const { data: newComment, error } = await supabase
+        .from("comments")
+        .insert(commentData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local feed state
+      const comment: FeedComment = {
+        id: newComment.id,
+        userId: user.id,
+        userName: profile.display_name || profile.username || "Unknown",
+        text: text.trim(),
+        timestamp: new Date(),
+        replyTo: replyToCommentId,
+        replyToUser: replyToUserName,
+      };
+
+      setFeed((prev) =>
+        prev.map((post) =>
+          post.id === itemId
+            ? {
+                ...post,
+                data: {
+                  ...post.data,
+                  comments: [...post.data.comments, comment],
+                },
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error("Error adding comment:", error);
+    }
   };
 
   const deleteComment = async (itemId: string, commentId: string) => {
-    // Implementation here
+    if (!user) return;
+
+    try {
+      // Delete from database
+      const { error } = await supabase
+        .from("comments")
+        .delete()
+        .eq("id", commentId)
+        .eq("user_id", user.id); // Only allow deleting own comments
+
+      if (error) throw error;
+
+      // Update local feed state
+      setFeed((prev) =>
+        prev.map((post) =>
+          post.id === itemId
+            ? {
+                ...post,
+                data: {
+                  ...post.data,
+                  comments: post.data.comments.filter(
+                    (c) => c.id !== commentId
+                  ),
+                },
+              }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error("Error deleting comment:", error);
+    }
   };
 
   const updatePrivacySettings = async (
