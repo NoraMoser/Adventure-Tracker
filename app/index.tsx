@@ -825,11 +825,6 @@ export default function DashboardScreen() {
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
     { divider: true },
     { icon: "stats-chart", label: "Statistics", route: "/statistics" },
-    {
-      icon: "trophy",
-      label: "Achievements",
-      route: "/statistics#achievements",
-    },
     { divider: true },
     { icon: "settings", label: "Settings", route: "/settings" },
     { icon: "information-circle", label: "About", route: "/" },
