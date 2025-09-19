@@ -2,7 +2,7 @@
   "expo": {
     "name": "explorAble",
     "slug": "explorable",
-    "version": "1.0.19",
+    "version": "1.0.20",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -19,6 +19,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.noramoser.explorable",
       "infoPlist": {
+        "NSUserNotificationUsageDescription": "Allow ExplorAble to send you notifications about friend requests, comments, and activity updates.",
         "NSLocationWhenInUseUsageDescription": "explorAble needs access to your location to track your activities and save your favorite spots.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "explorAble needs access to your location to track your activities in the background.",
         "NSCameraUsageDescription": "explorAble needs access to your camera to take photos of your adventure spots.",
@@ -39,7 +40,7 @@
         "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
-      "versionCode": 20,
+      "versionCode": 21,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

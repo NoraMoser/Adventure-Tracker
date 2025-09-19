@@ -1,12 +1,10 @@
-// lib/notifications.ts - With Expo Go detection
+// lib/notifications.ts - Complete version with all functions
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
-// Check if we're in Expo Go
 const isExpoGo = Constants.appOwnership === 'expo';
 
-// Conditionally import notification modules
 let Device: any = null;
 let Notifications: any = null;
 
@@ -14,7 +12,6 @@ if (!isExpoGo) {
   Device = require('expo-device');
   Notifications = require('expo-notifications');
   
-  // Configure notification behavior only if not in Expo Go
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -25,59 +22,33 @@ if (!isExpoGo) {
 }
 
 export class NotificationService {
-  static async registerForPushNotifications() {
-    // Skip entirely in Expo Go
-    if (isExpoGo || !Notifications || !Device) {
-      console.log('Push notifications not available in Expo Go. Use a development build.');
-      return null;
-    }
+  // In lib/notifications.ts - Fix the token registration
+static async registerForPushNotifications() {
+  if (isExpoGo || !Notifications || !Device) {
+    console.log('Push notifications not available in Expo Go');
+    return null;
+  }
 
-    let token;
+  if (!Device.isDevice) {
+    console.log('Push notifications only work on physical devices');
+    return null;
+  }
 
-    // Check if it's a physical device
-    if (!Device.isDevice) {
-      console.log('Push notifications only work on physical devices');
-      return;
-    }
-
-    // Get existing permissions
+  try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
-    // Ask for permission if not granted
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for notifications');
-      return;
+      console.log('Push notification permission denied');
+      return null;
     }
 
-    // Get the push token
-    try {
-      token = await Notifications.getExpoPushTokenAsync();
-      console.log('Push token:', token.data);
-      
-      // Save token to user's profile in Supabase
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase
-          .from('profiles')
-          .update({ 
-            push_token: token.data,
-            notifications_enabled: true 
-          })
-          .eq('id', user.id);
-      }
-      
-      return token.data;
-    } catch (error) {
-      console.error('Error getting push token:', error);
-    }
-
-    // Android-specific channel setup
+    // Android channel setup
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
@@ -97,8 +68,35 @@ export class NotificationService {
       });
     }
 
-    return token?.data;
+    // Use the projectId directly from your app.json
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: '0e548ecd-901d-40e5-a107-3a05329592e9' // Your actual project ID
+    });
+    
+    console.log('Push token obtained:', token.data);
+    
+    // Save token to database
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          push_token: token.data,
+          notifications_enabled: true 
+        })
+        .eq('id', user.id);
+        
+      if (error) {
+        console.error('Error saving push token:', error);
+      }
+    }
+    
+    return token.data;
+  } catch (error) {
+    console.error('Error getting push token:', error);
+    return null;
   }
+}
 
   static async sendLocalNotification(
     title: string,
@@ -111,20 +109,26 @@ export class NotificationService {
       return;
     }
 
-    const content: any = {
-      title,
-      body,
-      data,
-    };
+    try {
+      const content: any = {
+        title,
+        body,
+        data: data || {},
+        sound: true,
+      };
 
-    if (Platform.OS === 'android' && channelId) {
-      content.channelId = channelId;
+      if (Platform.OS === 'android' && channelId) {
+        content.channelId = channelId;
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: null, // Immediate notification
+      });
+      console.log('Local notification sent:', title);
+    } catch (error) {
+      console.error('Error sending local notification:', error);
     }
-
-    await Notifications.scheduleNotificationAsync({
-      content,
-      trigger: null,
-    });
   }
 
   static async getBadgeCount(): Promise<number> {
@@ -144,7 +148,6 @@ export class NotificationService {
   }
 }
 
-// Push notification helper for sending to other users
 export class PushNotificationHelper {
   private static EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -155,9 +158,8 @@ export class PushNotificationHelper {
     data?: Record<string, any>,
     channelId?: string
   ): Promise<boolean> {
-    // This can still work in Expo Go since it's just a fetch
     try {
-      const message = {
+      const message: any = {
         to: pushToken,
         title,
         body,
@@ -165,8 +167,11 @@ export class PushNotificationHelper {
         sound: 'default',
         priority: 'high',
         badge: 1,
-        ...(channelId && { channelId }),
       };
+
+      if (channelId && Platform.OS === 'android') {
+        message.channelId = channelId;
+      }
 
       const response = await fetch(this.EXPO_PUSH_URL, {
         method: 'POST',
@@ -187,6 +192,7 @@ export class PushNotificationHelper {
         }
       }
 
+      console.log('Push notification sent successfully');
       return true;
     } catch (error) {
       console.error('Failed to send push notification:', error);

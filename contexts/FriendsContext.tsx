@@ -1120,6 +1120,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         created_at: new Date().toISOString(),
       };
 
+      // Declare itemOwnerId only once
       let itemOwnerId: string | null = null;
 
       if (type === "activity") {
@@ -1159,6 +1160,44 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
       console.log("Comment inserted successfully:", newComment);
 
+      // Send notification to owner if it's not the commenter
+      if (itemOwnerId && itemOwnerId !== user.id) {
+        const { error: notifError } = await supabase
+          .from("notifications")
+          .insert({
+            user_id: itemOwnerId,
+            from_user_id: user.id,
+            type: "comment",
+            title: "New Comment",
+            message: `${
+              profile.display_name || profile.username
+            } commented on your ${type}`,
+            data: {
+              [`${type}_id`]: actualId,
+              comment_text: text.trim(),
+            },
+            read: false,
+          });
+
+        if (notifError) {
+          console.error("Failed to create notification:", notifError);
+        }
+
+        // Also try to send push notification
+        await PushNotificationHelper.sendNotificationToUser(
+          itemOwnerId,
+          "comment",
+          "New Comment",
+          `${profile.display_name || profile.username} commented: "${text
+            .trim()
+            .substring(0, 50)}${text.length > 50 ? "..." : ""}"`,
+          {
+            type: "comment",
+            [`${type}_id`]: actualId,
+          }
+        );
+      }
+
       // Update local feed state
       const comment: FeedComment = {
         id: newComment.id,
@@ -1183,8 +1222,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             : post
         )
       );
-
-      // Send notification if needed...
     } catch (error) {
       console.error("Error in addComment:", error);
       Alert.alert("Error", "Failed to add comment");
