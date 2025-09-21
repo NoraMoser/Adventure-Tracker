@@ -1096,137 +1096,77 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const addComment = async (
-    itemId: string,
-    text: string,
-    replyToCommentId?: string,
-    replyToUserName?: string
-  ) => {
-    if (!user || !profile) return;
+  itemId: string,
+  text: string,
+  replyToCommentId?: string,
+  replyToUserName?: string
+) => {
+  if (!user || !profile) return;
 
-    try {
-      const [type, ...idParts] = itemId.split("-");
-      const actualId = idParts.join("-");
+  try {
+    const [type, ...idParts] = itemId.split("-");
+    const actualId = idParts.join("-");
 
-      console.log("Attempting to add comment:", {
-        type,
-        actualId,
-        text,
-        userId: user.id,
-      });
+    const commentData: any = {
+      user_id: user.id,
+      text: text.trim(),
+      created_at: new Date().toISOString(),
+    };
 
-      const commentData: any = {
-        user_id: user.id,
-        text: text.trim(),
-        created_at: new Date().toISOString(),
-      };
+    let itemOwnerId: string | null = null;
 
-      // Declare itemOwnerId only once
-      let itemOwnerId: string | null = null;
-
-      if (type === "activity") {
-        commentData.activity_id = actualId;
-        const { data: activity } = await supabase
-          .from("activities")
-          .select("user_id")
-          .eq("id", actualId)
-          .single();
-        itemOwnerId = activity?.user_id;
-      } else if (type === "location") {
-        commentData.location_id = actualId;
-        const { data: location } = await supabase
-          .from("locations")
-          .select("user_id")
-          .eq("id", actualId)
-          .single();
-        itemOwnerId = location?.user_id;
-      }
-
-      if (replyToCommentId) {
-        commentData.reply_to_id = replyToCommentId;
-      }
-
-      console.log("Comment data to insert:", commentData);
-
-      const { data: newComment, error } = await supabase
-        .from("comments")
-        .insert(commentData)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error inserting comment:", error);
-        throw error;
-      }
-
-      console.log("Comment inserted successfully:", newComment);
-
-      // Send notification to owner if it's not the commenter
-      if (itemOwnerId && itemOwnerId !== user.id) {
-        const { error: notifError } = await supabase
-          .from("notifications")
-          .insert({
-            user_id: itemOwnerId,
-            from_user_id: user.id,
-            type: "comment",
-            title: "New Comment",
-            message: `${
-              profile.display_name || profile.username
-            } commented on your ${type}`,
-            data: {
-              [`${type}_id`]: actualId,
-              comment_text: text.trim(),
-            },
-            read: false,
-          });
-
-        if (notifError) {
-          console.error("Failed to create notification:", notifError);
-        }
-
-        // Also try to send push notification
-        await PushNotificationHelper.sendNotificationToUser(
-          itemOwnerId,
-          "comment",
-          "New Comment",
-          `${profile.display_name || profile.username} commented: "${text
-            .trim()
-            .substring(0, 50)}${text.length > 50 ? "..." : ""}"`,
-          {
-            type: "comment",
-            [`${type}_id`]: actualId,
-          }
-        );
-      }
-
-      // Update local feed state
-      const comment: FeedComment = {
-        id: newComment.id,
-        userId: user.id,
-        userName: profile.display_name || profile.username || "Unknown",
-        text: text.trim(),
-        timestamp: new Date(),
-        replyTo: replyToCommentId,
-        replyToUser: replyToUserName,
-      };
-
-      setFeed((prev) =>
-        prev.map((post) =>
-          post.id === itemId
-            ? {
-                ...post,
-                data: {
-                  ...post.data,
-                  comments: [...post.data.comments, comment],
-                },
-              }
-            : post
-        )
-      );
-    } catch (error) {
-      console.error("Error in addComment:", error);
-      Alert.alert("Error", "Failed to add comment");
+    if (type === "activity") {
+      commentData.activity_id = actualId;
+      // Don't fetch owner - let trigger handle it
+    } else if (type === "location") {
+      commentData.location_id = actualId;
+      // Don't fetch owner - let trigger handle it
     }
-  };
+
+    if (replyToCommentId) {
+      commentData.reply_to_id = replyToCommentId;
+    }
+
+    const { data: newComment, error } = await supabase
+      .from("comments")
+      .insert(commentData)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // REMOVE ALL NOTIFICATION CODE HERE
+    // The database trigger will handle it
+
+    // Just update local feed state
+    const comment: FeedComment = {
+      id: newComment.id,
+      userId: user.id,
+      userName: profile.display_name || profile.username || "Unknown",
+      text: text.trim(),
+      timestamp: new Date(),
+      replyTo: replyToCommentId,
+      replyToUser: replyToUserName,
+    };
+
+    setFeed((prev) =>
+      prev.map((post) =>
+        post.id === itemId
+          ? {
+              ...post,
+              data: {
+                ...post.data,
+                comments: [...post.data.comments, comment],
+              },
+            }
+          : post
+        )
+    );
+  } catch (error) {
+    console.error("Error in addComment:", error);
+    Alert.alert("Error", "Failed to add comment");
+  }
+};
   const deleteComment = async (itemId: string, commentId: string) => {
     if (!user) return;
 

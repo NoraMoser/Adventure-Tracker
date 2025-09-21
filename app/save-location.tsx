@@ -1,4 +1,5 @@
 // app/save-location.tsx - Updated with expo-camera
+import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState, useRef } from "react";
@@ -11,6 +12,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
   View,
   Image,
 } from "react-native";
@@ -21,7 +23,8 @@ import { useLocation } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 import * as ImagePicker from "expo-image-picker";
 import { Camera, CameraView } from "expo-camera";
-import * as Location from 'expo-location';
+import * as Location from "expo-location";
+import { LocationService, PlaceSuggestion } from "../services/locationService";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
@@ -39,20 +42,66 @@ export default function SaveLocationScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [cameraKey, setCameraKey] = useState(0);
 
-const handleSave = async () => {
-  // Check location permission first
-  const { status } = await Location.getForegroundPermissionsAsync();
-  if (status !== 'granted') {
-    const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
-    if (newStatus !== 'granted') {
-      Alert.alert(
-        "Location Required",
-        "Location permission is needed to save this spot.",
-        [{ text: "OK" }]
-      );
-      return;
+  const [locationSuggestions, setLocationSuggestions] = useState<
+    PlaceSuggestion[]
+  >([]);
+  const [selectedSuggestion, setSelectedSuggestion] =
+    useState<PlaceSuggestion | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (location) {
+      fetchLocationSuggestions();
     }
-  }
+  }, [location]);
+
+  const fetchLocationSuggestions = async () => {
+    if (!location) return;
+
+    setLoadingSuggestions(true);
+    try {
+      const suggestions = await LocationService.getLocationSuggestions(
+        location.latitude,
+        location.longitude
+      );
+
+      setLocationSuggestions(suggestions);
+
+      // Auto-select first business/POI suggestion if available
+      const businessSuggestion = suggestions.find(
+        (s) => s.type === "business" || s.type === "poi"
+      );
+      const firstSuggestion = businessSuggestion || suggestions[0];
+
+      if (firstSuggestion) {
+        setSelectedSuggestion(firstSuggestion);
+        setName(firstSuggestion.name);
+        if (firstSuggestion.suggestedCategoryType) {
+          setCategory(firstSuggestion.suggestedCategoryType);
+        }
+      }
+    } catch (error) {
+      console.error("Error getting suggestions:", error);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const handleSave = async () => {
+    // Check location permission first
+    const { status } = await Location.getForegroundPermissionsAsync();
+    if (status !== "granted") {
+      const { status: newStatus } =
+        await Location.requestForegroundPermissionsAsync();
+      if (newStatus !== "granted") {
+        Alert.alert(
+          "Location Required",
+          "Location permission is needed to save this spot.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
     if (!name.trim()) {
       Alert.alert("Error", "Please enter a location name");
       return;
@@ -136,28 +185,27 @@ const handleSave = async () => {
     if (cameraRef.current) {
       try {
         console.log("Taking picture...");
-        
+
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
           skipProcessing: true,
         });
-        
+
         console.log("Photo result:", photo);
-        
+
         if (photo && photo.uri) {
           console.log("Adding photo URI:", photo.uri);
-          setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
-          
+          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
+
           // Force camera to unmount and remount
-          setCameraKey(prev => prev + 1);
-          
+          setCameraKey((prev) => prev + 1);
+
           // Close camera
           setTimeout(() => {
             setShowCamera(false);
           }, 200);
         }
-        
       } catch (error) {
         console.error("Camera error:", error);
         Alert.alert("Error", "Failed to take picture");
@@ -194,10 +242,10 @@ const handleSave = async () => {
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
-        <CameraView 
+        <CameraView
           key={cameraKey}
           ref={cameraRef}
-          style={styles.camera} 
+          style={styles.camera}
           facing="back"
         />
         <View style={styles.cameraOverlay}>
@@ -207,7 +255,7 @@ const handleSave = async () => {
           <TouchableOpacity
             style={styles.closeButton}
             onPress={() => {
-              setCameraKey(prev => prev + 1);
+              setCameraKey((prev) => prev + 1);
               setShowCamera(false);
             }}
           >
@@ -246,8 +294,68 @@ const handleSave = async () => {
             </View>
           )}
 
+
           <View style={styles.form}>
             <View style={styles.inputGroup}>
+          {/* Smart Suggestions - ADD THIS SECTION */}
+          {loadingSuggestions ? (
+            <View style={styles.suggestionsLoading}>
+              <ActivityIndicator size="small" color={theme.colors.forest} />
+              <Text style={styles.suggestionsLoadingText}>
+                Finding nearby places...
+              </Text>
+            </View>
+          ) : locationSuggestions.length > 0 ? (
+            <View style={styles.suggestionsContainer}>
+              <Text style={styles.label}>Suggested Names</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.suggestionsScroll}
+              >
+                {locationSuggestions.map((suggestion) => (
+                  <TouchableOpacity
+                    key={suggestion.id}
+                    style={[
+                      styles.suggestionChip,
+                      selectedSuggestion?.id === suggestion.id &&
+                        styles.suggestionChipSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedSuggestion(suggestion);
+                      setName(suggestion.name);
+                      if (suggestion.suggestedCategoryType) {
+                        setCategory(suggestion.suggestedCategoryType);
+                      }
+                    }}
+                  >
+                    <View style={styles.suggestionContent}>
+                      {suggestion.type === "business" && (
+                        <Ionicons
+                          name="business"
+                          size={14}
+                          color={
+                            selectedSuggestion?.id === suggestion.id
+                              ? "white"
+                              : theme.colors.forest
+                          }
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.suggestionText,
+                          selectedSuggestion?.id === suggestion.id &&
+                            styles.suggestionTextSelected,
+                        ]}
+                      >
+                        {suggestion.name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
               <Text style={styles.label}>Location Name *</Text>
               <TextInput
                 style={styles.input}
@@ -258,7 +366,7 @@ const handleSave = async () => {
                 autoFocus
               />
             </View>
-            
+
             {/* Photo Section */}
             <Text style={styles.label}>Photos (Optional)</Text>
             <View style={styles.photoActions}>
@@ -581,7 +689,7 @@ const styles = StyleSheet.create({
     borderRadius: 35,
     backgroundColor: "rgba(255,255,255,0.3)",
     justifyContent: "center",
-    alignItems: "center"
+    alignItems: "center",
   },
   captureButtonInner: {
     width: 60,
@@ -597,5 +705,46 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 25,
     zIndex: 1,
+  },
+  suggestionsContainer: {
+    marginBottom: 20,
+  },
+  suggestionsLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    marginBottom: 15,
+  },
+  suggestionsLoadingText: {
+    marginLeft: 10,
+    color: theme.colors.gray,
+  },
+  suggestionsScroll: {
+    marginTop: 8,
+  },
+  suggestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "white",
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  suggestionChipSelected: {
+    backgroundColor: theme.colors.forest,
+    borderColor: theme.colors.forest,
+  },
+  suggestionContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: theme.colors.navy,
+    marginLeft: 6,
+  },
+  suggestionTextSelected: {
+    color: "white",
   },
 });

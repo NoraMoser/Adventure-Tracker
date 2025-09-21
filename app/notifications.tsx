@@ -3,12 +3,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { theme } from "../constants/theme";
 import { useAuth } from "../contexts/AuthContext";
@@ -24,7 +24,9 @@ interface Notification {
     | "location_shared"
     | "achievement"
     | "comment"
-    | "like";
+    | "like"
+    | "trip_shared";
+
   title: string;
   message: string;
   from_user?: {
@@ -199,15 +201,17 @@ export default function NotificationsScreen() {
   const handleNotificationPress = (notification: Notification) => {
     markAsRead(notification.id);
 
-    // Check the notification data for activity_id or location_id
+    // Check the notification data for activity_id, location_id, or trip_id
     if (notification.data) {
       if (notification.data.activity_id) {
-        // Navigate to the specific activity
         router.push(`/activity/${notification.data.activity_id}` as any);
         return;
       } else if (notification.data.location_id) {
-        // Navigate to the specific location
         router.push(`/location/${notification.data.location_id}` as any);
+        return;
+      } else if (notification.data.trip_id) {
+        // Navigate to specific trip
+        router.push(`/trip-detail?tripId=${notification.data.trip_id}` as any);
         return;
       }
     }
@@ -228,6 +232,9 @@ export default function NotificationsScreen() {
       case "like":
         router.push("/friends-feed");
         break;
+      case "trip_shared":
+        router.push("/trips");
+        break;
       case "achievement":
         router.push("/achievements");
         break;
@@ -243,6 +250,7 @@ export default function NotificationsScreen() {
       achievement: "trophy",
       comment: "chatbubble",
       like: "heart",
+      trip_shared: "airplane",
     };
     return icons[type] || "notifications";
   };
@@ -256,6 +264,7 @@ export default function NotificationsScreen() {
       achievement: "#FFD700",
       comment: theme.colors.navy,
       like: "#FF4757",
+      trip_shared: theme.colors.navy,
     };
     return colors[type] || theme.colors.gray;
   };

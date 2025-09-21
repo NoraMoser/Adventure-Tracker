@@ -21,6 +21,7 @@ import { categories, CategoryType } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useLocation as useLocationContext } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
+import { LocationService, PlaceSuggestion } from "../services/locationService";
 
 export default function QuickPhotoScreen() {
   const router = useRouter();
@@ -37,11 +38,16 @@ export default function QuickPhotoScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<
+    PlaceSuggestion[]
+  >([]);
+  const [selectedSuggestion, setSelectedSuggestion] =
+    useState<PlaceSuggestion | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   useEffect(() => {
     console.log("QuickPhotoScreen mounted");
 
-    // Try multiple times to get location
     const attemptLocation = async () => {
       console.log("Attempting to get location...");
       try {
@@ -52,6 +58,9 @@ export default function QuickPhotoScreen() {
           if (!location) {
             console.log("First location attempt failed, trying again...");
             await getLocation();
+          } else {
+            // Fetch suggestions when we have location
+            fetchLocationSuggestions();
           }
         }, 2000);
 
@@ -60,6 +69,9 @@ export default function QuickPhotoScreen() {
           if (!location) {
             console.log("Second location attempt failed, trying again...");
             await getLocation();
+          } else if (!locationSuggestions.length) {
+            // Try suggestions again if we didn't get them yet
+            fetchLocationSuggestions();
           }
         }, 4000);
       } catch (error) {
@@ -69,13 +81,46 @@ export default function QuickPhotoScreen() {
 
     attemptLocation();
 
-    // Check camera permissions
+    // Check camera permissions (keep existing code)
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === "granted");
       console.log("Camera permission:", status);
     })();
   }, []);
+
+  // Add this new function after the useEffect:
+  const fetchLocationSuggestions = async () => {
+    if (!location) return;
+
+    setLoadingSuggestions(true);
+    try {
+      const suggestions = await LocationService.getLocationSuggestions(
+        location.latitude,
+        location.longitude
+      );
+
+      setLocationSuggestions(suggestions);
+
+      // Auto-select first business/POI suggestion if available
+      const businessSuggestion = suggestions.find(
+        (s) => s.type === "business" || s.type === "poi"
+      );
+      const firstSuggestion = businessSuggestion || suggestions[0];
+
+      if (firstSuggestion && !title) {
+        setSelectedSuggestion(firstSuggestion);
+        setTitle(firstSuggestion.name);
+        if (firstSuggestion.suggestedCategoryType) {
+          setSelectedCategory(firstSuggestion.suggestedCategoryType);
+        }
+      }
+    } catch (error) {
+      console.error("Error getting suggestions:", error);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
 
   const takePicture = async () => {
     if (cameraRef.current) {
@@ -474,6 +519,55 @@ export default function QuickPhotoScreen() {
                 />
               </View>
 
+              {/* Location Suggestions - ADD THIS AFTER titleContainer */}
+              {loadingSuggestions ? (
+                <View style={styles.suggestionsLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.forest} />
+                  <Text style={styles.suggestionsLoadingText}>
+                    Finding nearby places...
+                  </Text>
+                </View>
+              ) : locationSuggestions.length > 0 ? (
+                <View style={styles.suggestionsContainer}>
+                  <Text style={styles.label}>Nearby Places</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.suggestionsScroll}
+                  >
+                    {locationSuggestions.map((suggestion) => (
+                      <TouchableOpacity
+                        key={suggestion.id}
+                        style={[
+                          styles.suggestionChip,
+                          selectedSuggestion?.id === suggestion.id &&
+                            styles.suggestionChipSelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedSuggestion(suggestion);
+                          setTitle(suggestion.name);
+                          if (suggestion.suggestedCategoryType) {
+                            setSelectedCategory(
+                              suggestion.suggestedCategoryType
+                            );
+                          }
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.suggestionText,
+                            selectedSuggestion?.id === suggestion.id &&
+                              styles.suggestionTextSelected,
+                          ]}
+                        >
+                          {suggestion.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
               <View style={styles.captionContainer}>
                 <Text style={styles.label}>What is happening here?</Text>
                 <TextInput
@@ -778,5 +872,48 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     alignItems: "center",
     paddingBottom: 40,
+  },
+  suggestionsContainer: {
+    marginHorizontal: 16,
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  suggestionsLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    padding: 16,
+    backgroundColor: "white",
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  suggestionsLoadingText: {
+    marginLeft: 10,
+    color: theme.colors.gray,
+  },
+  suggestionsScroll: {
+    marginTop: 8,
+  },
+  suggestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  suggestionChipSelected: {
+    backgroundColor: theme.colors.forest,
+    borderColor: theme.colors.forest,
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: theme.colors.navy,
+  },
+  suggestionTextSelected: {
+    color: "white",
   },
 });

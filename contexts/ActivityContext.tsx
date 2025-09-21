@@ -1,4 +1,4 @@
-// contexts/ActivityContext.tsx - Clean working version
+// contexts/ActivityContext.tsx - Adaptive tracking version
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
@@ -289,6 +289,73 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     maxSpeedRef.current = 0;
   };
 
+  // Helper functions for activity-based thresholds
+  const getAccuracyThreshold = () => {
+    switch (currentActivity) {
+      case "walk":
+      case "hike":
+      case "climb":
+        return 30; // Stricter for slow activities
+      case "run":
+        return 50; // Medium
+      case "bike":
+      case "paddleboard":
+        return 75; // More lenient
+      case "other":
+        return 100; // Most lenient for vehicles
+      default:
+        return 50;
+    }
+  };
+
+  const getMovementThresholds = () => {
+    switch (currentActivity) {
+      case "walk":
+        return {
+          minDistance: 0.5, // 0.5m minimum movement
+          maxJump: 100, // 100m max instant jump
+          maxSpeed: 10, // 10 km/h max walking speed
+        };
+      case "hike":
+      case "climb":
+        return {
+          minDistance: 0.5,
+          maxJump: 200,
+          maxSpeed: 15,
+        };
+      case "run":
+        return {
+          minDistance: 1,
+          maxJump: 500,
+          maxSpeed: 30,
+        };
+      case "bike":
+        return {
+          minDistance: 2,
+          maxJump: 2000,
+          maxSpeed: 80,
+        };
+      case "paddleboard":
+        return {
+          minDistance: 1,
+          maxJump: 1000,
+          maxSpeed: 25,
+        };
+      case "other": // For vehicles/ferries
+        return {
+          minDistance: 5,
+          maxJump: 10000,
+          maxSpeed: 200,
+        };
+      default:
+        return {
+          minDistance: 1,
+          maxJump: 1000,
+          maxSpeed: 50,
+        };
+    }
+  };
+
   const processLocationUpdate = (location: LocationPoint) => {
     if (pauseStartRef.current) return;
 
@@ -296,8 +363,10 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setGpsStatus("active");
     setCurrentLocation(location);
 
-    // More lenient accuracy threshold
-    if (!location.accuracy || location.accuracy <= 50) {
+    // Activity-based accuracy thresholds
+    const accuracyThreshold = getAccuracyThreshold();
+
+    if (!location.accuracy || location.accuracy <= accuracyThreshold) {
       setCurrentRoute((prev) => {
         const currentPoints = Array.isArray(prev) ? prev : [];
 
@@ -316,22 +385,54 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           location.longitude
         );
 
-        // Lower minimum movement threshold
-        if (distance < 1) {
-          return currentPoints;
-        }
-
-        // Higher max jump threshold for vehicles
-        if (distance > 1000) {
-          console.log("GPS jump detected, ignoring point");
-          return currentPoints;
-        }
-
         const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
+
+        // Activity-based movement validation
+        const movementThresholds = getMovementThresholds();
+
+        // Skip if no meaningful movement for the activity type
+        if (distance < movementThresholds.minDistance) {
+          return currentPoints;
+        }
+
+        // Handle GPS gaps differently based on activity
+        if (timeDiff > 30) {
+          // Check if the jump is reasonable for the activity type
+          const maxReasonableDistance =
+            movementThresholds.maxSpeed * (timeDiff / 3600) * 1000;
+
+          if (distance <= maxReasonableDistance * 1.5) {
+            // 50% buffer
+            console.log(
+              `GPS gap detected (${timeDiff}s), connecting ${distance}m`
+            );
+            setCurrentDistance((d) => d + distance);
+            return [...currentPoints, location];
+          } else {
+            console.log(
+              `GPS jump too large for ${currentActivity}: ${distance}m in ${timeDiff}s`
+            );
+            // For vehicles, still accept it if gap is long enough
+            if (currentActivity === "bike" || currentActivity === "other") {
+              if (timeDiff > 60) {
+                setCurrentDistance((d) => d + distance);
+                return [...currentPoints, location];
+              }
+            }
+            return currentPoints;
+          }
+        }
+
+        // Normal continuous tracking
+        if (distance > movementThresholds.maxJump) {
+          console.log(`Unreasonable jump for ${currentActivity}: ${distance}m`);
+          return currentPoints;
+        }
+
+        // Update speed
         if (timeDiff > 0) {
           const speed = distance / 1000 / (timeDiff / 3600);
-
-          if (speed < 200) {
+          if (speed < movementThresholds.maxSpeed) {
             setCurrentSpeed(speed);
             if (speed > maxSpeedRef.current) {
               maxSpeedRef.current = speed;
@@ -343,6 +444,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
         let newRoute = [...currentPoints, location];
 
+        // Memory management
         if (newRoute.length > MAX_ROUTE_POINTS_MEMORY) {
           const first = newRoute[0];
           const recent = newRoute.slice(-100);
@@ -356,6 +458,36 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
         return newRoute;
       });
+    } else {
+      // Still update location for UI even with poor accuracy
+      console.log(
+        `Poor accuracy (${location.accuracy}m) but keeping for reference`
+      );
+      setCurrentLocation(location);
+
+      // For vehicles with poor GPS, still try to track
+      if (currentActivity === "other" && location.accuracy <= 200) {
+        setCurrentRoute((prev) => {
+          const currentPoints = Array.isArray(prev) ? prev : [];
+          if (currentPoints.length > 0) {
+            const lastPoint = currentPoints[currentPoints.length - 1];
+            const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
+
+            // If significant time has passed, add the point anyway
+            if (timeDiff > 60) {
+              const distance = calculateDistance(
+                lastPoint.latitude,
+                lastPoint.longitude,
+                location.latitude,
+                location.longitude
+              );
+              setCurrentDistance((d) => d + distance);
+              return [...currentPoints, location];
+            }
+          }
+          return currentPoints;
+        });
+      }
     }
   };
 
@@ -379,109 +511,131 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-const startTracking = async (activityType: ActivityType) => {
-  try {
-    console.log("Starting tracking for:", activityType);
-    setLoading(true);
-    setError(null);
+  const startTracking = async (activityType: ActivityType) => {
+    try {
+      console.log("Starting tracking for:", activityType);
+      setLoading(true);
+      setError(null);
 
-    // First, try to get last known position immediately (fast)
-    let initialLocation = await Location.getLastKnownPositionAsync({
-      maxAge: 60000, // Accept location up to 1 minute old
-      requiredAccuracy: 1000, // Accept within 1km accuracy for quick start
-    });
+      // First, try to get last known position immediately (fast)
+      let initialLocation = await Location.getLastKnownPositionAsync({
+        maxAge: 60000, // Accept location up to 1 minute old
+        requiredAccuracy: 1000, // Accept within 1km accuracy for quick start
+      });
 
-    // If no last known location or it's too old, get current position
-    if (!initialLocation || Date.now() - initialLocation.timestamp > 60000) {
-      console.log("No recent last known location, getting current...");
-      
-      // Try with balanced accuracy first (faster)
-      try {
-        initialLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-      } catch (err) {
-        console.log("Balanced accuracy failed, trying high accuracy...");
-        // Fall back to high accuracy if balanced fails
-        initialLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-      }
-    }
+      // If no last known location or it's too old, get current position
+      if (!initialLocation || Date.now() - initialLocation.timestamp > 60000) {
+        console.log("No recent last known location, getting current...");
 
-    // Start tracking immediately with whatever location we have
-    const initialPoint: LocationPoint = {
-      latitude: initialLocation.coords.latitude,
-      longitude: initialLocation.coords.longitude,
-      timestamp: Date.now(),
-      accuracy: initialLocation.coords.accuracy || undefined,
-    };
-
-    // Set initial state immediately
-    setCurrentLocation(initialPoint);
-    setCurrentRoute([initialPoint]);
-    setGpsStatus(initialLocation.coords.accuracy && initialLocation.coords.accuracy > 50 ? "searching" : "active");
-    setCurrentActivity(activityType);
-    setIsTracking(true);
-    setIsPaused(false);
-    setCurrentDistance(0);
-    setCurrentDuration(0);
-    setCurrentSpeed(0);
-    setLoading(false); // Stop loading immediately once we have any position
-
-    startTimeRef.current = Date.now();
-    pausedTimeRef.current = 0;
-    pauseStartRef.current = null;
-    lastUpdateTime.current = Date.now();
-    maxSpeedRef.current = 0;
-
-    // Start duration timer
-    durationInterval.current = setInterval(() => {
-      if (startTimeRef.current && !pauseStartRef.current) {
-        const elapsed = Math.floor(
-          (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-        );
-        setCurrentDuration(elapsed);
-      }
-    }, 1000);
-
-    // Start high-accuracy tracking in the background (upgrades accuracy over time)
-    locationSubscription.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 2000,
-        distanceInterval: 2,
-      },
-      (location) => {
-        handleLocationUpdate(location);
-        // Update GPS status based on accuracy
-        if (location.coords.accuracy && location.coords.accuracy <= 20) {
-          setGpsStatus("active");
-        } else if (location.coords.accuracy && location.coords.accuracy <= 50) {
-          setGpsStatus("searching");
+        // Try with balanced accuracy first (faster)
+        try {
+          initialLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+        } catch (err) {
+          console.log("Balanced accuracy failed, trying high accuracy...");
+          // Fall back to high accuracy if balanced fails
+          initialLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
         }
       }
-    );
 
-    // Check for stale GPS
-    staleCheckInterval.current = setInterval(() => {
-      const timeSinceLastUpdate = Date.now() - lastUpdateTime.current;
-      if (timeSinceLastUpdate > 60000) {
-        setGpsStatus("stale");
-      } else if (timeSinceLastUpdate > 30000) {
-        setGpsStatus("searching");
-      }
-    }, 10000);
+      // Start tracking immediately with whatever location we have
+      const initialPoint: LocationPoint = {
+        latitude: initialLocation.coords.latitude,
+        longitude: initialLocation.coords.longitude,
+        timestamp: Date.now(),
+        accuracy: initialLocation.coords.accuracy || undefined,
+      };
 
-    console.log("Tracking started successfully");
-  } catch (err: any) {
-    console.error("Error starting tracking:", err);
-    setError(err.message || "Failed to start tracking");
-    setLoading(false);
-    await cleanupTracking();
-    throw err; // Re-throw to handle in the UI
-  }
-};
+      // Set initial state immediately
+      setCurrentLocation(initialPoint);
+      setCurrentRoute([initialPoint]);
+      setGpsStatus(
+        initialLocation.coords.accuracy && initialLocation.coords.accuracy > 50
+          ? "searching"
+          : "active"
+      );
+      setCurrentActivity(activityType);
+      setIsTracking(true);
+      setIsPaused(false);
+      setCurrentDistance(0);
+      setCurrentDuration(0);
+      setCurrentSpeed(0);
+      setLoading(false); // Stop loading immediately once we have any position
+
+      startTimeRef.current = Date.now();
+      pausedTimeRef.current = 0;
+      pauseStartRef.current = null;
+      lastUpdateTime.current = Date.now();
+      maxSpeedRef.current = 0;
+
+      // Start duration timer
+      durationInterval.current = setInterval(() => {
+        if (startTimeRef.current && !pauseStartRef.current) {
+          const elapsed = Math.floor(
+            (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
+          );
+          setCurrentDuration(elapsed);
+        }
+      }, 1000);
+
+      // Adaptive accuracy based on activity type
+      const locationAccuracy =
+        activityType === "walk" ||
+        activityType === "hike" ||
+        activityType === "climb"
+          ? Location.Accuracy.BestForNavigation
+          : Location.Accuracy.Balanced;
+
+      // Start tracking with activity-appropriate settings
+      locationSubscription.current = await Location.watchPositionAsync(
+        {
+          accuracy: locationAccuracy,
+          timeInterval: 3000, // Check every 3 seconds
+          distanceInterval: activityType === "other" ? 10 : 5, // Less frequent for vehicles
+          mayShowUserSettingsDialog: true,
+        },
+        (location) => {
+          handleLocationUpdate(location);
+          // Update GPS status based on accuracy
+          const threshold = getAccuracyThreshold();
+          if (
+            location.coords.accuracy &&
+            location.coords.accuracy <= threshold / 2
+          ) {
+            setGpsStatus("active");
+          } else if (
+            location.coords.accuracy &&
+            location.coords.accuracy <= threshold
+          ) {
+            setGpsStatus("searching");
+          } else {
+            setGpsStatus("stale");
+          }
+        }
+      );
+
+      // Check for stale GPS
+      staleCheckInterval.current = setInterval(() => {
+        const timeSinceLastUpdate = Date.now() - lastUpdateTime.current;
+        if (timeSinceLastUpdate > 60000) {
+          setGpsStatus("stale");
+        } else if (timeSinceLastUpdate > 30000) {
+          setGpsStatus("searching");
+        }
+      }, 10000);
+
+      console.log("Tracking started successfully");
+    } catch (err: any) {
+      console.error("Error starting tracking:", err);
+      setError(err.message || "Failed to start tracking");
+      setLoading(false);
+      await cleanupTracking();
+      throw err;
+    }
+  };
 
   const resumeTracking = async () => {
     console.log("Resuming tracking");
@@ -504,11 +658,18 @@ const startTracking = async (activityType: ActivityType) => {
     }, 1000);
 
     try {
+      const locationAccuracy =
+        currentActivity === "walk" ||
+        currentActivity === "hike" ||
+        currentActivity === "climb"
+          ? Location.Accuracy.BestForNavigation
+          : Location.Accuracy.Balanced;
+
       locationSubscription.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 2000,
-          distanceInterval: 2,
+          accuracy: locationAccuracy,
+          timeInterval: 3000,
+          distanceInterval: currentActivity === "other" ? 10 : 5,
         },
         handleLocationUpdate
       );

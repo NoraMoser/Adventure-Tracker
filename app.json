@@ -34,6 +34,12 @@
       }
     },
     "scheme": "explorable",
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#2d5a3d",
+      "androidMode": "default",
+      "androidCollapsedTitle": "ExplorAble"
+    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
