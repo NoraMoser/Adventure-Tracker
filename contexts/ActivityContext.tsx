@@ -12,6 +12,7 @@ import React, {
 } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
+import * as MediaLibrary from "expo-media-library";
 
 const LOCATION_TASK_NAME = "explorable-background-location";
 const PENDING_LOCATIONS_KEY = "pending_location_updates";
@@ -748,6 +749,28 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       throw err;
     }
   };
+  const savePhotosToGallery = async (photos: string[]) => {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") return;
+
+      for (const photoUri of photos) {
+        try {
+          const asset = await MediaLibrary.createAssetAsync(photoUri);
+          const album = await MediaLibrary.getAlbumAsync("explorAble");
+          if (album == null) {
+            await MediaLibrary.createAlbumAsync("explorAble", asset, false);
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+          }
+        } catch (err) {
+          console.log("Photo might already be saved:", err);
+        }
+      }
+    } catch (error) {
+      console.log("Gallery save error:", error);
+    }
+  };
 
   const saveActivity = async (activity: Activity): Promise<void> => {
     if (!user) throw new Error("No user logged in");
@@ -795,6 +818,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       if (error) throw error;
 
       setActivities((prev) => [{ ...activity, id: data.id }, ...prev]);
+      if (activity.photos && activity.photos.length > 0) {
+        await savePhotosToGallery(activity.photos);
+      }
     } catch (err: any) {
       console.error("Save failed:", err);
       throw err;

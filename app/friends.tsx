@@ -515,14 +515,14 @@ export default function FriendsScreen() {
       // Android: Include link in the message
       Share.share({
         message: `${inviteMessage}\n\n${androidLink}`,
-        title: "Join me on ExplorAble!",
+        title: "Join me on explorAble!",
       });
     } else {
       // iOS: Use url parameter when you have an iOS link
       Share.share({
         message: inviteMessage,
         // url: iosLink, // Add this when you have an iOS link
-        title: "Join me on ExplorAble!",
+        title: "Join me on explorAble!",
       });
     }
   };

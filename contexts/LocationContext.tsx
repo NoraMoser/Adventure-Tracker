@@ -11,6 +11,7 @@ import { CategoryType } from "../constants/categories";
 import { supabase } from "../lib/supabase";
 import { PhotoService } from "../services/photoService";
 import { useAuth } from "./AuthContext";
+import * as MediaLibrary from "expo-media-library";
 
 interface LocationCoords {
   latitude: number;
@@ -184,33 +185,34 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const getLocation = async () => {
-  try {
-    const { status } = await Location.getForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
-      if (newStatus !== 'granted') {
-        setError("Location permission denied");
-        return;
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== "granted") {
+        const { status: newStatus } =
+          await Location.requestForegroundPermissionsAsync();
+        if (newStatus !== "granted") {
+          setError("Location permission denied");
+          return;
+        }
       }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      setLocation({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      });
+    } catch (err) {
+      console.error("Error getting location:", err);
+      setError("Failed to get location");
+
+      throw new Error("Could not get location");
+    } finally {
+      setLoading(false);
     }
-
-    const currentLocation = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High
-    });
-
-    setLocation({
-      latitude: currentLocation.coords.latitude,
-      longitude: currentLocation.coords.longitude,
-    });
-  } catch (err) {
-    console.error("Error getting location:", err);
-    setError("Failed to get location");
-  
-    throw new Error("Could not get location");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const processPhotosForUpload = async (
     photos: string[]
@@ -314,6 +316,30 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  // Add a helper function in the context
+  const savePhotosToGallery = async (photos: string[]) => {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") return;
+
+      for (const photoUri of photos) {
+        try {
+          const asset = await MediaLibrary.createAssetAsync(photoUri);
+          const album = await MediaLibrary.getAlbumAsync("explorAble");
+          if (album == null) {
+            await MediaLibrary.createAlbumAsync("explorAble", asset, false);
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+          }
+        } catch (err) {
+          console.log("Photo might already be saved:", err);
+        }
+      }
+    } catch (error) {
+      console.log("Gallery save error:", error);
+    }
+  };
+
   const saveCurrentLocation = async (
     name: string,
     description?: string,
@@ -343,6 +369,10 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         photos: photos || [],
         category,
       });
+
+      if (photos.length > 0) {
+        await savePhotosToGallery(photos);
+      }
 
       console.log("Location saved successfully");
     } catch (err) {
