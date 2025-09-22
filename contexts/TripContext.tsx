@@ -60,6 +60,7 @@ interface TripContextType {
   refreshTrips: () => Promise<void>;
   canTripsBeJoined: (trip1: Trip, trip2: Trip) => boolean;
   getSuggestedMerges: () => { autoTrip: Trip; sharedTrip: Trip }[];
+  triggerAutoDetection: () => Promise<void>;
   checkForAutoTrip: (item: any) => Promise<Trip | null>;
   smartAddToTrip: (item: any, type: "activity" | "spot") => Promise<void>;
 }
@@ -115,40 +116,17 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [currentUserId]);
 
-  // Update the auto-detection useEffect to be smarter:
   useEffect(() => {
-    console.log("Auto-detection check:", {
-      currentUserId,
-      hasRunAutoDetection: hasRunAutoDetection.current,
-      loading,
-      autoDetectionInProgress: autoDetectionInProgress.current,
-      tripsLength: trips.length,
-      activitiesLength: activities?.length || 0,
-      savedSpotsLength: savedSpots?.length || 0,
-    });
+  hasRunAutoDetection.current = false;
+}, [currentUserId]);
 
-    if (
-      currentUserId &&
-      !hasRunAutoDetection.current &&
-      !loading &&
-      !autoDetectionInProgress.current &&
-      (activities?.length > 0 || savedSpots?.length > 0) // Removed trips.length === 0 condition
-    ) {
-      hasRunAutoDetection.current = true;
-      console.log("Setting timer for auto-detection...");
-      const timer = setTimeout(() => {
-        console.log("Timer fired, running auto-detection!");
-        runAutoDetection(); // Just run it - the function will handle checking for duplicates
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [
-    currentUserId,
-    loading,
-    activities?.length,
-    savedSpots?.length,
-    // Removed trips.length from dependencies so it doesn't affect the check
-  ]);
+// Export a function to trigger auto-detection manually
+const triggerAutoDetection = async () => {
+  if (!hasRunAutoDetection.current && !autoDetectionInProgress.current) {
+    hasRunAutoDetection.current = true;
+    await runAutoDetection();
+  }
+};
 
   const subscribeToTrips = () => {
     if (!currentUserId) return;
@@ -975,6 +953,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         refreshTrips,
         canTripsBeJoined,
         getSuggestedMerges,
+        triggerAutoDetection,
         checkForAutoTrip,
         smartAddToTrip,
       }}

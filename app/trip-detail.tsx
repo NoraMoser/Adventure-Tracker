@@ -16,8 +16,7 @@ import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { useSettings } from "../contexts/SettingsContext";
 import { useTrips } from "../contexts/TripContext";
-import { useFocusEffect } from '@react-navigation/native';
-
+import { useFocusEffect } from "@react-navigation/native";
 
 // Weather API configuration (using Open-Meteo free API)
 // Weather API configuration (using Open-Meteo free API)
@@ -205,7 +204,6 @@ export default function TripDetailScreen() {
   const { settings } = useSettings();
   const useImperial = settings?.units === "imperial";
 
-
   const trip = trips.find((t) => t.id === tripId);
 
   // Updated section for handling activities with proper date fields
@@ -248,10 +246,10 @@ export default function TripDetailScreen() {
   }, [trip, tripActivities.length, tripSpots.length]);
 
   useFocusEffect(
-  useCallback(() => {
-    refreshTrips();
-  }, [])
-);
+    useCallback(() => {
+      refreshTrips();
+    }, [])
+  );
 
   const loadWeatherData = async () => {
     if (!trip || (tripActivities.length === 0 && tripSpots.length === 0))
@@ -595,7 +593,14 @@ export default function TripDetailScreen() {
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
+            </View>
+          )}
 
+          {tripSpots.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Spots ({tripActivities.length})
+              </Text>
               {/* Spots Section - update the date display */}
               {tripSpots.map((spot: any) => (
                 <TouchableOpacity

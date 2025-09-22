@@ -86,58 +86,40 @@ export function useAutoAddToTrip() {
     });
 
     if (candidateTrips.length === 0) {
-      // No existing trips match - offer to create auto-trip
-      if (promptUser) {
-        return new Promise((resolve) => {
-          Alert.alert(
-            "No Matching Trips",
-            "Would you like to create a new trip for this item?",
-            [
-              {
-                text: "No",
-                style: "cancel",
-                onPress: () => resolve(null),
-              },
-              {
-                text: "Create Trip",
-                onPress: async () => {
-                  const autoTrip = await checkForAutoTrip(item);
-                  if (autoTrip) {
-                    await addToTrip(autoTrip.id, item, itemType);
-                    resolve(autoTrip);
-                  } else {
-                    resolve(null);
-                  }
-                },
-              },
-            ]
-          );
-        });
-      }
+      // No existing trips match - DON'T create a new trip automatically
+      // Just save the item without adding to any trip
       return null;
     }
 
     // If multiple candidate trips, let user choose
     if (candidateTrips.length > 1 && promptUser) {
       return new Promise((resolve) => {
+        const buttons = [];
+        
+        // Add trip options first (limit to 2)
+        candidateTrips.slice(0, 2).forEach(trip => {
+          buttons.push({
+            text: trip.name,
+            onPress: async () => {
+              await addToTrip(trip.id, item, itemType);
+              resolve(trip);
+            }
+          });
+        });
+        
+        // Add skip option last
+        buttons.push({
+          text: "Save without trip",
+          style: "cancel" as const,
+          onPress: () => resolve(null)
+        });
+
         Alert.alert(
-          "Select Trip",
-          "Multiple trips match this location. Choose one:",
-          [
-            // Only show first 2 trips to leave room for Skip button
-            ...candidateTrips.slice(0, 2).map((trip) => ({
-              text: trip.name,
-              onPress: async () => {
-                await addToTrip(trip.id, item, itemType);
-                resolve(trip);
-              },
-            })),
-            {
-              text: "Skip for now",
-              style: "default",
-              onPress: () => resolve(null),
-            },
-          ]
+          "Add to Trip?",
+          candidateTrips.length > 2 
+            ? `${candidateTrips.length} trips match. Choose one or save without trip:`
+            : "Multiple trips match this location:",
+          buttons
         );
       });
     }
@@ -163,12 +145,12 @@ export function useAutoAddToTrip() {
           `Would you like to add "${itemName}" to your trip "${targetTrip.name}"?`,
           [
             {
-              text: "No",
-              style: "cancel",
+              text: "Save without trip",
+              style: "default",
               onPress: () => resolve(null),
             },
             {
-              text: "Yes",
+              text: "Add to trip",
               onPress: async () => {
                 await addToTrip(targetTrip.id, item, itemType);
                 resolve(targetTrip);
