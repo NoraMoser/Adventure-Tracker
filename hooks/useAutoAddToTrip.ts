@@ -1,4 +1,4 @@
-// hooks/useAutoAddToTrip.ts
+// hooks/useAutoAddToTrip.ts - Updated version
 import { Alert } from 'react-native';
 import { useTrips } from '../contexts/TripContext';
 
@@ -8,7 +8,7 @@ interface LocationData {
 }
 
 export function useAutoAddToTrip() {
-  const { trips, addToTrip } = useTrips();
+  const { trips, addToTrip, checkForAutoTrip } = useTrips();
 
   // Calculate distance between two coordinates in km
   const calculateDistance = (
@@ -30,54 +30,117 @@ export function useAutoAddToTrip() {
     return R * c;
   };
 
-  // Check if a location is near any existing trip items
-  const isLocationNearTrip = (
-    location: LocationData,
-    trip: any,
-    maxDistanceKm: number = 50
-  ): boolean => {
-    // For a new trip without items, always return true if within date range
-    if (trip.items.length === 0) {
-      const now = new Date();
-      return now >= trip.startDate && now <= trip.endDate;
-    }
-
-    // Check if near any existing trip items
-    // For now, just check date range
-    const now = new Date();
-    return now >= trip.startDate && now <= trip.endDate;
-  };
-
   const checkAndAddToTrip = async (
-    item: any, // Changed from itemId to full item object
+    item: any,
     itemType: 'activity' | 'spot',
     itemName: string,
     location: LocationData,
     promptUser: boolean = true
   ) => {
-    // Find active trips that this item could belong to
-    const now = new Date();
+    // Get item date
+    const itemDate = item.activityDate || item.locationDate || item.timestamp || new Date();
+    
+    // Find matching trips (within 30 days and nearby)
     const candidateTrips = trips.filter(trip => {
-      // Check if trip is active (current date is within trip dates)
-      if (now < trip.start_date || now > trip.end_date) {
-        return false;
+      // Check date proximity (within 30 days)
+      const tripStart = new Date(trip.start_date);
+      const tripEnd = new Date(trip.end_date);
+      const itemDateObj = new Date(itemDate);
+      
+      const expandedStart = new Date(tripStart);
+      expandedStart.setDate(expandedStart.getDate() - 30);
+      const expandedEnd = new Date(tripEnd);
+      expandedEnd.setDate(expandedEnd.getDate() + 30);
+      
+      const isDateNearby = itemDateObj >= expandedStart && itemDateObj <= expandedEnd;
+      
+      if (!isDateNearby) return false;
+      
+      // Check location proximity if trip has items
+      if (trip.items && trip.items.length > 0) {
+        const hasNearbyItem = trip.items.some(tripItem => {
+          const tripItemLocation = tripItem.data.location || 
+            (tripItem.data.route && tripItem.data.route[0]);
+          
+          if (!tripItemLocation) return true; // If no location, consider it a match
+          
+          const distance = calculateDistance(
+            location.latitude,
+            location.longitude,
+            tripItemLocation.latitude,
+            tripItemLocation.longitude
+          );
+          
+          return distance <= 100; // Within 100km
+        });
+        
+        return hasNearbyItem;
       }
       
-      // Check if location is near trip
-      return isLocationNearTrip(location, trip);
+      return true; // Empty trip, just use date
     });
 
     if (candidateTrips.length === 0) {
+      // No existing trips match - offer to create auto-trip
+      if (promptUser) {
+        return new Promise((resolve) => {
+          Alert.alert(
+            'No Matching Trips',
+            'Would you like to create a new trip for this item?',
+            [
+              {
+                text: 'No',
+                style: 'cancel',
+                onPress: () => resolve(null)
+              },
+              {
+                text: 'Create Trip',
+                onPress: async () => {
+                  const autoTrip = await checkForAutoTrip(item);
+                  if (autoTrip) {
+                    await addToTrip(autoTrip.id, item, itemType);
+                    resolve(autoTrip);
+                  } else {
+                    resolve(null);
+                  }
+                }
+              }
+            ]
+          );
+        });
+      }
       return null;
     }
 
-    // If multiple candidate trips, use the most recent one
-    const targetTrip = candidateTrips.sort((a, b) => 
-      b.start_date.getTime() - a.start_date.getTime()
-    )[0];
+    // If multiple candidate trips, let user choose
+    if (candidateTrips.length > 1 && promptUser) {
+      return new Promise((resolve) => {
+        Alert.alert(
+          'Select Trip',
+          'Multiple trips match this location. Choose one:',
+          [
+            ...candidateTrips.slice(0, 3).map(trip => ({
+              text: trip.name,
+              onPress: async () => {
+                await addToTrip(trip.id, item, itemType);
+                resolve(trip);
+              }
+            })),
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(null)
+            }
+          ]
+        );
+      });
+    }
 
-    // Check if item is already in the trip
-    const alreadyInTrip = targetTrip.items.some(
+    // Single matching trip
+    const targetTrip = candidateTrips[0];
+
+    // Check if already in trip
+    const alreadyInTrip = targetTrip.items?.some(
       (tripItem: any) => tripItem.data?.id === item.id && tripItem.type === itemType
     );
 
@@ -85,7 +148,7 @@ export function useAutoAddToTrip() {
       return targetTrip;
     }
 
-    // Prompt user if requested
+    // Add to trip
     if (promptUser) {
       return new Promise((resolve) => {
         Alert.alert(
@@ -99,8 +162,8 @@ export function useAutoAddToTrip() {
             },
             {
               text: 'Yes',
-              onPress: () => {
-                addToTrip(targetTrip.id, item, itemType); // Pass full item object
+              onPress: async () => {
+                await addToTrip(targetTrip.id, item, itemType);
                 resolve(targetTrip);
               }
             }
@@ -108,8 +171,7 @@ export function useAutoAddToTrip() {
         );
       });
     } else {
-      // Auto-add without prompting
-      addToTrip(targetTrip.id, item, itemType); // Pass full item object
+      await addToTrip(targetTrip.id, item, itemType);
       return targetTrip;
     }
   };
@@ -118,4 +180,4 @@ export function useAutoAddToTrip() {
     checkAndAddToTrip,
     calculateDistance,
   };
-};
+}
