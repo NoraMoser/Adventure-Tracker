@@ -28,7 +28,7 @@ import { LocationService, PlaceSuggestion } from "../services/locationService";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
-  const { location, saveCurrentLocation } = useLocation();
+  const { location, saveCurrentLocation, getLocation } = useLocation();
   const { checkAndAddToTrip } = useAutoAddToTrip();
 
   const [name, setName] = useState("");
@@ -291,71 +291,83 @@ export default function SaveLocationScreen() {
                   {location.longitude.toFixed(4)}
                 </Text>
               </View>
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={async () => {
+                  await getLocation();
+                  fetchLocationSuggestions();
+                }}
+              >
+                <Ionicons
+                  name="refresh"
+                  size={20}
+                  color={theme.colors.forest}
+                />
+              </TouchableOpacity>
             </View>
           )}
 
-
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-          {/* Smart Suggestions - ADD THIS SECTION */}
-          {loadingSuggestions ? (
-            <View style={styles.suggestionsLoading}>
-              <ActivityIndicator size="small" color={theme.colors.forest} />
-              <Text style={styles.suggestionsLoadingText}>
-                Finding nearby places...
-              </Text>
-            </View>
-          ) : locationSuggestions.length > 0 ? (
-            <View style={styles.suggestionsContainer}>
-              <Text style={styles.label}>Suggested Names</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.suggestionsScroll}
-              >
-                {locationSuggestions.map((suggestion) => (
-                  <TouchableOpacity
-                    key={suggestion.id}
-                    style={[
-                      styles.suggestionChip,
-                      selectedSuggestion?.id === suggestion.id &&
-                        styles.suggestionChipSelected,
-                    ]}
-                    onPress={() => {
-                      setSelectedSuggestion(suggestion);
-                      setName(suggestion.name);
-                      if (suggestion.suggestedCategoryType) {
-                        setCategory(suggestion.suggestedCategoryType);
-                      }
-                    }}
+              {/* Smart Suggestions - ADD THIS SECTION */}
+              {loadingSuggestions ? (
+                <View style={styles.suggestionsLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.forest} />
+                  <Text style={styles.suggestionsLoadingText}>
+                    Finding nearby places...
+                  </Text>
+                </View>
+              ) : locationSuggestions.length > 0 ? (
+                <View style={styles.suggestionsContainer}>
+                  <Text style={styles.label}>Suggested Names</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.suggestionsScroll}
                   >
-                    <View style={styles.suggestionContent}>
-                      {suggestion.type === "business" && (
-                        <Ionicons
-                          name="business"
-                          size={14}
-                          color={
-                            selectedSuggestion?.id === suggestion.id
-                              ? "white"
-                              : theme.colors.forest
-                          }
-                        />
-                      )}
-                      <Text
+                    {locationSuggestions.map((suggestion) => (
+                      <TouchableOpacity
+                        key={suggestion.id}
                         style={[
-                          styles.suggestionText,
+                          styles.suggestionChip,
                           selectedSuggestion?.id === suggestion.id &&
-                            styles.suggestionTextSelected,
+                            styles.suggestionChipSelected,
                         ]}
+                        onPress={() => {
+                          setSelectedSuggestion(suggestion);
+                          setName(suggestion.name);
+                          if (suggestion.suggestedCategoryType) {
+                            setCategory(suggestion.suggestedCategoryType);
+                          }
+                        }}
                       >
-                        {suggestion.name}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          ) : null}
+                        <View style={styles.suggestionContent}>
+                          {suggestion.type === "business" && (
+                            <Ionicons
+                              name="business"
+                              size={14}
+                              color={
+                                selectedSuggestion?.id === suggestion.id
+                                  ? "white"
+                                  : theme.colors.forest
+                              }
+                            />
+                          )}
+                          <Text
+                            style={[
+                              styles.suggestionText,
+                              selectedSuggestion?.id === suggestion.id &&
+                                styles.suggestionTextSelected,
+                            ]}
+                          >
+                            {suggestion.name}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
               <Text style={styles.label}>Location Name *</Text>
               <TextInput
                 style={styles.input}
@@ -746,5 +758,9 @@ const styles = StyleSheet.create({
   },
   suggestionTextSelected: {
     color: "white",
+  },
+  refreshButton: {
+    padding: 8,
+    marginLeft: "auto",
   },
 });

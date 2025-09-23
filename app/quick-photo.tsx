@@ -628,6 +628,21 @@ export default function QuickPhotoScreen() {
                     color={theme.colors.forest}
                   />
                   <Text style={styles.locationText}>Location captured</Text>
+                  <TouchableOpacity
+                    style={styles.refreshLocationButton}
+                    onPress={async () => {
+                      console.log("Refreshing location...");
+                      await getLocation();
+                      fetchLocationSuggestions();
+                    }}
+                  >
+                    <Ionicons
+                      name="refresh"
+                      size={18}
+                      color={theme.colors.forest}
+                    />
+                    <Text style={styles.refreshText}>Refresh</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -950,5 +965,16 @@ const styles = StyleSheet.create({
   },
   suggestionTextSelected: {
     color: "white",
+  },
+  refreshLocationButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: "auto",
+    padding: 6,
+  },
+  refreshText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginLeft: 4,
   },
 });
