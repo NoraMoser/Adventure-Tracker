@@ -22,6 +22,7 @@ import { useLocation } from "../contexts/LocationContext";
 import { PhotoService } from "../services/photoService";
 import { Camera, CameraView } from "expo-camera";
 import * as Location from "expo-location";
+import { WebView } from "react-native-webview";
 
 // Theme colors
 const theme = {
@@ -61,6 +62,11 @@ export default function EditLocationScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [cameraKey, setCameraKey] = useState(0);
 
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [editedLocation, setEditedLocation] = useState(spot?.location || null);
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+
   useEffect(() => {
     // Load the spot data
     const currentSpot = savedSpots.find((s) => s.id === spotId);
@@ -78,6 +84,7 @@ export default function EditLocationScreen() {
           ? new Date(currentSpot.timestamp)
           : new Date()
       );
+      setEditedLocation(currentSpot.location);
     } else {
       Alert.alert("Error", "Location not found", [
         { text: "OK", onPress: () => router.back() },
@@ -99,17 +106,24 @@ export default function EditLocationScreen() {
         ? locationDate.toDateString() !== originalDate.toDateString()
         : false;
 
+      const locationChanged =
+        editedLocation &&
+        spot.location &&
+        (editedLocation.latitude !== spot.location.latitude ||
+          editedLocation.longitude !== spot.location.longitude);
+
       const changed =
         name !== spot.name ||
         description !== (spot.description || "") ||
         category !== (spot.category || "other") ||
         photos.length !== (spot.photos || []).length ||
         photos.some((photo, index) => photo !== (spot.photos || [])[index]) ||
-        dateChanged;
+        dateChanged ||
+        locationChanged;
 
       setHasChanges(changed);
     }
-  }, [name, description, category, photos, locationDate, spot]);
+  }, [name, description, category, photos, locationDate, spot, editedLocation]);
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
@@ -118,6 +132,30 @@ export default function EditLocationScreen() {
       day: "numeric",
       year: "numeric",
     });
+  };
+
+  const handleLocationUpdate = async () => {
+    try {
+      // Get current location
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Denied", "Location permission is required");
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      setEditedLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
+      Alert.alert("Success", "Location updated to current position");
+    } catch (error) {
+      Alert.alert("Error", "Failed to get current location");
+    }
   };
 
   const handleTakePhoto = async () => {
@@ -254,7 +292,8 @@ export default function EditLocationScreen() {
         description: description.trim(),
         photos: finalPhotoUrls,
         category,
-        locationDate, // NEW: Include the updated date
+        locationDate,
+        location: editedLocation, // ADD THIS: Include the edited location
       };
 
       await updateSpot(spotId as string, updatedSpot);
@@ -442,6 +481,41 @@ export default function EditLocationScreen() {
           placeholderTextColor={theme.colors.lightGray}
         />
 
+        <View style={styles.locationSection}>
+          <Text style={styles.label}>Location</Text>
+
+          {editedLocation && (
+            <View style={styles.locationDisplay}>
+              <Text style={styles.coordinateText}>
+                Lat: {editedLocation.latitude.toFixed(4)}
+              </Text>
+              <Text style={styles.coordinateText}>
+                Lng: {editedLocation.longitude.toFixed(4)}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.locationButtons}>
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={handleLocationUpdate}
+            >
+              <Ionicons name="location" size={20} color={theme.colors.forest} />
+              <Text style={styles.locationButtonText}>
+                Use Current Location
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={() => setShowMapPicker(true)}
+            >
+              <Ionicons name="map" size={20} color={theme.colors.burntOrange} />
+              <Text style={styles.locationButtonText}>Pick on Map</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* NEW: Date Visited Section */}
         <Text style={styles.label}>Date Visited</Text>
         <TouchableOpacity
@@ -528,6 +602,49 @@ export default function EditLocationScreen() {
             ))}
           </ScrollView>
         )}
+        {isEditingLocation && (
+          <View style={styles.manualInput}>
+            <Text style={styles.label}>Edit Coordinates</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Latitude"
+              value={editedLocation?.latitude.toString()}
+              onChangeText={(text) => {
+                const lat = parseFloat(text);
+                if (!isNaN(lat)) {
+                  setEditedLocation((prev) =>
+                    prev
+                      ? { ...prev, latitude: lat }
+                      : { latitude: lat, longitude: 0 }
+                  );
+                }
+              }}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Longitude"
+              value={editedLocation?.longitude.toString()}
+              onChangeText={(text) => {
+                const lng = parseFloat(text);
+                if (!isNaN(lng)) {
+                  setEditedLocation((prev) =>
+                    prev
+                      ? { ...prev, longitude: lng }
+                      : { latitude: 0, longitude: lng }
+                  );
+                }
+              }}
+              keyboardType="numeric"
+            />
+            <TouchableOpacity
+              style={styles.doneButton}
+              onPress={() => setIsEditingLocation(false)}
+            >
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Action Buttons */}
         <TouchableOpacity
@@ -566,6 +683,72 @@ export default function EditLocationScreen() {
           />
           <Text style={styles.deleteButtonText}>Delete Location</Text>
         </TouchableOpacity>
+        {showMapPicker && (
+          <View style={styles.mapModal}>
+            <View style={styles.mapHeader}>
+              <Text style={styles.mapTitle}>Tap to select new location</Text>
+              <TouchableOpacity onPress={() => setShowMapPicker(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.navy} />
+              </TouchableOpacity>
+            </View>
+
+            <WebView
+              source={{
+                html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+            <style>
+              body { margin: 0; padding: 0; }
+              #map { height: 100vh; width: 100vw; }
+            </style>
+          </head>
+          <body>
+            <div id="map"></div>
+            <script>
+              var map = L.map('map').setView([${
+                editedLocation?.latitude || 47.6062
+              }, ${editedLocation?.longitude || -122.3321}], 13);
+              
+              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+              
+              var marker = L.marker([${editedLocation?.latitude || 47.6062}, ${
+                  editedLocation?.longitude || -122.3321
+                }]).addTo(map);
+              
+              map.on('click', function(e) {
+                marker.setLatLng(e.latlng);
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  latitude: e.latlng.lat,
+                  longitude: e.latlng.lng
+                }));
+              });
+            </script>
+          </body>
+          </html>
+        `,
+              }}
+              style={styles.mapPicker}
+              onMessage={(event) => {
+                const data = JSON.parse(event.nativeEvent.data);
+                setEditedLocation({
+                  latitude: data.latitude,
+                  longitude: data.longitude,
+                });
+              }}
+            />
+
+            <TouchableOpacity
+              style={styles.mapDoneButton}
+              onPress={() => setShowMapPicker(false)}
+            >
+              <Text style={styles.mapDoneButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -803,5 +986,95 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 25,
     zIndex: 1,
+  },
+  locationSection: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: "white",
+    borderRadius: 12,
+  },
+  locationDisplay: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    padding: 10,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+    marginVertical: 10,
+  },
+  coordinateText: {
+    fontSize: 14,
+    color: theme.colors.navy,
+    fontFamily: "monospace",
+  },
+  locationButtons: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 10,
+  },
+  locationButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+    flex: 0.48,
+  },
+  locationButtonText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: theme.colors.navy,
+  },
+  manualInput: {
+    padding: 15,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  doneButton: {
+    backgroundColor: theme.colors.forest,
+    padding: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  doneButtonText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  mapModal: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "white",
+    zIndex: 1000,
+  },
+  mapHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  mapTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  mapPicker: {
+    flex: 1,
+  },
+  mapDoneButton: {
+    backgroundColor: theme.colors.forest,
+    padding: 16,
+    alignItems: "center",
+  },
+  mapDoneButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
