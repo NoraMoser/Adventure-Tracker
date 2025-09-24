@@ -117,16 +117,16 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [currentUserId]);
 
   useEffect(() => {
-  hasRunAutoDetection.current = false;
-}, [currentUserId]);
+    hasRunAutoDetection.current = false;
+  }, [currentUserId]);
 
-// Export a function to trigger auto-detection manually
-const triggerAutoDetection = async () => {
-  if (!hasRunAutoDetection.current && !autoDetectionInProgress.current) {
-    hasRunAutoDetection.current = true;
-    await runAutoDetection();
-  }
-};
+  // Export a function to trigger auto-detection manually
+  const triggerAutoDetection = async () => {
+    if (!hasRunAutoDetection.current && !autoDetectionInProgress.current) {
+      hasRunAutoDetection.current = true;
+      await runAutoDetection();
+    }
+  };
 
   const subscribeToTrips = () => {
     if (!currentUserId) return;
@@ -455,6 +455,9 @@ const triggerAutoDetection = async () => {
             ? updates.end_date.toISOString()
             : updates.end_date;
       }
+      if (updates.cover_photo !== undefined) {
+        updateData.cover_photo = updates.cover_photo;
+      }
 
       const { error } = await supabase
         .from("trips")
@@ -483,6 +486,23 @@ const triggerAutoDetection = async () => {
         }
       }
 
+      // UPDATE LOCAL STATE IMMEDIATELY
+      setTrips((prevTrips) =>
+        prevTrips.map((trip) =>
+          trip.id === tripId
+            ? {
+                ...trip,
+                ...updates,
+                // Ensure dates are Date objects in local state
+                start_date: updates.start_date || trip.start_date,
+                end_date: updates.end_date || trip.end_date,
+              }
+            : trip
+        )
+      );
+
+      // Optional: Still reload from database to ensure consistency
+      // But the UI will update immediately with the local state change
       await loadTrips();
     } catch (error) {
       console.error("Error updating trip:", error);

@@ -1,7 +1,7 @@
 // app/trip-detail.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import {
   Alert,
   Image,
@@ -17,6 +17,11 @@ import { theme } from "../constants/theme";
 import { useSettings } from "../contexts/SettingsContext";
 import { useTrips } from "../contexts/TripContext";
 import { useFocusEffect } from "@react-navigation/native";
+import { Share, Modal, Platform, Linking } from "react-native";
+import * as Sharing from "expo-sharing";
+import * as Clipboard from "expo-clipboard";
+import ViewShot from "react-native-view-shot";
+import { TripShareService } from "../services/shareService";
 
 // Weather API configuration (using Open-Meteo free API)
 // Weather API configuration (using Open-Meteo free API)
@@ -203,6 +208,8 @@ export default function TripDetailScreen() {
   const [loadingWeather, setLoadingWeather] = useState(false);
   const { settings } = useSettings();
   const useImperial = settings?.units === "imperial";
+  const shareCardRef = useRef<ViewShot>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const trip = trips.find((t) => t.id === tripId);
 
@@ -237,10 +244,6 @@ export default function TripDetailScreen() {
   // Debug logging to see what data we have (must be before conditional return)
   useEffect(() => {
     if (trip) {
-      console.log("Trip items:", trip.items.length);
-      console.log("Trip activities found:", tripActivities.length);
-      console.log("Trip spots found:", tripSpots.length);
-      console.log("First item structure:", trip.items[0]);
       loadWeatherData();
     }
   }, [trip, tripActivities.length, tripSpots.length]);
@@ -356,6 +359,261 @@ export default function TripDetailScreen() {
     return days > 0 ? days : 1;
   };
 
+  const handleShareTrip = async (
+    shareType:
+      | "native"
+      | "facebook"
+      | "instagram"
+      | "whatsapp"
+      | "image"
+      | "export"
+  ) => {
+    try {
+      const shareOptions = {
+        units: settings?.units || "metric",
+        includeLink: false
+      };
+
+      switch (shareType) {
+        case "native":
+          // Native share sheet (works with any app)
+          await TripShareService.shareTrip(trip, shareOptions);
+          break;
+
+        case "image":
+          // Share as image (great for Instagram Stories)
+          await TripShareService.shareTripWithPhotos(
+            trip,
+            shareCardRef,
+            shareOptions
+          );
+          Alert.alert(
+            "Tip",
+            "Trip details copied to clipboard - paste when sharing!"
+          );
+          break;
+
+        case "facebook":
+          // Facebook specific
+          const fbMessage = TripShareService.createTripMessage(
+            trip,
+            shareOptions
+          );
+          const fbUrl = `fb://share?text=${encodeURIComponent(fbMessage)}`;
+          const fbWebUrl = `https://www.facebook.com/sharer/sharer.php?quote=${encodeURIComponent(
+            fbMessage
+          )}`;
+
+          try {
+            const canOpen = await Linking.canOpenURL(fbUrl);
+            await Linking.openURL(canOpen ? fbUrl : fbWebUrl);
+          } catch {
+            await Linking.openURL(fbWebUrl);
+          }
+          break;
+
+        case "whatsapp":
+          // WhatsApp
+          const waMessage = TripShareService.createTripMessage(
+            trip,
+            shareOptions
+          );
+          const waUrl = `whatsapp://send?text=${encodeURIComponent(waMessage)}`;
+          const waWebUrl = `https://wa.me/?text=${encodeURIComponent(
+            waMessage
+          )}`;
+
+          try {
+            const canOpen = await Linking.canOpenURL(waUrl);
+            await Linking.openURL(canOpen ? waUrl : waWebUrl);
+          } catch {
+            Alert.alert("WhatsApp not installed", "Opening web version...");
+            await Linking.openURL(waWebUrl);
+          }
+          break;
+
+        case "instagram":
+          // Instagram (requires image)
+          if (shareCardRef.current) {
+            const imageUri = await shareCardRef.current.capture();
+            const instagramUrl = `instagram://library?AssetPath=${imageUri}`;
+
+            try {
+              const canOpen = await Linking.canOpenURL(instagramUrl);
+              if (canOpen) {
+                await Linking.openURL(instagramUrl);
+                Alert.alert("Tip", "Trip details copied to clipboard!");
+              } else {
+                Alert.alert(
+                  "Instagram not installed",
+                  "Please install Instagram to share"
+                );
+              }
+            } catch {
+              Alert.alert("Error", "Could not open Instagram");
+            }
+          }
+          break;
+
+        case "export":
+          // Export as JSON
+          const exportData = await TripShareService.exportTripData(trip);
+          await Clipboard.setStringAsync(exportData);
+          Alert.alert("Exported!", "Trip data copied to clipboard as JSON");
+          break;
+      }
+
+      setShowShareModal(false);
+    } catch (error) {
+      console.error("Share failed:", error);
+      Alert.alert("Share Failed", "Unable to share trip");
+    }
+  };
+
+  // Share Modal Component
+  const ShareModal = () => (
+    <Modal
+      visible={showShareModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowShareModal(false)}
+    >
+      <TouchableOpacity
+        style={styles.shareOverlay}
+        activeOpacity={1}
+        onPress={() => setShowShareModal(false)}
+      >
+        <View style={styles.shareMenu}>
+          <View style={styles.shareHandle} />
+          <Text style={styles.shareTitle}>Share Trip</Text>
+
+          {/* Trip Preview */}
+          <View style={styles.shareTripPreview}>
+            <Text style={styles.sharePreviewTitle}>{trip.name}</Text>
+            <Text style={styles.sharePreviewStats}>
+              {tripActivities.length} activities • {tripSpots.length} spots •{" "}
+              {getDaysCount()} days
+            </Text>
+            {tripSpots.filter((s) => s.photos?.length > 0).length > 0 && (
+              <Text style={styles.sharePreviewPhotos}>
+                📸{" "}
+                {tripSpots.reduce((sum, s) => sum + (s.photos?.length || 0), 0)}{" "}
+                photos
+              </Text>
+            )}
+          </View>
+
+          <ScrollView style={styles.shareOptions}>
+            {/* Primary share options */}
+            <TouchableOpacity
+              style={styles.shareOption}
+              onPress={() => handleShareTrip("native")}
+            >
+              <View
+                style={[
+                  styles.shareIconContainer,
+                  { backgroundColor: theme.colors.forest },
+                ]}
+              >
+                <Ionicons name="share" size={24} color="white" />
+              </View>
+              <View style={styles.shareOptionInfo}>
+                <Text style={styles.shareOptionText}>Share to any app</Text>
+                <Text style={styles.shareOptionSubtext}>
+                  Messages, Email, etc.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Social media options */}
+            <View style={styles.shareSocialSection}>
+              <Text style={styles.shareSectionTitle}>
+                Share to Social Media
+              </Text>
+
+              <TouchableOpacity
+                style={styles.shareOption}
+                onPress={() => handleShareTrip("whatsapp")}
+              >
+                <View
+                  style={[
+                    styles.shareIconContainer,
+                    { backgroundColor: "#25D366" },
+                  ]}
+                >
+                  <Ionicons name="logo-whatsapp" size={24} color="white" />
+                </View>
+                <View style={styles.shareOptionInfo}>
+                  <Text style={styles.shareOptionText}>WhatsApp</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shareOption}
+                onPress={() => handleShareTrip("facebook")}
+              >
+                <View
+                  style={[
+                    styles.shareIconContainer,
+                    { backgroundColor: "#1877F2" },
+                  ]}
+                >
+                  <Ionicons name="logo-facebook" size={24} color="white" />
+                </View>
+                <View style={styles.shareOptionInfo}>
+                  <Text style={styles.shareOptionText}>Facebook</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.shareOption}
+                onPress={() => handleShareTrip("instagram")}
+              >
+                <View
+                  style={[
+                    styles.shareIconContainer,
+                    { backgroundColor: "#E4405F" },
+                  ]}
+                >
+                  <Ionicons name="logo-instagram" size={24} color="white" />
+                </View>
+                <View style={styles.shareOptionInfo}>
+                  <Text style={styles.shareOptionText}>Instagram</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Export option */}
+            <TouchableOpacity
+              style={styles.shareOption}
+              onPress={() => handleShareTrip("export")}
+            >
+              <View
+                style={[
+                  styles.shareIconContainer,
+                  { backgroundColor: theme.colors.gray },
+                ]}
+              >
+                <Ionicons name="code-download" size={24} color="white" />
+              </View>
+              <View style={styles.shareOptionInfo}>
+                <Text style={styles.shareOptionText}>Export Data</Text>
+                <Text style={styles.shareOptionSubtext}>Copy as JSON</Text>
+              </View>
+            </TouchableOpacity>
+          </ScrollView>
+
+          <TouchableOpacity
+            style={styles.shareCancelButton}
+            onPress={() => setShowShareModal(false)}
+          >
+            <Text style={styles.shareCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
   const renderWeatherDay = (day: any, index: number) => {
     const date = new Date(weatherData.daily.time[index]);
     const maxTemp = Math.round(weatherData.daily.temperature_2m_max[index]);
@@ -407,14 +665,28 @@ export default function TripDetailScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {trip.name}
         </Text>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => {
-            router.push(`/edit-trip?tripId=${trip.id}`);
-          }}
-        >
-          <Ionicons name="create-outline" size={24} color={theme.colors.navy} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => setShowShareModal(true)}
+          >
+            <Ionicons
+              name="share-social-outline"
+              size={24}
+              color={theme.colors.navy}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => router.push(`/edit-trip?tripId=${trip.id}`)}
+          >
+            <Ionicons
+              name="create-outline"
+              size={24}
+              color={theme.colors.navy}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* View Mode Toggle */}
@@ -715,6 +987,7 @@ export default function TripDetailScreen() {
           </View>
         </View>
       )}
+      <ShareModal />
     </SafeAreaView>
   );
 }
@@ -1060,6 +1333,116 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 12,
+    color: theme.colors.gray,
+    fontWeight: "500",
+  },
+  headerButton: {
+    padding: 5,
+    marginLeft: 10,
+  },
+  shareOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  shareMenu: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+    maxHeight: "80%",
+  },
+  shareHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: theme.colors.borderGray,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  shareTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 15,
+    color: theme.colors.navy,
+  },
+  shareTripPreview: {
+    backgroundColor: theme.colors.offWhite,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 15,
+    borderRadius: 12,
+  },
+  sharePreviewTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginBottom: 5,
+  },
+  sharePreviewStats: {
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
+  sharePreviewPhotos: {
+    fontSize: 13,
+    color: theme.colors.burntOrange,
+    marginTop: 5,
+  },
+  shareOptions: {
+    maxHeight: 400,
+  },
+  shareOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  shareIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
+  shareOptionInfo: {
+    flex: 1,
+  },
+  shareOptionText: {
+    fontSize: 16,
+    color: theme.colors.navy,
+    fontWeight: "500",
+  },
+  shareOptionSubtext: {
+    fontSize: 13,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  shareSocialSection: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+    marginTop: 10,
+    paddingTop: 10,
+  },
+  shareSectionTitle: {
+    fontSize: 13,
+    color: theme.colors.gray,
+    fontWeight: "600",
+    marginLeft: 20,
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
+  shareCancelButton: {
+    marginTop: 10,
+    padding: 15,
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+  },
+  shareCancelText: {
+    fontSize: 16,
     color: theme.colors.gray,
     fontWeight: "500",
   },

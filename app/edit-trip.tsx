@@ -134,12 +134,20 @@ export default function EditTripScreen() {
   const [saving, setSaving] = useState(false);
   const [allowFriendsToEdit, setAllowFriendsToEdit] = useState(true);
 
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [availablePhotos, setAvailablePhotos] = useState<string[]>([]);
+  const [coverPhoto, setCoverPhoto] = useState(trip?.cover_photo || null);
+  const [localCoverPhoto, setLocalCoverPhoto] = useState<string | null>(null);
+  const [hasLocalCoverChange, setHasLocalCoverChange] = useState(false);
+
   // Get accepted friends only
   const acceptedFriends = friends.filter((f) => f.status === "accepted");
 
   // Initialize form with existing trip data
   useEffect(() => {
-    if (trip) {
+    if (trip && !hasLocalCoverChange) {
+      setCoverPhoto(trip.cover_photo || null); // Add this line
+
       setName(trip.name);
       setStartDate(
         trip.start_date instanceof Date
@@ -230,6 +238,57 @@ export default function EditTripScreen() {
       day: "numeric",
       year: "numeric",
     });
+  };
+
+  const handleSelectCoverPhoto = () => {
+    // Get all photos from trip items
+    const tripPhotos: string[] = [];
+
+      console.log('Total trip items:', trip.items.length);
+
+    trip.items.forEach((item, index) => {
+       console.log(`Item ${index}:`, {
+      type: item.type,
+      name: item.data?.name,
+      hasPhotos: !!item.data?.photos,
+      photoCount: item.data?.photos?.length || 0,
+      photos: item.data?.photos
+    });
+      if (item.data?.photos && Array.isArray(item.data.photos)) {
+        tripPhotos.push(...item.data.photos);
+      }
+    });
+  console.log('All collected photos:', tripPhotos);
+  console.log('Total photos found:', tripPhotos.length);
+    if (tripPhotos.length === 0) {
+      Alert.alert(
+        "No Photos",
+        "Add photos to your trip items to set a cover photo"
+      );
+      return;
+    }
+
+    setAvailablePhotos(tripPhotos);
+    setShowPhotoModal(true);
+  };
+
+  const selectCoverPhoto = async (photoUrl: string) => {
+    try {
+      setCoverPhoto(photoUrl);
+      setHasLocalCoverChange(true); // Mark that we've made a local change
+
+      await updateTrip(trip.id, {
+        ...trip,
+        cover_photo: photoUrl,
+      });
+      setShowPhotoModal(false);
+      Alert.alert("Success", "Cover photo updated!");
+    } catch (error) {
+      setCoverPhoto(trip.cover_photo || null); // ADD THIS LINE
+      setHasLocalCoverChange(false); // Reset on error
+
+      Alert.alert("Error", "Failed to update cover photo");
+    }
   };
 
   const handleSave = async () => {
@@ -432,6 +491,40 @@ export default function EditTripScreen() {
             maxLength={50}
           />
           <Text style={styles.hint}>{name.length}/50 characters</Text>
+        </View>
+
+        {/* Cover Photo Section */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Cover Photo</Text>
+
+          {coverPhoto || trip?.cover_photo ? (
+            <View style={styles.coverPhotoContainer}>
+              <Image
+                source={{ uri: coverPhoto }} // CHANGE from trip.cover_photo to coverPhoto
+                style={styles.coverPhotoPreview}
+              />
+              <TouchableOpacity
+                style={styles.changeCoverButton}
+                onPress={() => handleSelectCoverPhoto()}
+              >
+                <Ionicons name="camera" size={20} color="white" />
+                <Text style={styles.changeCoverText}>Change Photo</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.addCoverButton}
+              onPress={() => handleSelectCoverPhoto()}
+            >
+              <Ionicons
+                name="images-outline"
+                size={32}
+                color={theme.colors.gray}
+              />
+              <Text style={styles.addCoverText}>Add Cover Photo</Text>
+              <Text style={styles.addCoverHint}>Choose from trip photos</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Date Range */}
@@ -643,6 +736,50 @@ export default function EditTripScreen() {
         selectedFriends={taggedFriends}
         onToggleFriend={toggleFriend}
       />
+      {/* Photo Selection Modal */}
+      <Modal
+        visible={showPhotoModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPhotoModal(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.container}>
+            <View style={modalStyles.header}>
+              <Text style={modalStyles.title}>Choose Cover Photo</Text>
+              <TouchableOpacity onPress={() => setShowPhotoModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.photoGrid}>
+              <View style={styles.photoGridContainer}>
+                {availablePhotos.map((photo, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.photoGridItem}
+                    onPress={() => selectCoverPhoto(photo)}
+                  >
+                    <Image
+                      source={{ uri: photo }}
+                      style={styles.photoThumbnail}
+                    />
+                    {coverPhoto === photo && (
+                      <View style={styles.selectedBadge}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={24}
+                          color="white"
+                        />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -914,6 +1051,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginLeft: 8,
+  },
+  coverPhotoContainer: {
+    position: "relative",
+  },
+  coverPhotoPreview: {
+    width: "100%",
+    height: 200,
+    borderRadius: 8,
+    backgroundColor: theme.colors.offWhite,
+  },
+  changeCoverButton: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  changeCoverText: {
+    color: "white",
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  addCoverButton: {
+    backgroundColor: theme.colors.offWhite,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 30,
+    alignItems: "center",
+  },
+  addCoverText: {
+    color: theme.colors.navy,
+    fontSize: 16,
+    fontWeight: "500",
+    marginTop: 10,
+  },
+  addCoverHint: {
+    color: theme.colors.lightGray,
+    fontSize: 12,
+    marginTop: 5,
+  },
+  photoGrid: {
+    padding: 10,
+    maxHeight: 400,
+  },
+  photoGridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  photoGridItem: {
+    width: "31%",
+    aspectRatio: 1,
+    marginBottom: 10,
+    position: "relative",
+  },
+  photoThumbnail: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
+  },
+  selectedBadge: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: theme.colors.forest,
+    borderRadius: 12,
+    padding: 2,
   },
 });
 

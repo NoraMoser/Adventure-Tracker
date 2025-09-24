@@ -180,11 +180,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
   // Update currentUserId when user changes
   useEffect(() => {
     if (user) {
-      console.log("FriendsContext: User changed to:", user.id);
       setCurrentUserId(user.id);
       refreshFriends();
     } else {
-      console.log("FriendsContext: User logged out");
       setCurrentUserId("");
       // Clear all data
       setFriends([]);

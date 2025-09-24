@@ -100,25 +100,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const checkAuthStatus = async () => {
-    console.log("🔍 AuthContext: Checking auth status...");
     try {
       const timeoutId = setTimeout(() => {
-        console.log("🔍 AuthContext: Timeout - forcing loading to false");
         setLoading(false);
       }, 5000);
 
       const offlineMode = await AsyncStorage.getItem("offlineMode");
-      console.log("🔍 AuthContext: Offline mode check:", offlineMode);
-
       if (offlineMode === "true") {
-        console.log("🔍 AuthContext: Setting offline mode");
         setIsOfflineMode(true);
         clearTimeout(timeoutId);
         setLoading(false);
         return;
       }
-
-      console.log("🔍 AuthContext: Getting session from Supabase...");
       const {
         data: { session },
         error: sessionError,
@@ -131,27 +124,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      console.log(
-        "🔍 AuthContext: Session result:",
-        session ? "Found session" : "No session"
-      );
-
       if (session) {
         setSession(session);
         setUser(session.user);
-        console.log(
-          "🔍 AuthContext: Loading profile for user:",
-          session.user.id
-        );
 
         await loadProfile(session.user.id);
         await updateLastActive(session.user.id);
       }
 
       clearTimeout(timeoutId);
-      console.log(
-        "🔍 AuthContext: Auth check complete, setting loading to false"
-      );
       setLoading(false);
     } catch (error) {
       console.error("🔍 AuthContext: Critical auth check error:", error);
@@ -161,7 +142,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadProfile = async (userId: string) => {
     try {
-      console.log("🔍 AuthContext: Loading profile for:", userId);
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -172,8 +152,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("🔍 AuthContext: Profile load error:", error);
         return;
       }
-
-      console.log("🔍 AuthContext: Profile loaded successfully");
       setProfile(data);
       await AsyncStorage.setItem("userProfile", JSON.stringify(data));
     } catch (error) {
