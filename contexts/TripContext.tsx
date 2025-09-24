@@ -338,24 +338,43 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       return candidateTrips[0];
     }
 
-    // No matching trip - create a new auto-trip
-    console.log("Creating new auto-trip for item");
+    // No matching trip exists - ASK USER before creating a new one
+    console.log("No matching trip found, asking user about creating new trip");
 
-    try {
-      const newTrip = await createTrip({
-        name: `Trip on ${new Date(itemDate).toLocaleDateString()}`,
-        start_date: new Date(itemDate),
-        end_date: new Date(itemDate),
-        created_by: currentUserId,
-        auto_generated: true,
-        tagged_friends: [],
-      });
+    return new Promise((resolve) => {
+      const tripName = `Trip on ${new Date(itemDate).toLocaleDateString()}`;
 
-      return newTrip;
-    } catch (error) {
-      console.error("Failed to create auto-trip:", error);
-      return null;
-    }
+      Alert.alert(
+        "Create New Trip?",
+        `No existing trip matches this item. Would you like to create a new trip "${tripName}"?`,
+        [
+          {
+            text: "Not now",
+            style: "cancel",
+            onPress: () => resolve(null),
+          },
+          {
+            text: "Yes, create trip",
+            onPress: async () => {
+              try {
+                const newTrip = await createTrip({
+                  name: tripName,
+                  start_date: new Date(itemDate),
+                  end_date: new Date(itemDate),
+                  created_by: currentUserId,
+                  auto_generated: true,
+                  tagged_friends: [],
+                });
+                resolve(newTrip);
+              } catch (error) {
+                console.error("Failed to create auto-trip:", error);
+                resolve(null);
+              }
+            },
+          },
+        ]
+      );
+    });
   };
 
   const smartAddToTrip = async (item: any, type: "activity" | "spot") => {
@@ -845,6 +864,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (itemsNotInTrips.length === 0) {
         console.log("All items already in trips");
+        autoDetectionInProgress.current = false;
         return;
       }
 
@@ -901,54 +921,97 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
       console.log(`Created ${clusters.length} trip clusters`);
 
-      // Create trips for each cluster
-      for (const cluster of clusters) {
-        const dates = cluster.items.map((i: any) => new Date(i.date));
-        const startDate = new Date(Math.min(...dates.map((d) => d.getTime())));
-        const endDate = new Date(Math.max(...dates.map((d) => d.getTime())));
-
-        const tripName =
-          startDate.toDateString() === endDate.toDateString()
-            ? `Trip on ${startDate.toLocaleDateString()}`
-            : `Trip ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
-
-        const newTrip = await createTrip({
-          name: tripName,
-          start_date: startDate,
-          end_date: endDate,
-          created_by: currentUserId,
-          auto_generated: true,
-          tagged_friends: [],
-        });
-
-        // Add all items to the trip
-        for (const item of cluster.items) {
-          const { error } = await supabase.from("trip_items").insert({
-            trip_id: newTrip.id,
-            type: item.type,
-            data: item.data,
-            added_by: currentUserId,
-          });
-
-          if (error) {
-            console.error("Error adding item to trip:", error);
-          }
-        }
+      if (clusters.length === 0) {
+        console.log("No trip clusters found");
+        autoDetectionInProgress.current = false;
+        return;
       }
 
-      await loadTrips();
-
-      if (clusters.length > 0) {
+      return new Promise<void>((resolve) => {
         Alert.alert(
           "Trips Detected!",
-          `Created ${clusters.length} trip${
+          `Found ${clusters.length} potential trip${
             clusters.length > 1 ? "s" : ""
-          } from your activities and spots.`
+          } from your activities and spots. Would you like to create ${
+            clusters.length > 1 ? "them" : "it"
+          }?`,
+          [
+            {
+              text: "Not now",
+              style: "cancel",
+              onPress: () => {
+                console.log("User declined auto-trip creation");
+                autoDetectionInProgress.current = false;
+                resolve();
+              },
+            },
+            {
+              text: "Create Trips",
+              onPress: async () => {
+                try {
+                  for (const cluster of clusters) {
+                    const dates = cluster.items.map(
+                      (i: any) => new Date(i.date)
+                    );
+                    const startDate = new Date(
+                      Math.min(...dates.map((d) => d.getTime()))
+                    );
+                    const endDate = new Date(
+                      Math.max(...dates.map((d) => d.getTime()))
+                    );
+
+                    const tripName =
+                      startDate.toDateString() === endDate.toDateString()
+                        ? `Trip on ${startDate.toLocaleDateString()}`
+                        : `Trip ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+
+                    const newTrip = await createTrip({
+                      name: tripName,
+                      start_date: startDate,
+                      end_date: endDate,
+                      created_by: currentUserId,
+                      auto_generated: true,
+                      tagged_friends: [],
+                    });
+
+                    // Add all items to the trip
+                    for (const item of cluster.items) {
+                      const { error } = await supabase
+                        .from("trip_items")
+                        .insert({
+                          trip_id: newTrip.id,
+                          type: item.type,
+                          data: item.data,
+                          added_by: currentUserId,
+                        });
+
+                      if (error) {
+                        console.error("Error adding item to trip:", error);
+                      }
+                    }
+                  }
+
+                  await loadTrips();
+                  Alert.alert(
+                    "Success",
+                    `Created ${clusters.length} trip${
+                      clusters.length > 1 ? "s" : ""
+                    }!`
+                  );
+                } catch (error) {
+                  console.error("Error in auto-detection:", error);
+                  Alert.alert("Error", "Failed to create trips");
+                } finally {
+                  autoDetectionInProgress.current = false;
+                  resolve();
+                }
+              },
+            },
+          ]
         );
-      }
+      });
     } catch (error) {
       console.error("Error in auto-detection:", error);
-    } finally {
       autoDetectionInProgress.current = false;
     }
   };
