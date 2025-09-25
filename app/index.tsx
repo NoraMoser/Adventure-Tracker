@@ -30,6 +30,7 @@ import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { supabase } from "../lib/supabase";
+import { MemoryNotificationService } from "../services/memoryNotificationService";
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -271,6 +272,8 @@ export default function DashboardScreen() {
     };
 
     if (user) {
+      MemoryNotificationService.initialize(user.id);
+
       fetchNotificationCount();
 
       // Set up real-time subscription for notifications
@@ -1995,6 +1998,37 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: theme.colors.navy,
     marginLeft: 8,
+  },
+  memoryTestSection: {
+    backgroundColor: "#FFF3E0", // Light orange background for dev section
+    paddingVertical: 20,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: "#FFB800",
+    borderStyle: "dashed" as any,
+  },
+  memoryTestButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "white",
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  memoryTestContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  memoryTestText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.navy,
+    marginLeft: 12,
   },
 });
 

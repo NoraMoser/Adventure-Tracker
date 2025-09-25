@@ -25,7 +25,9 @@ interface Notification {
     | "achievement"
     | "comment"
     | "like"
-    | "trip_shared";
+    | "trip_shared"
+    | "memory"
+    | "proximity_alert";
 
   title: string;
   message: string;
@@ -210,14 +212,57 @@ export default function NotificationsScreen() {
         router.push(`/location/${notification.data.location_id}` as any);
         return;
       } else if (notification.data.trip_id) {
-        // Navigate to specific trip
         router.push(`/trip-detail?tripId=${notification.data.trip_id}` as any);
         return;
       }
     }
 
-    // Fallback navigation based on type
+    // Handle new notification types
     switch (notification.type) {
+      case "memory":
+        // Navigate to the specific memory item
+        if (notification.data?.memories?.[0]) {
+          const firstMemory = notification.data.memories[0];
+          if (firstMemory.type === "activity" && firstMemory.id) {
+            // Navigate to specific activity
+            router.push(`/activity/${firstMemory.id}` as any);
+          } else if (firstMemory.type === "spot" && firstMemory.id) {
+            // Navigate to specific location
+            router.push(`/location/${firstMemory.id}` as any);
+          } else if (firstMemory.type === "trip") {
+            router.push(`/trip-detail?tripId=${firstMemory.id}` as any);
+          } else {
+            // Fallback to list views
+            router.push(
+              firstMemory.type === "activity"
+                ? "/past-activities"
+                : "/saved-spots"
+            );
+          }
+        } else {
+          router.push("/");
+        }
+        break;
+
+      case "proximity_alert":
+        // Navigate to the specific place
+        if (notification.data?.place_id) {
+          if (notification.data.place_type === "spot") {
+            // Navigate to specific location detail
+            router.push(`/location/${notification.data.place_id}` as any);
+          } else if (
+            notification.data.place_type === "activity_start" ||
+            notification.data.place_type === "activity_end"
+          ) {
+            // Navigate to specific activity detail
+            router.push(`/activity/${notification.data.place_id}` as any);
+          } else {
+            router.push("/saved-spots");
+          }
+        } else {
+          router.push("/saved-spots");
+        }
+        break;
       case "friend_request":
         router.push("/friend-requests");
         break;
@@ -238,6 +283,10 @@ export default function NotificationsScreen() {
       case "achievement":
         router.push("/achievements");
         break;
+      default:
+        // Default fallback
+        router.push("/");
+        break;
     }
   };
 
@@ -251,6 +300,8 @@ export default function NotificationsScreen() {
       comment: "chatbubble",
       like: "heart",
       trip_shared: "airplane",
+      memory: "calendar",
+      proximity_alert: "navigate-circle",
     };
     return icons[type] || "notifications";
   };
@@ -265,6 +316,8 @@ export default function NotificationsScreen() {
       comment: theme.colors.navy,
       like: "#FF4757",
       trip_shared: theme.colors.navy,
+      memory: "#9C27B0",
+      proximity_alert: theme.colors.burntOrange,
     };
     return colors[type] || theme.colors.gray;
   };

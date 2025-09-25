@@ -610,6 +610,106 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Memory & Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Memory Features</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="calendar-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>On This Day</Text>
+                <Text style={styles.settingDescription}>
+                  Get memories from past years
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={settings.memoriesEnabled !== false}
+              onValueChange={(value) => updateSetting("memoriesEnabled", value)}
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                settings.memoriesEnabled !== false
+                  ? theme.colors.white
+                  : theme.colors.lightGray
+              }
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="location-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>Proximity Alerts</Text>
+                <Text style={styles.settingDescription}>
+                  Notify when near past locations
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={settings.proximityEnabled !== false}
+              onValueChange={(value) => updateSetting("proximityEnabled", value)}
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                settings.proximityEnabled !== false
+                  ? theme.colors.white
+                  : theme.colors.lightGray
+              }
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Alert.alert(
+                "Proximity Distance",
+                "Choose how close you need to be to receive notifications",
+                [
+                  { text: "50m", onPress: () => updateSetting("proximityDistance", 50) },
+                  { text: "100m (Default)", onPress: () => updateSetting("proximityDistance", 100) },
+                  { text: "200m", onPress: () => updateSetting("proximityDistance", 200) },
+                  { text: "500m", onPress: () => updateSetting("proximityDistance", 500) },
+                  { text: "Cancel", style: "cancel" }
+                ]
+              );
+            }}
+          >
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="resize-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
+              <Text style={styles.settingLabel}>Proximity Distance</Text>
+            </View>
+            <View style={styles.settingRight}>
+              <Text style={styles.settingValue}>
+                {settings.proximityDistance || 100}m
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+
         {/* Privacy Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Privacy & Sharing</Text>

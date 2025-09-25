@@ -22,6 +22,10 @@ interface Settings {
     shareLocation: boolean;
     publicProfile: boolean;
   };
+  // Memory features
+  memoriesEnabled?: boolean;
+  proximityEnabled?: boolean;
+  proximityDistance?: number;
 }
 
 interface SettingsContextType {
@@ -46,6 +50,10 @@ const DEFAULT_SETTINGS: Settings = {
     shareLocation: false,
     publicProfile: false,
   },
+  // Default memory settings
+  memoriesEnabled: true,
+  proximityEnabled: true,
+  proximityDistance: 100,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -65,7 +73,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const stored = await AsyncStorage.getItem("explorableSettings");
       if (stored) {
-        setSettings(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        // Merge with defaults to ensure new properties exist
+        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
       }
     } catch (error) {
       console.error("Error loading settings:", error);
@@ -80,9 +90,51 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({
         JSON.stringify(newSettings)
       );
       setSettings(newSettings);
+      
+      // Sync memory preferences with database if changed
+      if (updates.memoriesEnabled !== undefined || 
+          updates.proximityEnabled !== undefined || 
+          updates.proximityDistance !== undefined) {
+        await syncMemoryPreferencesWithDatabase(newSettings);
+      }
     } catch (error) {
       console.error("Error saving settings:", error);
       throw error;
+    }
+  };
+
+  const syncMemoryPreferencesWithDatabase = async (settings: Settings) => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: currentProfile } = await supabase
+          .from('profiles')
+          .select('notification_preferences')
+          .eq('id', user.id)
+          .single();
+        
+        const currentPrefs = currentProfile?.notification_preferences || {};
+        
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            notification_preferences: {
+              ...currentPrefs,
+              memories: settings.memoriesEnabled,
+              proximity: settings.proximityEnabled,
+              proximity_distance: settings.proximityDistance,
+            }
+          })
+          .eq('id', user.id);
+        
+        if (error) {
+          console.error('Error updating memory preferences in database:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error syncing memory preferences:', error);
     }
   };
 
@@ -133,10 +185,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   const getSpeedUnit = (): string => {
     return settings.units === "imperial" ? "mph" : "km/h";
   };
-
-  // In your SettingsContext.tsx, make sure getMapTileUrl looks like this:
-
-  // In SettingsContext.tsx, replace the getMapTileUrl function with this:
 
   const getMapTileUrl = () => {
     switch (settings.mapStyle) {
