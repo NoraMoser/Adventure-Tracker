@@ -313,19 +313,21 @@ const SpotDetailModal = ({
   );
 };
 
-// Animated List Item Component with Date Display
+// Update the AnimatedListItem component props
 const AnimatedListItem = ({
   item,
   index,
   onPress,
   onRate,
   onDelete,
+  onShare, // Add this
 }: {
   item: SavedSpot;
   index: number;
   onPress: (item: SavedSpot) => void;
   onRate: (item: SavedSpot, rating: number) => void;
   onDelete: (item: SavedSpot) => void;
+  onShare: (item: SavedSpot) => void; // Add this
 }) => {
   const animatedValue = useRef(new Animated.Value(0)).current;
   const category = categories[item.category] || categories.other;
@@ -480,7 +482,10 @@ const AnimatedListItem = ({
               >
                 <Ionicons name="trash-outline" size={20} color="#FF4757" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionIcon}>
+              <TouchableOpacity
+                style={styles.actionIcon}
+                onPress={() => onShare(item)} // Add this
+              >
                 <Ionicons
                   name="share-social-outline"
                   size={20}
@@ -827,6 +832,7 @@ export default function SavedSpotsScreen() {
               onPress={handleSpotPress}
               onRate={handleUpdateRating}
               onDelete={handleDeleteSpot}
+              onShare={handleShareSpot} // Add this
             />
           )}
           keyExtractor={(item) => item.id}
