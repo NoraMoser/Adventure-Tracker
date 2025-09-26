@@ -13,8 +13,11 @@ import { NotificationService, PushNotificationHelper } from '../lib/notification
 
 const BACKGROUND_FETCH_TASK = 'background-fetch-memories';
 const LOCATION_TASK = 'background-location-task';
-const PROXIMITY_THRESHOLD = 100; // meters
-const CHECK_INTERVAL = 15 * 60; // 15 minutes in seconds
+const PROXIMITY_THRESHOLD = 500; // Increased from 100m to 500m for better detection
+const HOME_RADIUS = 1000; // 1km home zone where we won't send notifications
+const CHECK_INTERVAL = 30 * 60; // 30 minutes instead of 15
+const MIN_TIME_BETWEEN_NOTIFICATIONS = 24 * 60 * 60 * 1000; // 24 hours between notifications for same place
+const MIN_DAYS_SINCE_VISIT = 7; // Only notify if haven't been there in at least a week
 
 interface MemoryItem {
   id: string;
@@ -46,22 +49,87 @@ interface ProximityPlace {
 export class MemoryNotificationService {
   private static lastProximityCheck: Date | null = null;
   private static notifiedPlaces = new Set<string>(); // Track places we've already notified about today
+  private static homeLocation: { latitude: number; longitude: number } | null = null;
+  private static lastNotificationTime = new Map<string, Date>(); // Track per-place notification times
 
   /**
-   * Initialize memory and proximity services
+   * Initialize memory and proximity services with home detection
    */
   static async initialize(userId: string) {
     try {
+      // Set home location first to avoid notifications near home
+      await this.setHomeLocation(userId);
+      
       // Register background fetch for daily memories
       await this.registerBackgroundFetch();
       
       // Register location tracking for proximity alerts
       await this.registerLocationTracking(userId);
       
-      console.log('Memory notification services initialized');
+      console.log('Memory notification services initialized with home location:', this.homeLocation);
     } catch (error) {
       console.error('Error initializing memory services:', error);
     }
+  }
+
+  /**
+   * Set user's home location to avoid notifications near home
+   */
+  static async setHomeLocation(userId: string) {
+    try {
+      // First check if user has explicitly set home location
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('home_location')
+        .eq('id', userId)
+        .single();
+
+      if (profile?.home_location) {
+        this.homeLocation = profile.home_location;
+        console.log('Using user-defined home location:', this.homeLocation);
+        return;
+      }
+
+      // Otherwise, try to detect home based on most frequently visited location
+      const { data: frequentSpots } = await supabase
+        .from('locations')
+        .select('latitude, longitude, visit_count, name')
+        .eq('user_id', userId)
+        .order('visit_count', { ascending: false })
+        .limit(5);
+
+      if (frequentSpots && frequentSpots.length > 0) {
+        // Use the most visited location as home
+        this.homeLocation = {
+          latitude: frequentSpots[0].latitude,
+          longitude: frequentSpots[0].longitude,
+        };
+        console.log('Auto-detected home location from most visited spot:', frequentSpots[0].name);
+      }
+    } catch (error) {
+      console.error('Error setting home location:', error);
+    }
+  }
+
+  /**
+   * Check if location is near home
+   */
+  private static isNearHome(location: { latitude: number; longitude: number }): boolean {
+    if (!this.homeLocation) return false;
+    
+    const distance = this.calculateDistance(location, this.homeLocation);
+    return distance < HOME_RADIUS;
+  }
+
+  /**
+   * Check if enough time has passed since last notification for this place
+   */
+  private static canNotifyForPlace(placeKey: string): boolean {
+    const lastNotified = this.lastNotificationTime.get(placeKey);
+    if (!lastNotified) return true;
+    
+    const timeSinceNotification = Date.now() - lastNotified.getTime();
+    return timeSinceNotification >= MIN_TIME_BETWEEN_NOTIFICATIONS;
   }
 
   /**
@@ -313,13 +381,30 @@ export class MemoryNotificationService {
   }
 
   /**
-   * Check proximity to previously visited places
+   * Enhanced proximity check with smart filtering
    */
   static async checkProximity(
     currentLocation: { latitude: number; longitude: number },
     userId: string
   ): Promise<ProximityPlace[]> {
     const nearbyPlaces: ProximityPlace[] = [];
+    
+    // Skip if near home
+    if (this.isNearHome(currentLocation)) {
+      console.log('Near home location, skipping proximity check');
+      return [];
+    }
+
+    // Check if enough time has passed since last check
+    if (this.lastProximityCheck) {
+      const timeSinceLastCheck = Date.now() - this.lastProximityCheck.getTime();
+      if (timeSinceLastCheck < CHECK_INTERVAL * 1000) {
+        console.log('Too soon since last proximity check');
+        return [];
+      }
+    }
+    
+    this.lastProximityCheck = new Date();
 
     try {
       // Get user's saved locations
@@ -335,6 +420,8 @@ export class MemoryNotificationService {
         .eq('user_id', userId)
         .not('route_data', 'is', null);
 
+      const now = new Date();
+
       // Check proximity to saved spots
       spots?.forEach(spot => {
         const distance = this.calculateDistance(
@@ -342,62 +429,88 @@ export class MemoryNotificationService {
           { latitude: spot.latitude, longitude: spot.longitude }
         );
 
-        if (distance <= PROXIMITY_THRESHOLD) {
-          const placeKey = `spot-${spot.id}`;
-          if (!this.notifiedPlaces.has(placeKey)) {
-            nearbyPlaces.push({
-              id: spot.id,
-              type: 'spot',
-              name: spot.name,
-              location: {
-                latitude: spot.latitude,
-                longitude: spot.longitude,
-              },
-              lastVisited: new Date(spot.location_date || spot.created_at),
-              visitCount: spot.visit_count || 1,
-              distance,
-            });
+        // Check if within threshold AND not too close (< 50m means you're basically there)
+        if (distance <= PROXIMITY_THRESHOLD && distance > 50) {
+          const spotLocation = { latitude: spot.latitude, longitude: spot.longitude };
+          
+          // Skip if this spot is near home
+          if (this.isNearHome(spotLocation)) {
+            return;
+          }
+
+          // Check if visited recently
+          const lastVisitDate = new Date(spot.last_visited || spot.location_date || spot.created_at);
+          const daysSinceVisit = Math.floor((now.getTime() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Only notify if haven't been there recently
+          if (daysSinceVisit >= MIN_DAYS_SINCE_VISIT) {
+            const placeKey = `spot-${spot.id}`;
+            
+            // Check if we can notify for this place (not notified in last 24 hours)
+            if (this.canNotifyForPlace(placeKey)) {
+              nearbyPlaces.push({
+                id: spot.id,
+                type: 'spot',
+                name: spot.name,
+                location: spotLocation,
+                lastVisited: lastVisitDate,
+                visitCount: spot.visit_count || 1,
+                distance,
+              });
+            }
           }
         }
       });
 
-      // Check proximity to activity start/end points
+      // Check activities with stricter criteria (only old activities)
       activities?.forEach(activity => {
         if (activity.route_data && activity.route_data.length > 0) {
-          const startPoint = activity.route_data[0];
-          const endPoint = activity.route_data[activity.route_data.length - 1];
+          const activityDate = new Date(activity.created_at);
+          const daysSinceActivity = Math.floor((now.getTime() - activityDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Only check activities at least 30 days old
+          if (daysSinceActivity >= 30) {
+            const startPoint = activity.route_data[0];
+            const endPoint = activity.route_data[activity.route_data.length - 1];
 
-          // Check start point
-          const startDistance = this.calculateDistance(currentLocation, startPoint);
-          if (startDistance <= PROXIMITY_THRESHOLD) {
-            const placeKey = `activity-start-${activity.id}`;
-            if (!this.notifiedPlaces.has(placeKey)) {
-              nearbyPlaces.push({
-                id: activity.id,
-                type: 'activity_start',
-                name: `Start of ${activity.name || activity.type}`,
-                location: startPoint,
-                lastVisited: new Date(activity.created_at),
-                visitCount: 1,
-                distance: startDistance,
-              });
+            // Check start point
+            const startDistance = this.calculateDistance(currentLocation, startPoint);
+            if (startDistance <= PROXIMITY_THRESHOLD && startDistance > 50 && !this.isNearHome(startPoint)) {
+              const placeKey = `activity-start-${activity.id}`;
+              
+              if (this.canNotifyForPlace(placeKey)) {
+                nearbyPlaces.push({
+                  id: activity.id,
+                  type: 'activity_start',
+                  name: `Start of ${activity.name || activity.type}`,
+                  location: startPoint,
+                  lastVisited: activityDate,
+                  visitCount: 1,
+                  distance: startDistance,
+                });
+              }
             }
-          }
 
-          // Check end point if different from start
-          const endDistance = this.calculateDistance(currentLocation, endPoint);
-          if (endDistance <= PROXIMITY_THRESHOLD && endDistance !== startDistance) {
-            const placeKey = `activity-end-${activity.id}`;
-            if (!this.notifiedPlaces.has(placeKey)) {
-              nearbyPlaces.push({
-                id: activity.id,
-                type: 'activity_end',
-                name: `End of ${activity.name || activity.type}`,
-                location: endPoint,
-                lastVisited: new Date(activity.created_at),
-                visitCount: 1,
-                distance: endDistance,
-              });
+            // Check end point if significantly different from start
+            const endDistance = this.calculateDistance(currentLocation, endPoint);
+            const startEndDistance = this.calculateDistance(startPoint, endPoint);
+            
+            // Only add end point if it's far enough from start point (> 500m)
+            if (endDistance <= PROXIMITY_THRESHOLD && endDistance > 50 && 
+                startEndDistance > 500 && !this.isNearHome(endPoint)) {
+              const placeKey = `activity-end-${activity.id}`;
+              
+              if (this.canNotifyForPlace(placeKey)) {
+                nearbyPlaces.push({
+                  id: activity.id,
+                  type: 'activity_end',
+                  name: `End of ${activity.name || activity.type}`,
+                  location: endPoint,
+                  lastVisited: activityDate,
+                  visitCount: 1,
+                  distance: endDistance,
+                });
+              }
             }
           }
         }
@@ -405,6 +518,9 @@ export class MemoryNotificationService {
 
       // Sort by distance
       nearbyPlaces.sort((a, b) => a.distance - b.distance);
+      
+      // Limit to top 3 closest places
+      return nearbyPlaces.slice(0, 3);
 
     } catch (error) {
       console.error('Error checking proximity:', error);
@@ -414,7 +530,7 @@ export class MemoryNotificationService {
   }
 
   /**
-   * Send proximity notifications
+   * Send proximity notifications with better contextual messaging
    */
   static async sendProximityNotifications(
     userId: string,
@@ -424,20 +540,40 @@ export class MemoryNotificationService {
 
     const closestPlace = places[0];
     const timeSinceVisit = this.getTimeAgo(closestPlace.lastVisited);
+    const daysSince = Math.floor((Date.now() - closestPlace.lastVisited.getTime()) / (1000 * 60 * 60 * 24));
 
-    let title = '📍 You\'ve been here before!';
+    let title = '';
     let body = '';
 
-    if (closestPlace.type === 'spot') {
+    // More contextual notifications based on time since visit
+    if (daysSince > 365) {
+      title = '📍 Long time no see!';
+      body = `You're near "${closestPlace.name}" - you haven't been here in over a year`;
+    } else if (daysSince > 180) {
+      title = '📍 Remember this spot?';
       body = `You're ${Math.round(closestPlace.distance)}m from "${closestPlace.name}" - last visited ${timeSinceVisit}`;
+    } else if (daysSince > 90) {
+      title = '📍 Rediscover this spot!';
+      body = `"${closestPlace.name}" is nearby (${Math.round(closestPlace.distance)}m) - visited ${timeSinceVisit}`;
+    } else if (daysSince > 30) {
+      title = '📍 Back in the neighborhood';
+      body = `"${closestPlace.name}" is ${Math.round(closestPlace.distance)}m away - visited ${timeSinceVisit}`;
     } else {
-      body = `You're near ${closestPlace.name} from ${timeSinceVisit}`;
+      // For recent visits (7-30 days), only notify if it's a frequently visited spot
+      if (closestPlace.visitCount > 3) {
+        title = '📍 One of your favorite spots!';
+        body = `You're back near "${closestPlace.name}" - visited ${closestPlace.visitCount} times`;
+      } else {
+        // Don't notify for recent, infrequent spots
+        console.log('Skipping notification for recent, infrequent spot');
+        return;
+      }
     }
 
-    // Add to notified places to avoid duplicate notifications
+    // Update last notification time for all nearby places
     places.forEach(place => {
       const key = `${place.type}-${place.id}`;
-      this.notifiedPlaces.add(key);
+      this.lastNotificationTime.set(key, new Date());
     });
 
     try {
@@ -451,6 +587,7 @@ export class MemoryNotificationService {
           place_id: closestPlace.id,
           place_type: closestPlace.type,
           distance: closestPlace.distance,
+          days_since_visit: daysSince,
           all_nearby: places.map(p => ({
             id: p.id,
             name: p.name,
@@ -553,6 +690,13 @@ export class MemoryNotificationService {
    */
   static clearNotifiedPlaces() {
     this.notifiedPlaces.clear();
+    // Keep last notification times for 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    for (const [key, date] of this.lastNotificationTime.entries()) {
+      if (date < thirtyDaysAgo) {
+        this.lastNotificationTime.delete(key);
+      }
+    }
   }
 
   /**
@@ -570,6 +714,28 @@ export class MemoryNotificationService {
       proximityEnabled: profile?.notification_preferences?.proximity !== false,
       proximityDistance: profile?.notification_preferences?.proximity_distance || PROXIMITY_THRESHOLD,
     };
+  }
+
+  /**
+   * Update user's home location manually
+   */
+  static async updateHomeLocation(
+    userId: string, 
+    location: { latitude: number; longitude: number }
+  ) {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ home_location: location })
+        .eq('id', userId);
+
+      if (!error) {
+        this.homeLocation = location;
+        console.log('Home location updated:', location);
+      }
+    } catch (error) {
+      console.error('Error updating home location:', error);
+    }
   }
 }
 

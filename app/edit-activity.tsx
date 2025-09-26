@@ -4,14 +4,17 @@ import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal,
+  Platform,
+  View,
 } from "react-native";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { WebView } from "react-native-webview";
@@ -35,11 +38,11 @@ export default function EditActivityScreen() {
   const [duration, setDuration] = useState(activity?.duration || 0);
   const [photos, setPhotos] = useState<string[]>(activity?.photos || []);
   const [showMap, setShowMap] = useState(false);
-  
+
   // Add date state
   const [activityDate, setActivityDate] = useState(
-    activity?.activityDate 
-      ? new Date(activity.activityDate) 
+    activity?.activityDate
+      ? new Date(activity.activityDate)
       : new Date(activity?.startTime || Date.now())
   );
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
@@ -130,125 +133,277 @@ export default function EditActivityScreen() {
     setPhotos(photos.filter((_, i) => i !== index));
   };
 
-  const generateMapHTML = () => {
-    const routeCoords = route
-      .map((point: any) => `[${point.latitude}, ${point.longitude}]`)
-      .join(",");
+  // Updated generateMapHTML function with full route redraw capability
+// Replace the generateMapHTML function in your edit-activity.tsx with this:
 
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <style>
-          body { margin: 0; padding: 0; }
-          #map { height: 100vh; width: 100vw; }
-          .info-panel {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            z-index: 1000;
-            font-size: 14px;
-          }
-          .control-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            padding: 8px;
-            border-radius: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            z-index: 1000;
-            display: flex;
-            gap: 5px;
-          }
-          .control-button {
-            display: inline-block;
-            padding: 10px 20px;
-            background: #2d5a3d;
-            color: white;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            border: 2px solid white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            transition: all 0.3s;
-          }
-          .control-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-          }
-          .control-button:active {
-            transform: translateY(0);
-          }
-          .drawing-mode {
-            background: #cc5500 !important;
-          }
-          .instructions {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(255,255,255,0.95);
-            padding: 10px 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            z-index: 1000;
-            font-size: 14px;
-            color: #2d5a3d;
-            display: none;
-          }
-          .instructions.active {
-            display: block;
-          }
-        </style>
-      </head>
-      <body>
-        <div id="map"></div>
-        <div class="info-panel">
-          <strong>Distance:</strong> <span id="distance">0</span> ${
-            settings.units === "imperial" ? "mi" : "km"
-          }
-        </div>
-        <div id="instructions" class="instructions">
-          📍 Click on the map to add points to your route
-        </div>
-        <div class="control-panel">
-          <span id="continueBtn" class="control-button" onclick="continueRoute()">Continue Route</span>
-          <span class="control-button" onclick="undoLastPoint()">Undo Last</span>
-          <span class="control-button" onclick="clearExtension()">Clear Extension</span>
-        </div>
-        <script>
-          var map = L.map('map');
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-          }).addTo(map);
+const generateMapHTML = () => {
+  const routeCoords = route
+    .map((point: any) => `[${point.latitude}, ${point.longitude}]`)
+    .join(",");
 
-          var existingRoute = [${routeCoords}];
-          var extensionPoints = [];
-          var existingLine = null;
-          var extensionLine = null;
-          var totalDistance = ${distance};
-          var isDrawing = false;
-          var extensionMarkers = [];
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; }
+        .info-panel {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: white;
+          padding: 10px 15px;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          z-index: 1000;
+          font-size: 14px;
+        }
+        .control-panel {
+          position: absolute;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: white;
+          padding: 8px;
+          border-radius: 20px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          z-index: 1000;
+          display: flex;
+          gap: 5px;
+          flex-wrap: wrap;
+          max-width: 90%;
+          justify-content: center;
+        }
+        .control-button {
+          display: inline-block;
+          padding: 10px 15px;
+          background: #2d5a3d;
+          color: white;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: bold;
+          font-size: 13px;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          transition: all 0.3s;
+        }
+        .control-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .zoom-controls {
+          position: absolute;
+          top: 70px;
+          left: 10px;
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          z-index: 1000;
+          overflow: hidden;
+        }
+        .zoom-button {
+          display: block;
+          width: 40px;
+          height: 40px;
+          border: none;
+          background: white;
+          cursor: pointer;
+          font-size: 20px;
+          line-height: 40px;
+          text-align: center;
+          transition: background 0.3s;
+        }
+        .zoom-button:hover {
+          background: #f0f0f0;
+        }
+        .zoom-button:not(:last-child) {
+          border-bottom: 1px solid #ddd;
+        }
+        .location-button {
+          position: absolute;
+          top: 70px;
+          right: 10px;
+          width: 40px;
+          height: 40px;
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          z-index: 1000;
+          border: none;
+          cursor: pointer;
+          font-size: 20px;
+          transition: all 0.3s;
+        }
+        .location-button:hover {
+          transform: scale(1.1);
+        }
+        .drawing-mode {
+          background: #cc5500 !important;
+        }
+        .danger-button {
+          background: #dc3545 !important;
+        }
+        .instructions {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          background: rgba(255,255,255,0.95);
+          padding: 10px 15px;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          z-index: 1000;
+          font-size: 14px;
+          color: #2d5a3d;
+          display: none;
+          max-width: 250px;
+        }
+        .instructions.active {
+          display: block;
+        }
+        .redraw-mode {
+          color: #dc3545;
+        }
+        .confirm-dialog {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          padding: 20px;
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          z-index: 2000;
+          text-align: center;
+          display: none;
+        }
+        .confirm-dialog.active {
+          display: block;
+        }
+        .confirm-dialog h3 {
+          margin-top: 0;
+          color: #dc3545;
+        }
+        .confirm-dialog p {
+          margin: 15px 0;
+          color: #333;
+        }
+        .confirm-buttons {
+          display: flex;
+          gap: 10px;
+          justify-content: center;
+          margin-top: 20px;
+        }
+        .confirm-button {
+          padding: 10px 20px;
+          border-radius: 6px;
+          border: none;
+          font-weight: bold;
+          cursor: pointer;
+          transition: opacity 0.3s;
+        }
+        .confirm-button:hover {
+          opacity: 0.8;
+        }
+        .confirm-yes {
+          background: #dc3545;
+          color: white;
+        }
+        .confirm-no {
+          background: #6c757d;
+          color: white;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <div class="info-panel">
+        <strong>Distance:</strong> <span id="distance">0</span> ${
+          settings.units === "imperial" ? "mi" : "km"
+        }
+      </div>
+      <div class="zoom-controls">
+        <button class="zoom-button" onclick="map.zoomIn()">+</button>
+        <button class="zoom-button" onclick="map.zoomOut()">−</button>
+      </div>
+      <button class="location-button" onclick="fitToRoute()">📍</button>
+      <div id="instructions" class="instructions">
+        <span id="instructionText">📍 Click on the map to add points to your route</span>
+      </div>
+      <div class="control-panel">
+        <span id="continueBtn" class="control-button" onclick="continueRoute()">Continue Route</span>
+        <span id="redrawBtn" class="control-button danger-button" onclick="toggleRedraw()">Redraw Entire Route</span>
+        <span class="control-button" onclick="undoLastPoint()">Undo Last</span>
+        <span class="control-button" onclick="clearChanges()">Clear Changes</span>
+      </div>
+      
+      <div id="confirmDialog" class="confirm-dialog">
+        <h3>Redraw Entire Route?</h3>
+        <p>This will delete the existing route and let you draw a completely new one. This action cannot be undone.</p>
+        <div class="confirm-buttons">
+          <button class="confirm-button confirm-yes" onclick="confirmRedraw()">Yes, Redraw</button>
+          <button class="confirm-button confirm-no" onclick="cancelRedraw()">Cancel</button>
+        </div>
+      </div>
+      
+      <script>
+        var map = L.map('map', {
+          zoomControl: true,
+          touchZoom: true,
+          doubleClickZoom: true,
+          scrollWheelZoom: true,
+          boxZoom: true,
+          keyboard: true,
+          tap: true,
+          tapTolerance: 15,
+          bounceAtZoomLimits: false
+        });
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19,
+          minZoom: 3
+        }).addTo(map);
+        
+        // Add zoom control to top left for easier access
+        map.zoomControl.setPosition('topleft');
 
-          // Draw existing route
+        var existingRoute = [${routeCoords}];
+        var originalRoute = [...existingRoute]; // Keep a copy of the original
+        var extensionPoints = [];
+        var newRoutePoints = []; // For complete redraw
+        var existingLine = null;
+        var extensionLine = null;
+        var newRouteLine = null;
+        var totalDistance = ${distance};
+        var isDrawing = false;
+        var isRedrawing = false;
+        var extensionMarkers = [];
+        var newRouteMarkers = [];
+        var startMarker = null;
+        var endMarker = null;
+
+        // Draw existing route
+        function drawExistingRoute() {
           if (existingRoute.length > 0) {
+            if (existingLine) {
+              map.removeLayer(existingLine);
+            }
+            
             existingLine = L.polyline(existingRoute, {
               color: '#2d5a3d',
               weight: 4,
               opacity: 0.8
             }).addTo(map);
 
-            // Add start marker
-            L.marker(existingRoute[0], {
+            // Add/update start marker
+            if (startMarker) {
+              map.removeLayer(startMarker);
+            }
+            startMarker = L.marker(existingRoute[0], {
               icon: L.divIcon({
                 html: '<div style="background: #2d5a3d; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
                 iconSize: [24, 24],
@@ -256,99 +411,293 @@ export default function EditActivityScreen() {
               })
             }).addTo(map).bindPopup('Start');
 
-            // Add end marker that will move
-            var endMarker = L.marker(existingRoute[existingRoute.length - 1], {
+            // Add/update end marker
+            if (endMarker) {
+              map.removeLayer(endMarker);
+            }
+            endMarker = L.marker(existingRoute[existingRoute.length - 1], {
               icon: L.divIcon({
                 html: '<div style="background: #cc5500; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
                 iconSize: [24, 24],
                 className: 'custom-div-icon'
               })
-            }).addTo(map).bindPopup('Current End');
+            }).addTo(map).bindPopup('End');
 
             map.fitBounds(existingLine.getBounds().pad(0.1));
           } else {
             // If no existing route, center on a default location
             map.setView([47.6062, -122.3321], 13);
           }
+        }
+        
+        drawExistingRoute();
 
-          function continueRoute() {
-            isDrawing = !isDrawing;
-            var btn = document.getElementById('continueBtn');
-            var instructions = document.getElementById('instructions');
-            
-            if (isDrawing) {
-              btn.innerText = 'Stop Drawing';
-              btn.classList.add('drawing-mode');
-              instructions.classList.add('active');
-              map.getContainer().style.cursor = 'crosshair';
-            } else {
-              btn.innerText = 'Continue Route';
-              btn.classList.remove('drawing-mode');
-              instructions.classList.remove('active');
-              map.getContainer().style.cursor = '';
-            }
+        function continueRoute() {
+          if (isRedrawing) {
+            alert('Please finish or cancel the route redraw first');
+            return;
           }
-
-          function undoLastPoint() {
-            if (extensionPoints.length > 0) {
-              extensionPoints.pop();
-              
-              // Remove last marker
-              if (extensionMarkers.length > 0) {
-                var lastMarker = extensionMarkers.pop();
-                map.removeLayer(lastMarker);
-              }
-              
-              // Redraw extension line
-              if (extensionLine) {
-                map.removeLayer(extensionLine);
-                extensionLine = null;
-              }
-              
-              if (extensionPoints.length > 0) {
-                // Connect to existing route if needed
-                var lineToDraw = extensionPoints;
-                if (existingRoute.length > 0) {
-                  lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
-                }
-                
-                extensionLine = L.polyline(lineToDraw, {
-                  color: '#cc5500',
-                  weight: 4,
-                  opacity: 0.8,
-                  dashArray: '10, 5'
-                }).addTo(map);
-              }
-              
-              updateRoute();
-            }
+          
+          isDrawing = !isDrawing;
+          var btn = document.getElementById('continueBtn');
+          var instructions = document.getElementById('instructions');
+          
+          if (isDrawing) {
+            btn.innerText = 'Stop Drawing';
+            btn.classList.add('drawing-mode');
+            instructions.classList.add('active');
+            document.getElementById('instructionText').innerText = '📍 Click on the map to add points to your route';
+            map.getContainer().style.cursor = 'crosshair';
+          } else {
+            btn.innerText = 'Continue Route';
+            btn.classList.remove('drawing-mode');
+            instructions.classList.remove('active');
+            map.getContainer().style.cursor = '';
           }
-
-          function clearExtension() {
-            extensionPoints = [];
+        }
+        
+        function startRedraw() {
+          if (isDrawing) {
+            continueRoute(); // Turn off continue mode
+          }
+          document.getElementById('confirmDialog').classList.add('active');
+        }
+        
+        function confirmRedraw() {
+          document.getElementById('confirmDialog').classList.remove('active');
+          
+          // Clear existing route display
+          if (existingLine) {
+            map.removeLayer(existingLine);
+            existingLine = null;
+          }
+          if (startMarker) {
+            map.removeLayer(startMarker);
+            startMarker = null;
+          }
+          if (endMarker) {
+            map.removeLayer(endMarker);
+            endMarker = null;
+          }
+          
+          // Clear any extensions
+          clearExtensionPoints();
+          
+          // Start redraw mode
+          isRedrawing = true;
+          isDrawing = false;
+          newRoutePoints = [];
+          
+          var btn = document.getElementById('redrawBtn');
+          btn.innerText = 'Save New Route';
+          btn.classList.add('drawing-mode');
+          
+          var instructions = document.getElementById('instructions');
+          instructions.classList.add('active');
+          document.getElementById('instructionText').innerHTML = '<span class="redraw-mode">🔴 REDRAW MODE: Click to draw your new route from scratch. Click "Save New Route" when done.</span>';
+          map.getContainer().style.cursor = 'crosshair';
+        }
+        
+        function toggleRedraw() {
+          if (isRedrawing) {
+            // Currently redrawing, so stop it and save
+            stopRedrawing();
+          } else {
+            // Not redrawing, start it
+            startRedraw();
+          }
+        }
+        
+        function cancelRedraw() {
+          document.getElementById('confirmDialog').classList.remove('active');
+        }
+        
+        function stopRedrawing() {
+          isRedrawing = false;
+          
+          var btn = document.getElementById('redrawBtn');
+          btn.innerText = 'Redraw Entire Route';
+          btn.classList.remove('drawing-mode');
+          
+          var instructions = document.getElementById('instructions');
+          instructions.classList.remove('active');
+          map.getContainer().style.cursor = '';
+          
+          if (newRoutePoints.length > 0) {
+            // Replace existing route with new route
+            existingRoute = [...newRoutePoints];
+            extensionPoints = []; // Clear any extensions too
+            newRoutePoints = [];
             
-            // Remove all extension markers
-            extensionMarkers.forEach(function(marker) {
+            // Clear new route markers and line
+            newRouteMarkers.forEach(function(marker) {
               map.removeLayer(marker);
             });
-            extensionMarkers = [];
+            newRouteMarkers = [];
             
+            if (newRouteLine) {
+              map.removeLayer(newRouteLine);
+              newRouteLine = null;
+            }
+            
+            // Redraw as existing route
+            drawExistingRoute();
+            
+            // IMPORTANT: Send the new route back to React Native
+            updateRoute();
+          }
+        }
+
+        function undoLastPoint() {
+          if (isRedrawing && newRoutePoints.length > 0) {
+            newRoutePoints.pop();
+            
+            // Remove last marker
+            if (newRouteMarkers.length > 0) {
+              var lastMarker = newRouteMarkers.pop();
+              map.removeLayer(lastMarker);
+            }
+            
+            // Redraw new route line
+            if (newRouteLine) {
+              map.removeLayer(newRouteLine);
+              newRouteLine = null;
+            }
+            
+            if (newRoutePoints.length > 0) {
+              newRouteLine = L.polyline(newRoutePoints, {
+                color: '#dc3545',
+                weight: 4,
+                opacity: 0.8,
+                dashArray: '10, 5'
+              }).addTo(map);
+            }
+            
+            updateRouteForRedraw();
+            
+          } else if (extensionPoints.length > 0) {
+            extensionPoints.pop();
+            
+            // Remove last marker
+            if (extensionMarkers.length > 0) {
+              var lastMarker = extensionMarkers.pop();
+              map.removeLayer(lastMarker);
+            }
+            
+            // Redraw extension line
             if (extensionLine) {
               map.removeLayer(extensionLine);
               extensionLine = null;
             }
             
-            updateRoute();
-            
-            if (isDrawing) {
-              continueRoute(); // Turn off drawing mode
+            if (extensionPoints.length > 0) {
+              var lineToDraw = extensionPoints;
+              if (existingRoute.length > 0) {
+                lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
+              }
+              
+              extensionLine = L.polyline(lineToDraw, {
+                color: '#cc5500',
+                weight: 4,
+                opacity: 0.8,
+                dashArray: '10, 5'
+              }).addTo(map);
             }
-          }
-
-          map.on('click', function(e) {
-            if (!isDrawing) return;
             
-            var newPoint = [e.latlng.lat, e.latlng.lng];
+            updateRoute();
+          }
+        }
+        
+        function clearExtensionPoints() {
+          extensionPoints = [];
+          extensionMarkers.forEach(function(marker) {
+            map.removeLayer(marker);
+          });
+          extensionMarkers = [];
+          
+          if (extensionLine) {
+            map.removeLayer(extensionLine);
+            extensionLine = null;
+          }
+        }
+
+        function clearChanges() {
+          if (isRedrawing) {
+            // Cancel redraw mode
+            isRedrawing = false;
+            
+            var btn = document.getElementById('redrawBtn');
+            btn.innerText = 'Redraw Entire Route';
+            btn.classList.remove('drawing-mode');
+            
+            var instructions = document.getElementById('instructions');
+            instructions.classList.remove('active');
+            map.getContainer().style.cursor = '';
+            
+            // Clear new route
+            newRoutePoints = [];
+            newRouteMarkers.forEach(function(marker) {
+              map.removeLayer(marker);
+            });
+            newRouteMarkers = [];
+            
+            if (newRouteLine) {
+              map.removeLayer(newRouteLine);
+              newRouteLine = null;
+            }
+            
+            // Restore original route
+            existingRoute = [...originalRoute];
+            drawExistingRoute();
+            
+          } else {
+            // Clear extensions
+            clearExtensionPoints();
+          }
+          
+          updateRoute();
+          
+          if (isDrawing) {
+            continueRoute(); // Turn off drawing mode
+          }
+        }
+
+        map.on('click', function(e) {
+          if (!isDrawing && !isRedrawing) return;
+          
+          var newPoint = [e.latlng.lat, e.latlng.lng];
+          
+          if (isRedrawing) {
+            // Add to new route
+            newRoutePoints.push(newPoint);
+            
+            // Add a marker for the new point
+            var marker = L.circleMarker(newPoint, {
+              radius: 5,
+              fillColor: '#dc3545',
+              color: '#fff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 0.8
+            }).addTo(map);
+            newRouteMarkers.push(marker);
+            
+            // Draw/update new route line
+            if (newRouteLine) {
+              map.removeLayer(newRouteLine);
+            }
+            
+            newRouteLine = L.polyline(newRoutePoints, {
+              color: '#dc3545',
+              weight: 4,
+              opacity: 0.8,
+              dashArray: '10, 5'
+            }).addTo(map);
+            
+            updateRouteForRedraw();
+            
+          } else if (isDrawing) {
+            // Add to extension
             extensionPoints.push(newPoint);
             
             // Add a marker for the new point
@@ -367,7 +716,6 @@ export default function EditActivityScreen() {
               map.removeLayer(extensionLine);
             }
             
-            // Connect to the existing route if this is the first extension point
             var lineToDraw = extensionPoints;
             if (existingRoute.length > 0) {
               lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
@@ -381,58 +729,123 @@ export default function EditActivityScreen() {
             }).addTo(map);
             
             updateRoute();
+          }
+        });
+
+        function calculateDistance(points) {
+          var distance = 0;
+          for (var i = 1; i < points.length; i++) {
+            var lat1 = points[i-1][0] * Math.PI / 180;
+            var lat2 = points[i][0] * Math.PI / 180;
+            var deltaLat = (points[i][0] - points[i-1][0]) * Math.PI / 180;
+            var deltaLon = (points[i][1] - points[i-1][1]) * Math.PI / 180;
+
+            var a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            distance += 6371000 * c; // Distance in meters
+          }
+          return distance;
+        }
+        
+        function updateRouteForRedraw() {
+          var newDistance = calculateDistance(newRoutePoints);
+          
+          var displayDistance = newDistance;
+          var unit = '${settings.units === "imperial" ? "mi" : "km"}';
+          if (unit === 'km') {
+            displayDistance = (newDistance / 1000).toFixed(2);
+          } else {
+            displayDistance = (newDistance / 1609.34).toFixed(2);
+          }
+          document.getElementById('distance').innerText = displayDistance;
+          
+          // Don't send update yet, wait for user to finish
+        }
+
+        function updateRoute() {
+          var allPoints = existingRoute.concat(extensionPoints);
+          var newDistance = calculateDistance(allPoints);
+          
+          var displayDistance = newDistance;
+          var unit = '${settings.units === "imperial" ? "mi" : "km"}';
+          if (unit === 'km') {
+            displayDistance = (newDistance / 1000).toFixed(2);
+          } else {
+            displayDistance = (newDistance / 1609.34).toFixed(2);
+          }
+          document.getElementById('distance').innerText = displayDistance;
+
+          // Send updated route back
+          var routeData = allPoints.map(function(point) {
+            return {
+              latitude: point[0],
+              longitude: point[1],
+              timestamp: Date.now()
+            };
           });
 
-          function calculateDistance(points) {
-            var distance = 0;
-            for (var i = 1; i < points.length; i++) {
-              var lat1 = points[i-1][0] * Math.PI / 180;
-              var lat2 = points[i][0] * Math.PI / 180;
-              var deltaLat = (points[i][0] - points[i-1][0]) * Math.PI / 180;
-              var deltaLon = (points[i][1] - points[i-1][1]) * Math.PI / 180;
-
-              var a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
-                      Math.cos(lat1) * Math.cos(lat2) *
-                      Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
-              var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-              distance += 6371000 * c; // Distance in meters
-            }
-            return distance;
-          }
-
-          function updateRoute() {
-            var allPoints = existingRoute.concat(extensionPoints);
-            var newDistance = calculateDistance(allPoints);
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'routeUpdated',
+            route: routeData,
+            distance: newDistance
+          }));
+        }
+        
+        function fitToRoute() {
+          var bounds = null;
+          
+          if (existingRoute.length > 0 || extensionPoints.length > 0 || newRoutePoints.length > 0) {
+            var allPoints = [];
             
-            var displayDistance = newDistance;
-            var unit = '${settings.units === "imperial" ? "mi" : "km"}';
-            if (unit === 'km') {
-              displayDistance = (newDistance / 1000).toFixed(2);
+            if (isRedrawing && newRoutePoints.length > 0) {
+              allPoints = newRoutePoints;
             } else {
-              displayDistance = (newDistance / 1609.34).toFixed(2);
+              allPoints = existingRoute.concat(extensionPoints);
             }
-            document.getElementById('distance').innerText = displayDistance;
-
-            // Send updated route back
-            var routeData = allPoints.map(function(point) {
-              return {
-                latitude: point[0],
-                longitude: point[1],
-                timestamp: Date.now()
-              };
-            });
-
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'routeUpdated',
-              route: routeData,
-              distance: newDistance
-            }));
+            
+            if (allPoints.length > 0) {
+              bounds = L.latLngBounds(allPoints);
+              map.fitBounds(bounds.pad(0.1));
+            }
+          } else {
+            // No route, zoom to current location or default
+            map.setView([47.6062, -122.3321], 13);
           }
-        </script>
-      </body>
-      </html>
-    `;
-  };
+        }
+        
+        // Add touch event handling for better mobile experience
+        var touchStartTime;
+        var touchStartPoint;
+        
+        map.on('touchstart', function(e) {
+          touchStartTime = new Date().getTime();
+          touchStartPoint = e.latlng;
+        });
+        
+        map.on('touchend', function(e) {
+          var touchEndTime = new Date().getTime();
+          var touchDuration = touchEndTime - touchStartTime;
+          
+          // Only register as click if it was a quick tap (not a drag)
+          if (touchDuration < 200 && touchStartPoint) {
+            var distance = map.distance(touchStartPoint, e.latlng);
+            if (distance < 50) { // Less than 50 meters movement
+              // Trigger click event
+              map.fire('click', {
+                latlng: e.latlng,
+                containerPoint: e.containerPoint,
+                originalEvent: e.originalEvent
+              });
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+};
 
   if (!activity) {
     return null;
@@ -491,11 +904,11 @@ export default function EditActivityScreen() {
         >
           <Ionicons name="calendar" size={20} color={theme.colors.forest} />
           <Text style={styles.dateText}>
-            {activityDate.toLocaleDateString('en-US', { 
-              weekday: 'short', 
-              year: 'numeric', 
-              month: 'short', 
-              day: 'numeric' 
+            {activityDate.toLocaleDateString("en-US", {
+              weekday: "short",
+              year: "numeric",
+              month: "short",
+              day: "numeric",
             })}
           </Text>
         </TouchableOpacity>
@@ -528,7 +941,7 @@ export default function EditActivityScreen() {
           <ScrollView horizontal style={styles.photoList}>
             {photos.map((photo, index) => (
               <View key={index} style={styles.photoContainer}>
-                <Image source={{ uri: photo }} style={styles.photo} />
+                <Image source={{ uri: photo }} />
                 <TouchableOpacity
                   style={styles.removePhotoButton}
                   onPress={() => handleRemovePhoto(index)}
@@ -566,22 +979,49 @@ export default function EditActivityScreen() {
       </TouchableOpacity>
 
       {showMap && (
-        <View style={styles.mapModal}>
-          <View style={styles.mapHeader}>
-            <Text style={styles.mapTitle}>Edit Route</Text>
-            <TouchableOpacity onPress={() => setShowMap(false)}>
-              <Text style={styles.doneButton}>Done</Text>
-            </TouchableOpacity>
+        <Modal
+          visible={showMap}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setShowMap(false)}
+        >
+          <View style={styles.mapModal}>
+            <View style={styles.mapHeader}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setShowMap(false)}
+              >
+                <Ionicons
+                  name="arrow-back"
+                  size={24}
+                  color={theme.colors.navy}
+                />
+              </TouchableOpacity>
+              <Text style={styles.mapTitle}>Edit Route</Text>
+              <TouchableOpacity
+                style={styles.doneButton}
+                onPress={() => setShowMap(false)}
+              >
+                <Text style={styles.doneButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <WebView
+              ref={webViewRef}
+              style={styles.mapWebView}
+              source={{ html: generateMapHTML() }}
+              onMessage={handleMapMessage}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              scalesPageToFit={false}
+              scrollEnabled={true}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+              nestedScrollEnabled={true}
+              mixedContentMode="compatibility"
+            />
           </View>
-          <WebView
-            ref={webViewRef}
-            style={styles.map}
-            source={{ html: generateMapHTML() }}
-            onMessage={handleMapMessage}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-          />
-        </View>
+        </Modal>
       )}
 
       <DateTimePickerModal
@@ -758,24 +1198,6 @@ const styles = StyleSheet.create({
     color: theme.colors.burntOrange,
     fontSize: 16,
   },
-  mapModal: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: theme.colors.white,
-  },
-  mapHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingTop: 50,
-    backgroundColor: theme.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
   mapTitle: {
     fontSize: 18,
     fontWeight: "600",
@@ -787,6 +1209,49 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   map: {
+    flex: 1,
+  },
+  mapLoading: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: [{ translateX: -50 }, { translateY: -50 }],
+    alignItems: "center",
+  },
+  mapLoadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
+  mapModal: {
+    flex: 1,
+    backgroundColor: theme.colors.white,
+  },
+  mapHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "ios" ? 50 : 20,
+    paddingBottom: 16,
+    backgroundColor: theme.colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  backButton: {
+    padding: 8,
+  },
+  doneButtonText: {
+    color: theme.colors.forest,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  mapWebView: {
     flex: 1,
   },
 });

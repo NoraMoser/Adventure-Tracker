@@ -60,7 +60,9 @@
         "SCHEDULE_EXACT_ALARM"
       ],
       "softwareKeyboardLayoutMode": "pan",
-      "useNextNotificationsApi": true
+      "useNextNotificationsApi": true,
+      "allowFontScaling": false
+
     },
     "web": {
       "favicon": "./assets/favicon.png"

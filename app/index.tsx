@@ -1548,20 +1548,24 @@ const styles = StyleSheet.create({
   },
   welcomeBar: {
     backgroundColor: theme.colors.forest + "10",
-    paddingVertical: 8,
+    paddingVertical: 12, // Increased from 8
     paddingHorizontal: 15,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.forest + "20",
-  },
-  welcomeContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    minHeight: 44, // Add minimum height
   },
   welcomeText: {
     fontSize: 14,
     color: theme.colors.forest,
     fontWeight: "500",
+    lineHeight: 20, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlignVertical: "center", // Android-specific fix
+  },
+  welcomeContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContainer: {
     flex: 1,
@@ -1577,6 +1581,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 15,
+    lineHeight: 28, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
   },
   statsGrid: {
     flexDirection: "row",
@@ -1591,6 +1597,23 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 10,
     alignItems: "center",
+    minHeight: 120, // Add minimum height
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: theme.colors.navy,
+    lineHeight: 32, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlignVertical: 'center', // Android-specific fix
+  },
+  statLabel: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 4,
+    lineHeight: 16, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center', // Ensure center alignment
   },
   statIconContainer: {
     width: 40,
@@ -1599,16 +1622,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: theme.colors.navy,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: theme.colors.gray,
-    marginTop: 4,
   },
   quickStats: {
     flexDirection: "row",
@@ -1620,15 +1633,20 @@ const styles = StyleSheet.create({
   quickStatItem: {
     alignItems: "center",
   },
-  quickStatValue: {
+ quickStatValue: {
     fontSize: 16,
     fontWeight: "600",
     color: theme.colors.navy,
+    lineHeight: 22, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
   },
   quickStatLabel: {
     fontSize: 11,
     color: theme.colors.gray,
     marginTop: 2,
+    lineHeight: 15, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center',
   },
   quickStatDivider: {
     width: 1,
@@ -1665,11 +1683,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 4,
+    lineHeight: 20, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center',
   },
   friendButtonSubtitle: {
     fontSize: 11,
     color: theme.colors.gray,
     textAlign: "center",
+    lineHeight: 15, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
   },
   mapSection: {
     backgroundColor: theme.colors.white,
@@ -1781,11 +1804,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: theme.colors.navy,
+    lineHeight: 22, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
   },
   recentMeta: {
     fontSize: 12,
     color: theme.colors.gray,
     marginTop: 2,
+    lineHeight: 16, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
   },
   viewStatsButton: {
     flexDirection: "row",
@@ -1836,6 +1863,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
     textAlign: "center",
+    lineHeight: 22, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+  },
+  quickActionText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 4,
+    lineHeight: 16, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center',
   },
   quickActions: {
     flexDirection: "row",
@@ -1845,11 +1882,6 @@ const styles = StyleSheet.create({
   quickAction: {
     alignItems: "center",
     position: "relative",
-  },
-  quickActionText: {
-    fontSize: 12,
-    color: theme.colors.gray,
-    marginTop: 4,
   },
   quickActionBadge: {
     position: "absolute",
@@ -1908,16 +1940,25 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: theme.colors.navy,
+    lineHeight: 28, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center',
   },
   profileStats: {
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 5,
+    lineHeight: 20, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center',
   },
   profileEmail: {
     fontSize: 12,
     color: theme.colors.lightGray,
     marginTop: 3,
+    lineHeight: 16, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    textAlign: 'center',
   },
   editIndicator: {
     flexDirection: "row",
@@ -1956,6 +1997,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.gray,
     marginLeft: 15,
+    lineHeight: 22, // Add explicit line height
+    includeFontPadding: false, // Android-specific fix
+    flex: 1, // Allow text to expand
   },
   sidebarItemTextActive: {
     color: theme.colors.forest,
