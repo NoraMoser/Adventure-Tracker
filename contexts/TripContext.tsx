@@ -1,4 +1,4 @@
-// contexts/TripContext.tsx
+// contexts/TripContext.tsx - Enhanced version with detailed trip detection
 import React, {
   createContext,
   useContext,
@@ -36,6 +36,18 @@ export interface Trip {
   merged_from?: string[];
 }
 
+interface TripCluster {
+  id: string;
+  suggestedName: string;
+  startDate: Date;
+  endDate: Date;
+  items: any[];
+  spotCount: number;
+  activityCount: number;
+  primaryLocation?: string;
+  totalDistance?: number;
+}
+
 interface TripContextType {
   trips: Trip[];
   currentUserId: string | null;
@@ -57,12 +69,19 @@ interface TripContextType {
   getSharedTrips: () => Trip[];
   getMyTrips: () => Trip[];
   runAutoDetection: () => Promise<void>;
+  runDetailedAutoDetection: () => Promise<void>;
   refreshTrips: () => Promise<void>;
   canTripsBeJoined: (trip1: Trip, trip2: Trip) => boolean;
   getSuggestedMerges: () => { autoTrip: Trip; sharedTrip: Trip }[];
   triggerAutoDetection: () => Promise<void>;
   checkForAutoTrip: (item: any) => Promise<Trip | null>;
   smartAddToTrip: (item: any, type: "activity" | "spot") => Promise<void>;
+  calculateDistance: (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ) => number;
 }
 
 const TripContext = createContext<TripContextType | undefined>(undefined);
@@ -78,27 +97,40 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   const currentUserId = user?.id || null;
   const hasRunAutoDetection = useRef(false);
   const autoDetectionInProgress = useRef(false);
+  const rejectedTripIds = useRef<Set<string>>(new Set());
 
   // Helper function to calculate distance between two locations
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
   const areLocationsNearby = (
     loc1: any,
     loc2: any,
     thresholdKm: number = 50
   ): boolean => {
     if (!loc1 || !loc2) return false;
-
-    const R = 6371; // Earth's radius in km
-    const dLat = ((loc2.latitude - loc1.latitude) * Math.PI) / 180;
-    const dLon = ((loc2.longitude - loc1.longitude) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((loc1.latitude * Math.PI) / 180) *
-        Math.cos((loc2.latitude * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
+    const distance = calculateDistance(
+      loc1.latitude,
+      loc1.longitude,
+      loc2.latitude,
+      loc2.longitude
+    );
     return distance <= thresholdKm;
   };
 
@@ -118,13 +150,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     hasRunAutoDetection.current = false;
+    rejectedTripIds.current.clear();
   }, [currentUserId]);
 
   // Export a function to trigger auto-detection manually
   const triggerAutoDetection = async () => {
     if (!hasRunAutoDetection.current && !autoDetectionInProgress.current) {
       hasRunAutoDetection.current = true;
-      await runAutoDetection();
+      await runDetailedAutoDetection();
     }
   };
 
@@ -291,13 +324,46 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       return null; // Don't add to any trip if already in one
     }
 
+    // Check if location is near home (if configured)
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("home_location, home_radius")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.home_location) {
+        const homeRadius = profile.home_radius || 2; // Default 2km
+        const itemLocation = item.location || (item.route && item.route[0]);
+        if (itemLocation) {
+          const distanceFromHome = calculateDistance(
+            itemLocation.latitude,
+            itemLocation.longitude,
+            profile.home_location.latitude,
+            profile.home_location.longitude
+          );
+
+          if (distanceFromHome <= homeRadius) {
+            console.log("Item is within home area, not suggesting trip");
+            return null;
+          }
+        }
+      }
+    }
+
     // Get item date and location
     const itemDate =
       item.activityDate || item.locationDate || item.date || new Date();
     const itemLocation = item.location || (item.route && item.route[0]) || null;
 
     // Find trips that could match based on date AND location proximity
+    const now = new Date();
     const candidateTrips = trips.filter((trip) => {
+      // Skip old trips (older than 90 days)
+      const tripAge = Math.abs(now.getTime() - trip.end_date.getTime());
+      const maxAge = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
+      if (tripAge > maxAge) return false;
+
       // Check date proximity (within 7 days)
       const tripStart = new Date(trip.start_date);
       const tripEnd = new Date(trip.end_date);
@@ -315,14 +381,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Check location proximity if we have location data
       if (itemLocation && trip.items && trip.items.length > 0) {
-        // Check if any item in the trip is nearby (within 50km)
+        // Check if any item in the trip is nearby (within 100km)
         const hasNearbyItem = trip.items.some((tripItem) => {
           const tripItemLocation =
             tripItem.data.location ||
             (tripItem.data.route && tripItem.data.route[0]);
           return (
             tripItemLocation &&
-            areLocationsNearby(itemLocation, tripItemLocation)
+            areLocationsNearby(itemLocation, tripItemLocation, 100)
           );
         });
 
@@ -521,7 +587,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       );
 
       // Optional: Still reload from database to ensure consistency
-      // But the UI will update immediately with the local state change
       await loadTrips();
     } catch (error) {
       console.error("Error updating trip:", error);
@@ -807,27 +872,21 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     return suggestions;
   };
 
-  const runAutoDetection = async () => {
-    console.log("runAutoDetection called", {
-      currentUserId,
-      activities: activities?.length || 0,
-      savedSpots: savedSpots?.length || 0,
-      autoDetectionInProgress: autoDetectionInProgress.current,
-    });
-
+  // Enhanced auto-detection with detailed trip information
+  const runDetailedAutoDetection = async () => {
     if (
       !currentUserId ||
       !activities ||
       !savedSpots ||
       autoDetectionInProgress.current
     ) {
-      console.log("Exiting runAutoDetection early");
+      console.log("Exiting runDetailedAutoDetection early");
       return;
     }
 
     try {
       autoDetectionInProgress.current = true;
-      console.log("Running trip auto-detection...");
+      console.log("Running detailed trip auto-detection...");
 
       // Combine all items with dates and locations
       const allItems = [
@@ -868,8 +927,8 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      // Group items into clusters based on date and location proximity
-      const clusters: any[] = [];
+      // Create enhanced clusters with more details
+      const clusters: TripCluster[] = [];
 
       for (const item of itemsNotInTrips) {
         let addedToCluster = false;
@@ -898,7 +957,8 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
             if (item.location) {
               const isNearby = cluster.items.some(
                 (ci: any) =>
-                  ci.location && areLocationsNearby(item.location, ci.location)
+                  ci.location &&
+                  areLocationsNearby(item.location, ci.location, 50)
               );
               if (isNearby) {
                 cluster.items.push(item);
@@ -915,105 +975,322 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         }
 
         if (!addedToCluster) {
-          clusters.push({ items: [item] });
+          clusters.push({
+            id: `cluster-${Date.now()}-${Math.random()}`,
+            suggestedName: "",
+            startDate: new Date(item.date),
+            endDate: new Date(item.date),
+            items: [item],
+            spotCount: 0,
+            activityCount: 0,
+          });
         }
       }
 
-      console.log(`Created ${clusters.length} trip clusters`);
+      // Enhance clusters with metadata
+      for (const cluster of clusters) {
+        const dates = cluster.items.map((i: any) => new Date(i.date));
+        cluster.startDate = new Date(
+          Math.min(...dates.map((d) => d.getTime()))
+        );
+        cluster.endDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+        cluster.spotCount = cluster.items.filter(
+          (i: any) => i.type === "spot"
+        ).length;
+        cluster.activityCount = cluster.items.filter(
+          (i: any) => i.type === "activity"
+        ).length;
+
+        // Generate a suggested name
+        const dateRange =
+          cluster.startDate.toDateString() === cluster.endDate.toDateString()
+            ? cluster.startDate.toLocaleDateString()
+            : `${cluster.startDate.toLocaleDateString()} - ${cluster.endDate.toLocaleDateString()}`;
+        cluster.suggestedName = `Trip ${dateRange}`;
+
+        // Try to identify primary location (most common location area)
+        const locations = cluster.items
+          .filter((i: any) => i.location)
+          .map((i: any) => i.location);
+        if (locations.length > 0) {
+          // Simple approach: use the first location's general area
+          // You could enhance this with reverse geocoding
+          cluster.primaryLocation = "Multiple locations";
+        }
+
+        // Calculate total distance for activities
+        cluster.totalDistance = cluster.items
+          .filter((i: any) => i.type === "activity" && i.data.distance)
+          .reduce((sum: number, i: any) => sum + (i.data.distance || 0), 0);
+      }
+
+      console.log(`Created ${clusters.length} enhanced trip clusters`);
 
       if (clusters.length === 0) {
-        console.log("No trip clusters found");
         autoDetectionInProgress.current = false;
         return;
       }
 
-      return new Promise<void>((resolve) => {
-        Alert.alert(
-          "Trips Detected!",
-          `Found ${clusters.length} potential trip${
-            clusters.length > 1 ? "s" : ""
-          } from your activities and spots. Would you like to create ${
-            clusters.length > 1 ? "them" : "it"
-          }?`,
-          [
-            {
-              text: "Not now",
-              style: "cancel",
-              onPress: () => {
-                console.log("User declined auto-trip creation");
-                autoDetectionInProgress.current = false;
-                resolve();
-              },
-            },
-            {
-              text: "Create Trips",
-              onPress: async () => {
-                try {
-                  for (const cluster of clusters) {
-                    const dates = cluster.items.map(
-                      (i: any) => new Date(i.date)
-                    );
-                    const startDate = new Date(
-                      Math.min(...dates.map((d) => d.getTime()))
-                    );
-                    const endDate = new Date(
-                      Math.max(...dates.map((d) => d.getTime()))
-                    );
-
-                    const tripName =
-                      startDate.toDateString() === endDate.toDateString()
-                        ? `Trip on ${startDate.toLocaleDateString()}`
-                        : `Trip ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
-
-                    const newTrip = await createTrip({
-                      name: tripName,
-                      start_date: startDate,
-                      end_date: endDate,
-                      created_by: currentUserId,
-                      auto_generated: true,
-                      tagged_friends: [],
-                    });
-
-                    // Add all items to the trip
-                    for (const item of cluster.items) {
-                      const { error } = await supabase
-                        .from("trip_items")
-                        .insert({
-                          trip_id: newTrip.id,
-                          type: item.type,
-                          data: item.data,
-                          added_by: currentUserId,
-                        });
-
-                      if (error) {
-                        console.error("Error adding item to trip:", error);
-                      }
-                    }
-                  }
-
-                  await loadTrips();
-                  Alert.alert(
-                    "Success",
-                    `Created ${clusters.length} trip${
-                      clusters.length > 1 ? "s" : ""
-                    }!`
-                  );
-                } catch (error) {
-                  console.error("Error in auto-detection:", error);
-                  Alert.alert("Error", "Failed to create trips");
-                } finally {
-                  autoDetectionInProgress.current = false;
-                  resolve();
-                }
-              },
-            },
-          ]
-        );
-      });
+      // Show individual trip selection
+      await showTripSelectionUI(clusters);
     } catch (error) {
-      console.error("Error in auto-detection:", error);
+      console.error("Error in detailed auto-detection:", error);
       autoDetectionInProgress.current = false;
     }
+  };
+
+  // Fixed showTripSelectionUI function for TripContext.tsx
+  // This properly stores rejections without requiring a trip_id
+
+  const showTripSelectionUI = async (clusters: TripCluster[]) => {
+    let currentIndex = 0;
+    const selectedClusters: TripCluster[] = [];
+
+    // First, we need to modify the trip_item_rejections table to make trip_id optional
+    // Run this SQL in Supabase:
+    /*
+  ALTER TABLE trip_item_rejections 
+  DROP CONSTRAINT trip_item_rejections_trip_id_fkey;
+  
+  ALTER TABLE trip_item_rejections 
+  ALTER COLUMN trip_id DROP NOT NULL;
+  
+  -- Update the unique constraint to work without trip_id for cluster rejections
+  ALTER TABLE trip_item_rejections 
+  DROP CONSTRAINT trip_item_rejections_user_id_item_id_item_type_trip_id_key;
+  
+  ALTER TABLE trip_item_rejections 
+  ADD CONSTRAINT trip_item_rejections_unique 
+  UNIQUE(user_id, item_id, item_type);
+  */
+
+    // Check if any items in cluster were previously rejected
+    const checkIfClusterRejected = async (
+      cluster: TripCluster
+    ): Promise<boolean> => {
+      if (!currentUserId) return false;
+
+      try {
+        // Get all item IDs from the cluster
+        const itemIds = cluster.items.map((item) => item.data.id);
+
+        // Check if ANY of these items were rejected
+        const { data: rejections, error } = await supabase
+          .from("trip_item_rejections")
+          .select("item_id")
+          .eq("user_id", currentUserId)
+          .in("item_id", itemIds);
+
+        if (error) {
+          console.error("Error checking rejections:", error);
+          return false;
+        }
+
+        // If we found any rejections, skip this cluster
+        return rejections && rejections.length > 0;
+      } catch (error) {
+        console.error("Error in checkIfClusterRejected:", error);
+        return false;
+      }
+    };
+
+    // Store rejection for all items in a cluster
+    const rejectCluster = async (cluster: TripCluster) => {
+      if (!currentUserId) return;
+
+      console.log(`Rejecting cluster with ${cluster.items.length} items`);
+
+      try {
+        // Insert each item rejection individually
+        for (const item of cluster.items) {
+          const { error } = await supabase
+            .from("trip_item_rejections")
+            .insert({
+              user_id: currentUserId,
+              item_id: item.data.id,
+              item_type: item.type,
+              trip_id: null, // No specific trip, just rejecting the auto-detection
+              rejected_at: new Date().toISOString(),
+            })
+            .select(); // Add select to see if insert succeeded
+
+          if (error) {
+            // If already exists, that's fine
+            if (!error.message.includes("duplicate")) {
+              console.error(`Error rejecting item ${item.data.id}:`, error);
+            }
+          } else {
+            console.log(`Rejected item ${item.data.id}`);
+          }
+        }
+      } catch (error) {
+        console.error("Error storing cluster rejections:", error);
+      }
+    };
+
+    const showNextCluster = async () => {
+      // Skip already rejected clusters
+      while (currentIndex < clusters.length) {
+        const cluster = clusters[currentIndex];
+        const isRejected = await checkIfClusterRejected(cluster);
+
+        if (!isRejected) {
+          break; // Found a non-rejected cluster to show
+        }
+
+        console.log(`Skipping previously rejected cluster ${currentIndex + 1}`);
+        currentIndex++;
+      }
+
+      if (currentIndex >= clusters.length) {
+        // All clusters reviewed or rejected
+        if (selectedClusters.length === 0) {
+          console.log("No trips to create (all rejected or skipped)");
+          autoDetectionInProgress.current = false;
+          return;
+        }
+        finalizeTripCreation(selectedClusters);
+        return;
+      }
+
+      const cluster = clusters[currentIndex];
+      const itemList = cluster.items
+        .slice(0, 5)
+        .map((item: any) => {
+          const name =
+            item.data.name || item.data.description || "Unnamed item";
+          const type = item.type === "activity" ? "🏃" : "📍";
+          const date = new Date(item.date).toLocaleDateString();
+          return `${type} ${name} (${date})`;
+        })
+        .join("\n");
+
+      const moreItems =
+        cluster.items.length > 5
+          ? `\n... and ${cluster.items.length - 5} more items`
+          : "";
+
+      const message =
+        `📅 ${cluster.suggestedName}\n` +
+        `📊 ${cluster.spotCount} spots, ${cluster.activityCount} activities\n` +
+        `${
+          cluster.totalDistance
+            ? `🏃 Total distance: ${(cluster.totalDistance / 1000).toFixed(
+                1
+              )}km\n`
+            : ""
+        }` +
+        `\nItems:\n${itemList}${moreItems}`;
+
+      const remainingCount = clusters.length - currentIndex;
+      const title =
+        remainingCount > 1
+          ? `Trip ${currentIndex + 1} of ${clusters.length}`
+          : "Suggested Trip";
+
+      Alert.alert(title, message, [
+        {
+          text: "Don't Ask Again",
+          style: "destructive",
+          onPress: async () => {
+            // Store rejection for all items in this cluster
+            await rejectCluster(cluster);
+            currentIndex++;
+            showNextCluster();
+          },
+        },
+        {
+          text: "Skip For Now",
+          style: "cancel",
+          onPress: () => {
+            currentIndex++;
+            showNextCluster();
+          },
+        },
+        {
+          text: "Create Trip",
+          style: "default",
+          onPress: () => {
+            selectedClusters.push(cluster);
+            currentIndex++;
+            showNextCluster();
+          },
+        },
+      ]);
+    };
+
+    // Helper function to create selected trips
+    const finalizeTripCreation = async (selected: TripCluster[]) => {
+      if (selected.length === 0) {
+        autoDetectionInProgress.current = false;
+        return;
+      }
+
+      try {
+        for (const cluster of selected) {
+          const newTrip = await createTrip({
+            name: cluster.suggestedName,
+            start_date: cluster.startDate,
+            end_date: cluster.endDate,
+            created_by: currentUserId!,
+            auto_generated: true,
+            tagged_friends: [],
+          });
+
+          // Add all items to the trip
+          for (const item of cluster.items) {
+            await supabase.from("trip_items").insert({
+              trip_id: newTrip.id,
+              type: item.type,
+              data: item.data,
+              added_by: currentUserId,
+            });
+          }
+        }
+
+        await loadTrips();
+        Alert.alert(
+          "Success",
+          `Created ${selected.length} trip${selected.length > 1 ? "s" : ""}!`
+        );
+      } catch (error) {
+        console.error("Error creating trips:", error);
+        Alert.alert("Error", "Failed to create some trips");
+      } finally {
+        autoDetectionInProgress.current = false;
+      }
+    };
+
+    // Start the selection process
+    showNextCluster();
+  };
+
+  // Add this helper function to the TripContext to clear rejections if needed
+  const clearTripRejections = async (itemIds?: string[]) => {
+    if (!currentUserId) return;
+
+    try {
+      let query = supabase
+        .from("trip_item_rejections")
+        .delete()
+        .eq("user_id", currentUserId);
+
+      if (itemIds && itemIds.length > 0) {
+        query = query.in("item_id", itemIds);
+      }
+
+      const { error } = await query;
+
+      if (error) throw error;
+      console.log("Cleared trip rejections");
+    } catch (error) {
+      console.error("Error clearing rejections:", error);
+    }
+  };
+  // Keep the original runAutoDetection for backward compatibility
+  const runAutoDetection = async () => {
+    // Redirect to the enhanced version
+    await runDetailedAutoDetection();
   };
 
   return (
@@ -1033,12 +1310,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         getSharedTrips,
         getMyTrips,
         runAutoDetection,
+        runDetailedAutoDetection,
         refreshTrips,
         canTripsBeJoined,
         getSuggestedMerges,
         triggerAutoDetection,
         checkForAutoTrip,
         smartAddToTrip,
+        calculateDistance,
       }}
     >
       {children}

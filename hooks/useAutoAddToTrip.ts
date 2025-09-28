@@ -1,6 +1,8 @@
-// hooks/useAutoAddToTrip.ts - Updated version
+// hooks/useAutoAddToTrip.ts - Improved version with rejection tracking
 import { Alert } from "react-native";
 import { useTrips } from "../contexts/TripContext";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../contexts/AuthContext";
 
 interface LocationData {
   latitude: number;
@@ -9,6 +11,7 @@ interface LocationData {
 
 export function useAutoAddToTrip() {
   const { trips, addToTrip, checkForAutoTrip } = useTrips();
+  const { user } = useAuth();
 
   // Calculate distance between two coordinates in km
   const calculateDistance = (
@@ -39,21 +42,74 @@ export function useAutoAddToTrip() {
     location: LocationData,
     promptUser: boolean = true
   ) => {
+    // Check if user has previously rejected this item for trips
+    if (user && promptUser) {
+      try {
+        const { data: rejections } = await supabase
+          .from('trip_item_rejections')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('item_id', item.id)
+          .eq('item_type', itemType);
+        
+        if (rejections && rejections.length > 0) {
+          console.log('Item was previously rejected for trips');
+          return null;
+        }
+      } catch (error) {
+        console.error('Error checking rejections:', error);
+      }
+    }
+
+    // Check if location is near home
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('home_location, home_radius')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile?.home_location) {
+        const homeRadius = profile.home_radius || 2; // Default 2km
+        const distanceFromHome = calculateDistance(
+          location.latitude,
+          location.longitude,
+          profile.home_location.latitude,
+          profile.home_location.longitude
+        );
+        
+        if (distanceFromHome <= homeRadius) {
+          console.log('Item is within home area, not suggesting trip');
+          return null;
+        }
+      }
+    }
+    
     // Get item date
     const itemDate =
       item.activityDate || item.locationDate || item.timestamp || new Date();
+    const itemDateObj = new Date(itemDate);
 
-    // Find matching trips (within 30 days and nearby)
+    // Find matching trips (filter out old trips and check date/location proximity)
     const candidateTrips = trips.filter((trip) => {
-      // Check date proximity (within 30 days)
       const tripStart = new Date(trip.start_date);
       const tripEnd = new Date(trip.end_date);
-      const itemDateObj = new Date(itemDate);
+      const now = new Date();
+      
+      // Skip trips older than 90 days
+      const tripAge = Math.abs(now.getTime() - tripEnd.getTime());
+      const maxAge = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
+      
+      if (tripAge > maxAge) {
+        console.log(`Skipping old trip: ${trip.name}`);
+        return false;
+      }
 
+      // Check date proximity (within 7 days instead of 30)
       const expandedStart = new Date(tripStart);
-      expandedStart.setDate(expandedStart.getDate() - 30);
+      expandedStart.setDate(expandedStart.getDate() - 7);
       const expandedEnd = new Date(tripEnd);
-      expandedEnd.setDate(expandedEnd.getDate() + 30);
+      expandedEnd.setDate(expandedEnd.getDate() + 7);
 
       const isDateNearby =
         itemDateObj >= expandedStart && itemDateObj <= expandedEnd;
@@ -67,7 +123,7 @@ export function useAutoAddToTrip() {
             tripItem.data.location ||
             (tripItem.data.route && tripItem.data.route[0]);
 
-          if (!tripItemLocation) return true; // If no location, consider it a match
+          if (!tripItemLocation) return true;
 
           const distance = calculateDistance(
             location.latitude,
@@ -86,8 +142,7 @@ export function useAutoAddToTrip() {
     });
 
     if (candidateTrips.length === 0) {
-      // No existing trips match - DON'T create a new trip automatically
-      // Just save the item without adding to any trip
+      // No existing trips match - don't auto-create
       return null;
     }
 
@@ -96,7 +151,7 @@ export function useAutoAddToTrip() {
       return new Promise((resolve) => {
         const buttons = [];
         
-        // Add trip options first (limit to 2)
+        // Add trip options first (limit to 2 for UI clarity)
         candidateTrips.slice(0, 2).forEach(trip => {
           buttons.push({
             text: trip.name,
@@ -107,17 +162,36 @@ export function useAutoAddToTrip() {
           });
         });
         
-        // Add skip option last
+        // Add "Don't ask again" option
         buttons.push({
-          text: "Save without trip",
+          text: "Don't add to trips",
           style: "cancel" as const,
-          onPress: () => resolve(null)
+          onPress: async () => {
+            // Store rejection for all candidate trips
+            if (user) {
+              try {
+                const rejections = candidateTrips.map(trip => ({
+                  user_id: user.id,
+                  item_id: item.id,
+                  item_type: itemType,
+                  trip_id: trip.id
+                }));
+                
+                await supabase
+                  .from('trip_item_rejections')
+                  .insert(rejections);
+              } catch (error) {
+                console.error('Error storing rejection:', error);
+              }
+            }
+            resolve(null);
+          }
         });
 
         Alert.alert(
           "Add to Trip?",
           candidateTrips.length > 2 
-            ? `${candidateTrips.length} trips match. Choose one or save without trip:`
+            ? `Found ${candidateTrips.length} matching trips. Choose one:`
             : "Multiple trips match this location:",
           buttons
         );
@@ -137,7 +211,7 @@ export function useAutoAddToTrip() {
       return targetTrip;
     }
 
-    // Add to trip
+    // Add to trip with user prompt
     if (promptUser) {
       return new Promise((resolve) => {
         Alert.alert(
@@ -145,9 +219,26 @@ export function useAutoAddToTrip() {
           `Would you like to add "${itemName}" to your trip "${targetTrip.name}"?`,
           [
             {
-              text: "Save without trip",
+              text: "Don't add to trips",
               style: "default",
-              onPress: () => resolve(null),
+              onPress: async () => {
+                // Store rejection in Supabase
+                if (user) {
+                  try {
+                    await supabase
+                      .from('trip_item_rejections')
+                      .insert({
+                        user_id: user.id,
+                        item_id: item.id,
+                        item_type: itemType,
+                        trip_id: targetTrip.id
+                      });
+                  } catch (error) {
+                    console.error('Error storing rejection:', error);
+                  }
+                }
+                resolve(null);
+              },
             },
             {
               text: "Add to trip",
@@ -165,8 +256,39 @@ export function useAutoAddToTrip() {
     }
   };
 
+  // New function to clear rejections for an item (useful if user changes their mind)
+  const clearRejections = async (itemId: string, itemType: string) => {
+    if (!user) return;
+    
+    try {
+      await supabase
+        .from('trip_item_rejections')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('item_id', itemId)
+        .eq('item_type', itemType);
+    } catch (error) {
+      console.error('Error clearing rejections:', error);
+    }
+  };
+
+  // New function to manually add item to trip (bypasses rejection check)
+  const forceAddToTrip = async (
+    tripId: string,
+    item: any,
+    itemType: "activity" | "spot"
+  ) => {
+    // Clear any rejections for this item
+    await clearRejections(item.id, itemType);
+    
+    // Add to trip
+    await addToTrip(tripId, item, itemType);
+  };
+
   return {
     checkAndAddToTrip,
     calculateDistance,
+    clearRejections,
+    forceAddToTrip
   };
 }

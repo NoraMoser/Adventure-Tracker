@@ -53,6 +53,7 @@ export default function AddLocationScreen() {
   const [showCamera, setShowCamera] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const [cameraKey, setCameraKey] = useState(0);
+  const [zoom, setZoom] = useState(0);
 
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
@@ -435,8 +436,41 @@ export default function AddLocationScreen() {
           ref={cameraRef}
           style={styles.camera}
           facing="back"
+          zoom={zoom} // Add zoom prop
         />
         <View style={styles.cameraOverlay}>
+          {/* Zoom controls */}
+          <View style={styles.zoomControls}>
+            <TouchableOpacity
+              style={styles.zoomButton}
+              onPress={() => setZoom(Math.max(0, zoom - 0.1))}
+              disabled={zoom <= 0}
+            >
+              <Ionicons
+                name="remove-circle"
+                size={40}
+                color={zoom <= 0 ? "rgba(255,255,255,0.3)" : "white"}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.zoomIndicator}>
+              <Text style={styles.zoomText}>
+                {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.zoomButton}
+              onPress={() => setZoom(Math.min(1, zoom + 0.1))}
+              disabled={zoom >= 1}
+            >
+              <Ionicons
+                name="add-circle"
+                size={40}
+                color={zoom >= 1 ? "rgba(255,255,255,0.3)" : "white"}
+              />
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
             <View style={styles.captureButtonInner} />
           </TouchableOpacity>
@@ -445,6 +479,7 @@ export default function AddLocationScreen() {
             onPress={() => {
               setCameraKey((prev) => prev + 1);
               setShowCamera(false);
+              setZoom(0); // Reset zoom when closing
             }}
           >
             <Ionicons name="close" size={30} color="white" />
@@ -1082,5 +1117,32 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     backgroundColor: "white",
+  },
+  zoomControls: {
+    position: "absolute",
+    bottom: 120,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  zoomButton: {
+    padding: 10,
+  },
+  zoomIndicator: {
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginHorizontal: 20,
+    minWidth: 70,
+    alignItems: "center",
+  },
+  zoomText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

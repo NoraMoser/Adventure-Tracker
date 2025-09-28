@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  PanResponder,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -22,6 +23,15 @@ import { theme } from "../constants/theme";
 import { useLocation as useLocationContext } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 import { LocationService, PlaceSuggestion } from "../services/locationService";
+import Slider from "@react-native-community/slider";
+import {
+  GestureHandlerRootView,
+  PinchGestureHandler,
+  GestureEvent,
+  HandlerStateChangeEvent,
+  State,
+} from "react-native-gesture-handler";
+import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
 
 export default function QuickPhotoScreen() {
   const router = useRouter();
@@ -44,7 +54,9 @@ export default function QuickPhotoScreen() {
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<PlaceSuggestion | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-
+  const [zoom, setZoom] = useState(0);
+  const scale = useSharedValue(1);
+  const baseScale = useSharedValue(1);
   useEffect(() => {
     console.log("QuickPhotoScreen mounted");
 
@@ -184,6 +196,28 @@ export default function QuickPhotoScreen() {
   const removePhoto = (index: number) => {
     console.log("Removing photo at index:", index);
     setPhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePinchGesture = (event: GestureEvent<any>) => {
+    "worklet";
+    scale.value = baseScale.value * event.nativeEvent.scale;
+    const zoomValue = Math.min(Math.max(scale.value - 1, 0), 1);
+    runOnJS(setZoom)(zoomValue);
+  };
+
+  const handlePinchStateChange = (event: HandlerStateChangeEvent<any>) => {
+    "worklet";
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      // Pinch ended
+      if (scale.value < 1) {
+        scale.value = 1;
+        runOnJS(setZoom)(0);
+      }
+      baseScale.value = scale.value;
+    } else if (event.nativeEvent.state === State.BEGAN) {
+      // Pinch started
+      baseScale.value = scale.value;
+    }
   };
 
   const saveQuickLog = async () => {
@@ -416,27 +450,92 @@ export default function QuickPhotoScreen() {
 
   if (showCamera) {
     return (
-      <View style={styles.cameraContainer}>
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="back"
-          onCameraReady={() => console.log("Camera ready")}
-        />
-        <View style={styles.cameraOverlay}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => setShowCamera(false)}
-          >
-            <Ionicons name="close" size={30} color="white" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <GestureHandlerRootView style={styles.cameraContainer}>
+        <PinchGestureHandler
+          onGestureEvent={handlePinchGesture}
+          onHandlerStateChange={handlePinchStateChange}
+        >
+          <Animated.View style={styles.cameraContainer}>
+            <CameraView
+              ref={cameraRef}
+              style={styles.camera}
+              facing="back"
+              zoom={zoom}
+              onCameraReady={() => console.log("Camera ready")}
+              // REMOVE: {...panResponder.panHandlers}
+            />
+            <View style={styles.cameraOverlay}>
+              {/* Zoom indicator */}
+              <View
+                style={[styles.zoomIndicator, { opacity: zoom > 0 ? 1 : 0.6 }]}
+              >
+                <Text style={styles.zoomText}>
+                  {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
+                </Text>
+              </View>
+
+              {/* Zoom slider */}
+              <View style={styles.zoomSliderContainer}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newZoom = Math.max(0, zoom - 0.1);
+                    setZoom(newZoom);
+                    scale.value = 1 + newZoom;
+                  }}
+                >
+                  <Ionicons name="remove" size={24} color="white" />
+                </TouchableOpacity>
+
+                <Slider
+                  style={styles.zoomSlider}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={zoom}
+                  onValueChange={(value) => {
+                    setZoom(value);
+                    scale.value = 1 + value;
+                  }}
+                  minimumTrackTintColor="#FFFFFF"
+                  maximumTrackTintColor="rgba(255,255,255,0.3)"
+                  thumbTintColor="#FFFFFF"
+                />
+
+                <TouchableOpacity
+                  onPress={() => {
+                    const newZoom = Math.min(1, zoom + 0.1);
+                    setZoom(newZoom);
+                    scale.value = 1 + newZoom;
+                  }}
+                >
+                  <Ionicons name="add" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.captureButton}
+                onPress={takePicture}
+              >
+                <View style={styles.captureButtonInner} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setZoom(0);
+                  scale.value = 1;
+                  baseScale.value = 1;
+                  setShowCamera(false);
+                }}
+              >
+                <Ionicons name="close" size={30} color="white" />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </PinchGestureHandler>
+      </GestureHandlerRootView>
     );
   }
+
   console.log(
     "Main UI should render - showCamera:",
     showCamera,
@@ -976,5 +1075,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.forest,
     marginLeft: 4,
+  },
+  zoomIndicator: {
+    position: "absolute",
+    top: 60,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  zoomText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  zoomSliderContainer: {
+    position: "absolute",
+    bottom: 120,
+    left: 20,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    padding: 10,
+    borderRadius: 25,
+  },
+  zoomSlider: {
+    flex: 1,
+    marginHorizontal: 10,
+    height: 40,
   },
 });

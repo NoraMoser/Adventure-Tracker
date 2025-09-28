@@ -25,6 +25,12 @@ import * as ImagePicker from "expo-image-picker";
 import { Camera, CameraView } from "expo-camera";
 import * as Location from "expo-location";
 import { LocationService, PlaceSuggestion } from "../services/locationService";
+import {
+  GestureHandlerRootView,
+  PinchGestureHandler,
+  State,
+} from "react-native-gesture-handler";
+import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
@@ -48,6 +54,9 @@ export default function SaveLocationScreen() {
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<PlaceSuggestion | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [zoom, setZoom] = useState(0);
+  const scale = useSharedValue(1);
+  const baseScale = useSharedValue(1);
 
   useEffect(() => {
     if (location) {
@@ -84,6 +93,26 @@ export default function SaveLocationScreen() {
       console.error("Error getting suggestions:", error);
     } finally {
       setLoadingSuggestions(false);
+    }
+  };
+
+  const handlePinchGesture = (event: any) => {
+    "worklet";
+    scale.value = baseScale.value * event.nativeEvent.scale;
+    const zoomValue = Math.min(Math.max(scale.value - 1, 0), 1);
+    runOnJS(setZoom)(zoomValue);
+  };
+
+  const handlePinchStateChange = (event: any) => {
+    "worklet";
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      if (scale.value < 1) {
+        scale.value = 1;
+        runOnJS(setZoom)(0);
+      }
+      baseScale.value = scale.value;
+    } else if (event.nativeEvent.state === State.BEGAN) {
+      baseScale.value = scale.value;
     }
   };
 
@@ -238,31 +267,85 @@ export default function SaveLocationScreen() {
     setPhotos(photos.filter((_, i) => i !== index));
   };
 
-  // Camera view
   if (showCamera) {
     return (
-      <View style={styles.cameraContainer}>
-        <CameraView
-          key={cameraKey}
-          ref={cameraRef}
-          style={styles.camera}
-          facing="back"
-        />
-        <View style={styles.cameraOverlay}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => {
-              setCameraKey((prev) => prev + 1);
-              setShowCamera(false);
-            }}
-          >
-            <Ionicons name="close" size={30} color="white" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <GestureHandlerRootView style={styles.cameraContainer}>
+        <PinchGestureHandler
+          onGestureEvent={handlePinchGesture}
+          onHandlerStateChange={handlePinchStateChange}
+        >
+          <Animated.View style={styles.cameraContainer}>
+            <CameraView
+              key={cameraKey}
+              ref={cameraRef}
+              style={styles.camera}
+              facing="back"
+              zoom={zoom}
+            />
+            <View style={styles.cameraOverlay}>
+              {/* Keep the zoom controls as backup/visual indicator */}
+              <View style={styles.zoomControls}>
+                <TouchableOpacity
+                  style={styles.zoomButton}
+                  onPress={() => {
+                    const newZoom = Math.max(0, zoom - 0.1);
+                    setZoom(newZoom);
+                    scale.value = 1 + newZoom;
+                  }}
+                  disabled={zoom <= 0}
+                >
+                  <Ionicons
+                    name="remove-circle"
+                    size={40}
+                    color={zoom <= 0 ? "rgba(255,255,255,0.3)" : "white"}
+                  />
+                </TouchableOpacity>
+
+                <View style={styles.zoomIndicator}>
+                  <Text style={styles.zoomText}>
+                    {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.zoomButton}
+                  onPress={() => {
+                    const newZoom = Math.min(1, zoom + 0.1);
+                    setZoom(newZoom);
+                    scale.value = 1 + newZoom;
+                  }}
+                  disabled={zoom >= 1}
+                >
+                  <Ionicons
+                    name="add-circle"
+                    size={40}
+                    color={zoom >= 1 ? "rgba(255,255,255,0.3)" : "white"}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.captureButton}
+                onPress={takePicture}
+              >
+                <View style={styles.captureButtonInner} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setCameraKey((prev) => prev + 1);
+                  setZoom(0);
+                  scale.value = 1;
+                  baseScale.value = 1;
+                  setShowCamera(false);
+                }}
+              >
+                <Ionicons name="close" size={30} color="white" />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </PinchGestureHandler>
+      </GestureHandlerRootView>
     );
   }
 
@@ -762,5 +845,32 @@ const styles = StyleSheet.create({
   refreshButton: {
     padding: 8,
     marginLeft: "auto",
+  },
+  zoomControls: {
+    position: "absolute",
+    bottom: 120,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  zoomButton: {
+    padding: 10,
+  },
+  zoomIndicator: {
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginHorizontal: 20,
+    minWidth: 70,
+    alignItems: "center",
+  },
+  zoomText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

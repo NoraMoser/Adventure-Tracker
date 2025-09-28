@@ -371,7 +371,7 @@ export default function TripDetailScreen() {
     try {
       const shareOptions = {
         units: settings?.units || "metric",
-        includeLink: false
+        includeLink: false,
       };
 
       switch (shareType) {
@@ -804,13 +804,19 @@ export default function TripDetailScreen() {
                 />
                 <Text style={styles.weatherTitle}>Weather Forecast</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.weatherDays}>
-                  {weatherData.daily.time.map((_: any, index: number) =>
-                    renderWeatherDay(weatherData.daily, index)
-                  )}
-                </View>
-              </ScrollView>
+              {weatherData?.daily?.time ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.weatherDays}>
+                    {weatherData.daily.time.map((_: any, index: number) =>
+                      renderWeatherDay(weatherData.daily, index)
+                    )}
+                  </View>
+                </ScrollView>
+              ) : (
+                <Text style={styles.weatherError}>
+                  Weather data unavailable
+                </Text>
+              )}
             </View>
           )}
 
@@ -1445,5 +1451,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.gray,
     fontWeight: "500",
+  },
+  weatherError: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    textAlign: "center",
+    padding: 20,
+    fontStyle: "italic",
   },
 });

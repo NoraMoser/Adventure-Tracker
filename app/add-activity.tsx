@@ -67,6 +67,7 @@ export default function AddActivityScreen() {
   const [hasCameraPermission, setHasCameraPermission] = useState<
     boolean | null
   >(null);
+  const [zoom, setZoom] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -154,48 +155,47 @@ export default function AddActivityScreen() {
     });
   };
 
- const handleTakePhoto = async () => {
-  console.log("Camera button tapped!");
-  console.log("Current showCamera state:", showCamera);
-  setShowCamera(true);
-  console.log("Set showCamera to true");
-};
+  const handleTakePhoto = async () => {
+    console.log("Camera button tapped!");
+    console.log("Current showCamera state:", showCamera);
+    setShowCamera(true);
+    console.log("Set showCamera to true");
+  };
 
   // Add this function to actually take the picture:
-const takePicture = async () => {
-  if (cameraRef.current) {
-    try {
-      console.log("Taking picture...");
-      
-      // Take the picture
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        base64: false,
-        skipProcessing: true,
-      });
-      
-      console.log("Photo result:", photo);
-      
-      // Add the photo to the array
-      if (photo && photo.uri) {
-        setPhotos(prevPhotos => [...prevPhotos, photo.uri]);
-      }
-      
-      // Always close camera after taking picture
-      setTimeout(() => {
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        console.log("Taking picture...");
+
+        // Take the picture
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          skipProcessing: true,
+        });
+
+        console.log("Photo result:", photo);
+
+        // Add the photo to the array
+        if (photo && photo.uri) {
+          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
+        }
+
+        // Always close camera after taking picture
+        setTimeout(() => {
+          setShowCamera(false);
+        }, 100);
+      } catch (error) {
+        console.error("Camera error:", error);
+        Alert.alert("Error", "Failed to take picture");
         setShowCamera(false);
-      }, 100);
-      
-    } catch (error) {
-      console.error("Camera error:", error);
-      Alert.alert("Error", "Failed to take picture");
+      }
+    } else {
+      console.error("Camera ref not available");
       setShowCamera(false);
     }
-  } else {
-    console.error("Camera ref not available");
-    setShowCamera(false);
-  }
-};
+  };
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -587,14 +587,54 @@ const takePicture = async () => {
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
-        <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="back"
+          zoom={zoom}
+        />
         <View style={styles.cameraOverlay}>
+          <View style={styles.zoomControls}>
+            <TouchableOpacity
+              style={styles.zoomButton}
+              onPress={() => setZoom(Math.max(0, zoom - 0.1))}
+              disabled={zoom <= 0}
+            >
+              <Ionicons
+                name="remove-circle"
+                size={40}
+                color={zoom <= 0 ? "rgba(255,255,255,0.3)" : "white"}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.zoomIndicator}>
+              <Text style={styles.zoomText}>
+                {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.zoomButton}
+              onPress={() => setZoom(Math.min(1, zoom + 0.1))}
+              disabled={zoom >= 1}
+            >
+              <Ionicons
+                name="add-circle"
+                size={40}
+                color={zoom >= 1 ? "rgba(255,255,255,0.3)" : "white"}
+              />
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
             <View style={styles.captureButtonInner} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.closeButton}
-            onPress={() => setShowCamera(false)}
+            onPress={() => {
+              setZoom(0); // Reset zoom when closing
+
+              setShowCamera(false);
+            }}
           >
             <Ionicons name="close" size={30} color="white" />
           </TouchableOpacity>
@@ -1250,5 +1290,32 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 40,
     right: 20,
+  },
+  zoomControls: {
+    position: "absolute",
+    bottom: 120,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  zoomButton: {
+    padding: 10,
+  },
+  zoomIndicator: {
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginHorizontal: 20,
+    minWidth: 70,
+    alignItems: "center",
+  },
+  zoomText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

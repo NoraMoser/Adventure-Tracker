@@ -1,11 +1,12 @@
-// app/settings.tsx - Complete Settings Screen with Profile Access
+// app/settings.tsx - Complete Settings Screen with Home Location Feature
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import * as Location from "expo-location"; // ADD THIS IMPORT
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react"; // ADD useEffect
 import {
   ActivityIndicator,
   Alert,
@@ -26,8 +27,9 @@ import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
+import { supabase } from "../lib/supabase"; // ADD THIS IMPORT
 
-// Export Modal Component
+// Export Modal Component (keeping your existing modal)
 const ExportModal = ({
   visible,
   onClose,
@@ -215,6 +217,119 @@ export default function SettingsScreen() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  
+  // NEW STATE FOR HOME LOCATION
+  const [homeLocation, setHomeLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isSettingHome, setIsSettingHome] = useState(false);
+  const [homeRadius, setHomeRadius] = useState(2); // Default 2km
+
+  // LOAD HOME LOCATION ON MOUNT
+  useEffect(() => {
+    loadHomeLocation();
+  }, [user]);
+
+  const loadHomeLocation = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from('profiles')
+      .select('home_location, home_radius')
+      .eq('id', user.id)
+      .single();
+      
+    if (data) {
+      setHomeLocation(data.home_location);
+      setHomeRadius(data.home_radius || 2);
+    }
+  };
+
+  // HOME LOCATION HANDLERS
+  const handleSetCurrentLocationAsHome = async () => {
+    if (!user) return;
+    
+    setIsSettingHome(true);
+    
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required');
+        setIsSettingHome(false);
+        return;
+      }
+      
+      const location = await Location.getCurrentPositionAsync({});
+      const newHome = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      };
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          home_location: newHome,
+          home_radius: homeRadius 
+        })
+        .eq('id', user.id);
+      
+      if (!error) {
+        setHomeLocation(newHome);
+        Alert.alert(
+          "Home Location Set", 
+          `Trip suggestions are now disabled within ${homeRadius}km of this location`
+        );
+      }
+    } catch (error) {
+      console.error('Error setting home:', error);
+      Alert.alert('Error', 'Could not set home location');
+    } finally {
+      setIsSettingHome(false);
+    }
+  };
+
+  const handleClearHomeLocation = () => {
+    Alert.alert(
+      "Clear Home Location?",
+      "This will enable trip suggestions everywhere",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            await supabase
+              .from('profiles')
+              .update({ home_location: null })
+              .eq('id', user.id);
+            setHomeLocation(null);
+          }
+        }
+      ]
+    );
+  };
+
+  const handleChangeHomeRadius = () => {
+    Alert.alert(
+      "Home Area Radius",
+      "Choose how far from home to disable trip suggestions",
+      [
+        { text: "1km", onPress: () => updateHomeRadius(1) },
+        { text: "2km (Default)", onPress: () => updateHomeRadius(2) },
+        { text: "5km", onPress: () => updateHomeRadius(5) },
+        { text: "10km", onPress: () => updateHomeRadius(10) },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
+  const updateHomeRadius = async (radius: number) => {
+    setHomeRadius(radius);
+    if (homeLocation && user) {
+      await supabase
+        .from('profiles')
+        .update({ home_radius: radius })
+        .eq('id', user.id);
+    }
+  };
 
   // Profile Header Component
   const ProfileHeader = () => (
@@ -609,6 +724,96 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
+
+        {/* ============= NEW HOME LOCATION SECTION ============= */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Home Location</Text>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="home"
+                size={22}
+                color={theme.colors.forest}
+              />
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>Home Area</Text>
+                <Text style={styles.settingDescription}>
+                  {homeLocation 
+                    ? `Trip suggestions disabled within ${homeRadius}km`
+                    : "Not set - trips suggested everywhere"}
+                </Text>
+              </View>
+            </View>
+            {homeLocation && (
+              <TouchableOpacity onPress={handleClearHomeLocation}>
+                <Ionicons name="close-circle" size={22} color={theme.colors.burntOrange} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={handleSetCurrentLocationAsHome}
+            disabled={isSettingHome}
+          >
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="location"
+                size={22}
+                color={theme.colors.gray}
+              />
+              <Text style={styles.settingLabel}>
+                {homeLocation ? "Update Home Location" : "Set Home Location"}
+              </Text>
+            </View>
+            {isSettingHome ? (
+              <ActivityIndicator size="small" color={theme.colors.forest} />
+            ) : (
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
+            )}
+          </TouchableOpacity>
+
+          {homeLocation && (
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={handleChangeHomeRadius}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons
+                  name="resize-outline"
+                  size={22}
+                  color={theme.colors.gray}
+                />
+                <Text style={styles.settingLabel}>Home Area Radius</Text>
+              </View>
+              <View style={styles.settingRight}>
+                <Text style={styles.settingValue}>
+                  {homeRadius}km
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={theme.colors.lightGray}
+                />
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {homeLocation && (
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle" size={16} color={theme.colors.forest} />
+              <Text style={styles.infoText}>
+                Activities and spots saved near your home won't trigger trip suggestions
+              </Text>
+            </View>
+          )}
+        </View>
+        {/* ============= END NEW HOME LOCATION SECTION ============= */}
 
         {/* Memory & Notifications Section */}
         <View style={styles.section}>
@@ -1125,6 +1330,21 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: theme.colors.burntOrange,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.forest + '10',
+    marginHorizontal: 20,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 8,
+  },
+  infoText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    marginLeft: 8,
+    flex: 1,
   },
   signOutButton: {
     flexDirection: "row",
