@@ -97,6 +97,7 @@ export default function TrackActivityScreen() {
   const [zoom, setZoom] = useState(0);
   const scale = useSharedValue(1);
   const baseScale = useSharedValue(1);
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
 
   useEffect(() => {
     if (loading || manualLoading) {
@@ -405,10 +406,26 @@ export default function TrackActivityScreen() {
               key={cameraKey}
               ref={cameraRef}
               style={styles.camera}
-              facing="back"
+              facing={cameraFacing} // Changed from hardcoded "back"
               zoom={zoom}
             />
             <View style={styles.cameraOverlay}>
+              {/* Add flip button */}
+              <TouchableOpacity
+                style={styles.flipButton}
+                onPress={() => {
+                  setCameraFacing((current) =>
+                    current === "back" ? "front" : "back"
+                  );
+                  // Reset zoom when flipping
+                  setZoom(0);
+                  scale.value = 1;
+                  baseScale.value = 1;
+                }}
+              >
+                <Ionicons name="camera-reverse" size={30} color="white" />
+              </TouchableOpacity>
+
               {/* Keep the zoom controls as backup/visual indicator */}
               <View style={styles.zoomControls}>
                 <TouchableOpacity
@@ -1593,5 +1610,14 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  flipButton: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });

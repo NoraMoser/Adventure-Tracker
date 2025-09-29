@@ -13,6 +13,7 @@ import React, {
 import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import * as MediaLibrary from "expo-media-library";
+import { Alert } from "react-native";
 
 const LOCATION_TASK_NAME = "explorable-background-location";
 const PENDING_LOCATIONS_KEY = "pending_location_updates";
@@ -542,6 +543,27 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         }
       }
 
+      // NEW PART: Check GPS accuracy and alert user if poor
+      const accuracy = initialLocation.coords.accuracy;
+      const accuracyThreshold = getAccuracyThreshold(); // Uses your existing function
+
+      if (accuracy && accuracy > accuracyThreshold * 2) {
+        // Very poor signal
+        Alert.alert(
+          "Weak GPS Signal",
+          `GPS accuracy is currently ±${Math.round(
+            accuracy
+          )}m. Starting your ${activityType} activity anyway - we'll connect the dots when signal improves!\n\nTip: GPS works best with clear sky view.`,
+          [
+            {
+              text: "Got it!",
+              style: "default",
+            },
+          ]
+        );
+      }
+      // END OF NEW PART
+
       // Start tracking immediately with whatever location we have
       const initialPoint: LocationPoint = {
         latitude: initialLocation.coords.latitude,
@@ -773,71 +795,79 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const saveActivity = async (activity: Activity): Promise<void> => {
-  if (!user) throw new Error("No user logged in");
+    if (!user) throw new Error("No user logged in");
 
-  console.log("Saving activity to database...");
+    console.log("Saving activity to database...");
 
-  if (refreshSession) {
-    const sessionValid = await refreshSession();
-    if (!sessionValid) {
-      const pendingActivities = await AsyncStorage.getItem("pending_activities");
-      const pending = pendingActivities ? JSON.parse(pendingActivities) : [];
-      pending.push(activity);
-      await AsyncStorage.setItem("pending_activities", JSON.stringify(pending));
-      throw new Error("Session expired - activity saved locally");
-    }
-  }
-
-  try {
-    // UPLOAD PHOTOS BEFORE SAVING
-    let uploadedPhotoUrls = [];
-    if (activity.photos && activity.photos.length > 0) {
-      console.log("Uploading activity photos...");
-      // Import PhotoService at the top of your file
-      const { PhotoService } = await import("../services/photoService");
-      uploadedPhotoUrls = await PhotoService.uploadPhotos(
-        activity.photos,
-        "activity-photos", // Use a separate folder for activities
-        user.id
-      );
-      console.log("Photos uploaded:", uploadedPhotoUrls);
+    if (refreshSession) {
+      const sessionValid = await refreshSession();
+      if (!sessionValid) {
+        const pendingActivities = await AsyncStorage.getItem(
+          "pending_activities"
+        );
+        const pending = pendingActivities ? JSON.parse(pendingActivities) : [];
+        pending.push(activity);
+        await AsyncStorage.setItem(
+          "pending_activities",
+          JSON.stringify(pending)
+        );
+        throw new Error("Session expired - activity saved locally");
+      }
     }
 
-    const { data, error } = await supabase
-      .from("activities")
-      .insert({
-        user_id: user.id,
-        type: activity.type,
-        name: activity.name,
-        activity_date: activity.activityDate.toISOString(),
-        start_time: activity.startTime.toISOString(),
-        end_time: activity.endTime.toISOString(),
-        duration: activity.duration,
-        distance: activity.distance,
-        route: activity.route,
-        average_speed: activity.averageSpeed,
-        max_speed: activity.maxSpeed,
-        notes: activity.notes,
-        photos: uploadedPhotoUrls, // USE UPLOADED URLs, NOT LOCAL PATHS
-        is_manual_entry: activity.isManualEntry,
-      })
-      .select()
-      .single();
+    try {
+      // UPLOAD PHOTOS BEFORE SAVING
+      let uploadedPhotoUrls = [];
+      if (activity.photos && activity.photos.length > 0) {
+        console.log("Uploading activity photos...");
+        // Import PhotoService at the top of your file
+        const { PhotoService } = await import("../services/photoService");
+        uploadedPhotoUrls = await PhotoService.uploadPhotos(
+          activity.photos,
+          "activity-photos", // Use a separate folder for activities
+          user.id
+        );
+        console.log("Photos uploaded:", uploadedPhotoUrls);
+      }
 
-    if (error) throw error;
+      const { data, error } = await supabase
+        .from("activities")
+        .insert({
+          user_id: user.id,
+          type: activity.type,
+          name: activity.name,
+          activity_date: activity.activityDate.toISOString(),
+          start_time: activity.startTime.toISOString(),
+          end_time: activity.endTime.toISOString(),
+          duration: activity.duration,
+          distance: activity.distance,
+          route: activity.route,
+          average_speed: activity.averageSpeed,
+          max_speed: activity.maxSpeed,
+          notes: activity.notes,
+          photos: uploadedPhotoUrls, // USE UPLOADED URLs, NOT LOCAL PATHS
+          is_manual_entry: activity.isManualEntry,
+        })
+        .select()
+        .single();
 
-    // Update local state with uploaded URLs
-    setActivities((prev) => [{ ...activity, id: data.id, photos: uploadedPhotoUrls }, ...prev]);
-    
-    // Save to gallery with original local paths
-    if (activity.photos && activity.photos.length > 0) {
-      await savePhotosToGallery(activity.photos);
+      if (error) throw error;
+
+      // Update local state with uploaded URLs
+      setActivities((prev) => [
+        { ...activity, id: data.id, photos: uploadedPhotoUrls },
+        ...prev,
+      ]);
+
+      // Save to gallery with original local paths
+      if (activity.photos && activity.photos.length > 0) {
+        await savePhotosToGallery(activity.photos);
+      }
+    } catch (err: any) {
+      console.error("Save failed:", err);
+      throw err;
     }
-  } catch (err: any) {
-    console.error("Save failed:", err);
-    throw err;
-  }
-};
+  };
 
   const deleteActivity = async (activityId: string) => {
     if (!user) return;
@@ -859,77 +889,81 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const updateActivity = async (
-  activityId: string,
-  updatedData: Partial<Activity>
-) => {
-  if (!user) throw new Error("No user logged in");
+    activityId: string,
+    updatedData: Partial<Activity>
+  ) => {
+    if (!user) throw new Error("No user logged in");
 
-  try {
-    const updateData: any = {};
+    try {
+      const updateData: any = {};
 
-    if (updatedData.name !== undefined) updateData.name = updatedData.name;
-    if (updatedData.notes !== undefined) updateData.notes = updatedData.notes;
-    if (updatedData.route !== undefined) updateData.route = updatedData.route;
-    if (updatedData.distance !== undefined)
-      updateData.distance = updatedData.distance;
-    if (updatedData.duration !== undefined)
-      updateData.duration = updatedData.duration;
-    if (updatedData.averageSpeed !== undefined)
-      updateData.average_speed = updatedData.averageSpeed;
-    if (updatedData.maxSpeed !== undefined)
-      updateData.max_speed = updatedData.maxSpeed;
-    if (updatedData.activityDate)
-      updateData.activity_date = updatedData.activityDate.toISOString();
+      if (updatedData.name !== undefined) updateData.name = updatedData.name;
+      if (updatedData.notes !== undefined) updateData.notes = updatedData.notes;
+      if (updatedData.route !== undefined) updateData.route = updatedData.route;
+      if (updatedData.distance !== undefined)
+        updateData.distance = updatedData.distance;
+      if (updatedData.duration !== undefined)
+        updateData.duration = updatedData.duration;
+      if (updatedData.averageSpeed !== undefined)
+        updateData.average_speed = updatedData.averageSpeed;
+      if (updatedData.maxSpeed !== undefined)
+        updateData.max_speed = updatedData.maxSpeed;
+      if (updatedData.activityDate)
+        updateData.activity_date = updatedData.activityDate.toISOString();
 
-    // HANDLE PHOTO UPLOADS
-    if (updatedData.photos !== undefined) {
-      let uploadedPhotoUrls = [];
-      if (updatedData.photos.length > 0) {
-        console.log("Uploading updated activity photos...");
-        const { PhotoService } = await import("../services/photoService");
-        
-        // Check if photos are already uploaded or need uploading
-        const photosToUpload = updatedData.photos.filter(photo => 
-          photo.startsWith('file://') || photo.startsWith('/data')
-        );
-        const alreadyUploaded = updatedData.photos.filter(photo => 
-          photo.startsWith('http')
-        );
-        
-        if (photosToUpload.length > 0) {
-          const newlyUploaded = await PhotoService.uploadPhotos(
-            photosToUpload,
-            "activity-photos",
-            user.id
+      // HANDLE PHOTO UPLOADS
+      if (updatedData.photos !== undefined) {
+        let uploadedPhotoUrls = [];
+        if (updatedData.photos.length > 0) {
+          console.log("Uploading updated activity photos...");
+          const { PhotoService } = await import("../services/photoService");
+
+          // Check if photos are already uploaded or need uploading
+          const photosToUpload = updatedData.photos.filter(
+            (photo) => photo.startsWith("file://") || photo.startsWith("/data")
           );
-          uploadedPhotoUrls = [...alreadyUploaded, ...newlyUploaded];
-        } else {
-          uploadedPhotoUrls = alreadyUploaded;
+          const alreadyUploaded = updatedData.photos.filter((photo) =>
+            photo.startsWith("http")
+          );
+
+          if (photosToUpload.length > 0) {
+            const newlyUploaded = await PhotoService.uploadPhotos(
+              photosToUpload,
+              "activity-photos",
+              user.id
+            );
+            uploadedPhotoUrls = [...alreadyUploaded, ...newlyUploaded];
+          } else {
+            uploadedPhotoUrls = alreadyUploaded;
+          }
         }
+        updateData.photos = uploadedPhotoUrls;
       }
-      updateData.photos = uploadedPhotoUrls;
+
+      const { error } = await supabase
+        .from("activities")
+        .update(updateData)
+        .eq("id", activityId)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      setActivities((prev) =>
+        prev.map((activity) =>
+          activity.id === activityId
+            ? {
+                ...activity,
+                ...updatedData,
+                photos: updateData.photos || activity.photos,
+              }
+            : activity
+        )
+      );
+    } catch (err: any) {
+      console.error("Error updating activity:", err);
+      throw err;
     }
-
-    const { error } = await supabase
-      .from("activities")
-      .update(updateData)
-      .eq("id", activityId)
-      .eq("user_id", user.id);
-
-    if (error) throw error;
-
-    setActivities((prev) =>
-      prev.map((activity) =>
-        activity.id === activityId
-          ? { ...activity, ...updatedData, photos: updateData.photos || activity.photos }
-          : activity
-      )
-    );
-  } catch (err: any) {
-    console.error("Error updating activity:", err);
-    throw err;
-  }
-};
+  };
   const addManualActivity = async (activity: Partial<Activity>) => {
     const newActivity: Activity = {
       id: Date.now().toString(),

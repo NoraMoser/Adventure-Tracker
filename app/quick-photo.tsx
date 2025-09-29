@@ -57,6 +57,8 @@ export default function QuickPhotoScreen() {
   const [zoom, setZoom] = useState(0);
   const scale = useSharedValue(1);
   const baseScale = useSharedValue(1);
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
+
   useEffect(() => {
     console.log("QuickPhotoScreen mounted");
 
@@ -459,12 +461,26 @@ export default function QuickPhotoScreen() {
             <CameraView
               ref={cameraRef}
               style={styles.camera}
-              facing="back"
               zoom={zoom}
               onCameraReady={() => console.log("Camera ready")}
-              // REMOVE: {...panResponder.panHandlers}
+              facing={cameraFacing} // Changed from hardcoded "back"
             />
             <View style={styles.cameraOverlay}>
+              <TouchableOpacity
+                style={styles.flipButton}
+                onPress={() => {
+                  setCameraFacing((current) =>
+                    current === "back" ? "front" : "back"
+                  );
+                  // Reset zoom when flipping
+                  setZoom(0);
+                  scale.value = 1;
+                  baseScale.value = 1;
+                }}
+              >
+                <Ionicons name="camera-reverse" size={30} color="white" />
+              </TouchableOpacity>
+
               {/* Zoom indicator */}
               <View
                 style={[styles.zoomIndicator, { opacity: zoom > 0 ? 1 : 0.6 }]}
@@ -1084,6 +1100,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    marginTop: 50, // Add margin to avoid overlap with flip button
   },
   zoomText: {
     color: "white",
@@ -1105,5 +1122,14 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 10,
     height: 40,
+  },
+  flipButton: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 25,
+    zIndex: 1,
   },
 });
