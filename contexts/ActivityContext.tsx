@@ -181,6 +181,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     null
   );
   const maxSpeedRef = useRef<number>(0);
+  const [lastGpsAlertTime, setLastGpsAlertTime] = useState<number>(0);
+  const poorGpsStartTime = useRef<number | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -283,8 +285,10 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setCurrentDuration(0);
     setCurrentSpeed(0);
     setCurrentLocation(null);
+    setLastGpsAlertTime(0);
     setGpsStatus("searching");
 
+    poorGpsStartTime.current = null;
     startTimeRef.current = null;
     pausedTimeRef.current = 0;
     pauseStartRef.current = null;
@@ -355,6 +359,50 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           maxJump: 1000,
           maxSpeed: 50,
         };
+    }
+  };
+
+  const checkGpsQuality = (accuracy: number | undefined) => {
+    if (!accuracy || !isTracking || isPaused) return;
+
+    const threshold = getAccuracyThreshold();
+    const now = Date.now();
+
+    // If GPS accuracy is very poor (>3x threshold)
+    if (accuracy > threshold * 3) {
+      // Only alert every 5 minutes to avoid spam
+      if (now - lastGpsAlertTime > 300000) {
+        // 5 minutes
+        Alert.alert(
+          "Poor GPS Signal",
+          `GPS accuracy has degraded to ±${Math.round(
+            accuracy
+          )}m. Continue moving - the app will connect your route when signal improves.`,
+          [{ text: "OK", style: "default" }]
+        );
+        setLastGpsAlertTime(now);
+      }
+
+      // Track how long GPS has been poor
+      if (!poorGpsStartTime.current) {
+        poorGpsStartTime.current = now;
+      }
+    } else {
+      // GPS improved
+      if (poorGpsStartTime.current) {
+        const poorDuration = Math.round(
+          (now - poorGpsStartTime.current) / 1000
+        );
+        if (poorDuration > 60) {
+          // If it was poor for over a minute
+          Alert.alert(
+            "GPS Signal Restored",
+            `Good GPS signal restored after ${poorDuration} seconds. Route tracking resumed normally.`,
+            [{ text: "Great!", style: "default" }]
+          );
+        }
+        poorGpsStartTime.current = null;
+      }
     }
   };
 
@@ -503,6 +551,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     };
 
     processLocationUpdate(point);
+    checkGpsQuality(location.coords.accuracy);
 
     if (location.coords.speed !== null && location.coords.speed >= 0) {
       const speedKmh = location.coords.speed * 3.6;
