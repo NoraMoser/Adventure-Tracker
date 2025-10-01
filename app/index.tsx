@@ -31,6 +31,8 @@ import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { supabase } from "../lib/supabase";
 import { MemoryNotificationService } from "../services/memoryNotificationService";
+import { useWishlist } from "../contexts/WishlistContext";
+import { useTrips } from "../contexts/TripContext";
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -138,6 +140,8 @@ export default function DashboardScreen() {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const { wishlistItems } = useWishlist();
+  const { trips } = useTrips();
 
   // Force re-render when auth state changes
   const [authVersion, setAuthVersion] = useState(0);
@@ -599,49 +603,7 @@ export default function DashboardScreen() {
       return actDate > weekAgo;
     }).length,
     uniqueCategories: new Set(savedSpots.map((s) => s.category)).size,
-    currentStreak: calculateStreak(),
   };
-
-  function calculateStreak() {
-    if (activities.length === 0) return 0;
-
-    const sortedActivities = [...activities].sort(
-      (a, b) =>
-        new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-    );
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const mostRecentActivity = new Date(sortedActivities[0].startTime);
-    mostRecentActivity.setHours(0, 0, 0, 0);
-
-    const daysSinceLastActivity = Math.floor(
-      (today.getTime() - mostRecentActivity.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (daysSinceLastActivity > 1) {
-      return 0;
-    }
-
-    const activityDates = new Set(
-      activities.map((activity) => {
-        const date = new Date(activity.startTime);
-        date.setHours(0, 0, 0, 0);
-        return date.toDateString();
-      })
-    );
-
-    let streak = 0;
-    let checkDate = new Date(mostRecentActivity);
-
-    while (activityDates.has(checkDate.toDateString())) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
-
-    return streak;
-  }
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -809,7 +771,7 @@ export default function DashboardScreen() {
 
   const sidebarItems = [
     { icon: "map", label: "Dashboard", route: "/", active: true },
-    { icon: "person-circle", label: "Edit Profile", route: "/profile-edit" }, // ADD THIS
+    { icon: "person-circle", label: "Edit Profile", route: "/profile-edit" },
     {
       icon: "notifications",
       label: "Notifications",
@@ -826,8 +788,6 @@ export default function DashboardScreen() {
       badge: friendRequests.length,
     },
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
-    { divider: true },
-    { icon: "stats-chart", label: "Statistics", route: "/statistics" },
     { divider: true },
     { icon: "settings", label: "Settings", route: "/settings" },
     { icon: "information-circle", label: "About", route: "/" },
@@ -924,24 +884,28 @@ export default function DashboardScreen() {
           <View style={styles.statsGrid}>
             <TouchableOpacity
               style={styles.statCard}
-              onPress={() => router.push("/statistics")}
+              onPress={() => router.push("/saved-spots")}
               activeOpacity={0.7}
             >
               <View
                 style={[
                   styles.statIconContainer,
-                  { backgroundColor: "#9C27B0" + "20" },
+                  { backgroundColor: theme.colors.forest + "20" },
                 ]}
               >
-                <Ionicons name="stats-chart" size={24} color="#9C27B0" />
+                <Ionicons
+                  name="location"
+                  size={24}
+                  color={theme.colors.forest}
+                />
               </View>
-              <Text style={styles.statNumber}>View</Text>
-              <Text style={styles.statLabel}>Statistics</Text>
+              <Text style={styles.statNumber}>{stats.totalLocations}</Text>
+              <Text style={styles.statLabel}>Places</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.statCard}
-              onPress={() => router.push("/saved-spots")}
+              onPress={() => router.push("/past-activities")}
               activeOpacity={0.7}
             >
               <View
@@ -951,49 +915,50 @@ export default function DashboardScreen() {
                 ]}
               >
                 <Ionicons
-                  name="location"
+                  name="fitness"
                   size={24}
                   color={theme.colors.burntOrange}
                 />
               </View>
-              <Text style={styles.statNumber}>{stats.totalLocations}</Text>
-              <Text style={styles.statLabel}>Places</Text>
+              <Text style={styles.statNumber}>{stats.totalActivities}</Text>
+              <Text style={styles.statLabel}>Activities</Text>
             </TouchableOpacity>
 
-            <View style={styles.statCard}>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => router.push("/trips")}
+              activeOpacity={0.7}
+            >
               <View
                 style={[
                   styles.statIconContainer,
                   { backgroundColor: theme.colors.navy + "20" },
                 ]}
               >
-                <Ionicons
-                  name="trending-up"
-                  size={24}
-                  color={theme.colors.navy}
-                />
+                <Ionicons name="airplane" size={24} color={theme.colors.navy} />
               </View>
-              <Text style={styles.statNumber}>
-                {formatDistance(stats.totalDistance, 0).split(" ")[0]}
-              </Text>
-              <Text style={styles.statLabel}>
-                {formatDistance(stats.totalDistance, 0).split(" ")[1]}
-              </Text>
-            </View>
+              <Text style={styles.statNumber}>{trips?.length || 0}</Text>
+              <Text style={styles.statLabel}>Trips</Text>
+            </TouchableOpacity>
 
-            <View style={styles.statCard}>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => router.push("/wishlist")}
+              activeOpacity={0.7}
+            >
               <View
                 style={[
                   styles.statIconContainer,
-                  { backgroundColor: "#FFB800" + "20" },
+                  { backgroundColor: "#9C27B0" + "20" },
                 ]}
               >
-                <Ionicons name="flame" size={24} color="#FFB800" />
+                <Ionicons name="heart" size={24} color="#9C27B0" />
               </View>
-              <Text style={styles.statNumber}>{stats.currentStreak}</Text>
-              <Text style={styles.statLabel}>Activity</Text>
-              <Text style={[styles.statLabel, { fontSize: 10 }]}>Streak</Text>
-            </View>
+              <Text style={styles.statNumber}>
+                {wishlistItems?.length || 0}
+              </Text>
+              <Text style={styles.statLabel}>Wishlist</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.quickStats}>
@@ -1605,7 +1570,7 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     lineHeight: 32, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlignVertical: 'center', // Android-specific fix
+    textAlignVertical: "center", // Android-specific fix
   },
   statLabel: {
     fontSize: 12,
@@ -1613,7 +1578,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 16, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center', // Ensure center alignment
+    textAlign: "center", // Ensure center alignment
   },
   statIconContainer: {
     width: 40,
@@ -1633,7 +1598,7 @@ const styles = StyleSheet.create({
   quickStatItem: {
     alignItems: "center",
   },
- quickStatValue: {
+  quickStatValue: {
     fontSize: 16,
     fontWeight: "600",
     color: theme.colors.navy,
@@ -1646,7 +1611,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 15, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center',
+    textAlign: "center",
   },
   quickStatDivider: {
     width: 1,
@@ -1685,7 +1650,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     lineHeight: 20, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center',
+    textAlign: "center",
   },
   friendButtonSubtitle: {
     fontSize: 11,
@@ -1872,7 +1837,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 16, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center',
+    textAlign: "center",
   },
   quickActions: {
     flexDirection: "row",
@@ -1942,7 +1907,7 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     lineHeight: 28, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center',
+    textAlign: "center",
   },
   profileStats: {
     fontSize: 14,
@@ -1950,7 +1915,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     lineHeight: 20, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center',
+    textAlign: "center",
   },
   profileEmail: {
     fontSize: 12,
@@ -1958,7 +1923,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
     lineHeight: 16, // Add explicit line height
     includeFontPadding: false, // Android-specific fix
-    textAlign: 'center',
+    textAlign: "center",
   },
   editIndicator: {
     flexDirection: "row",
