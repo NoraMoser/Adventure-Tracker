@@ -822,8 +822,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
   const savePhotosToGallery = async (photos: string[]) => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") return;
 
       for (const photoUri of photos) {
         try {

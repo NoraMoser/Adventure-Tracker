@@ -319,9 +319,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   // Add a helper function in the context
   const savePhotosToGallery = async (photos: string[]) => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") return;
-
       for (const photoUri of photos) {
         try {
           const asset = await MediaLibrary.createAssetAsync(photoUri);
