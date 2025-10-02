@@ -112,10 +112,6 @@ export default function TripsScreen() {
   const displayedTrips =
     viewMode === "my" ? myTrips : viewMode === "shared" ? sharedTrips : trips;
 
-  useEffect(() => {
-    triggerAutoDetection();
-  }, []);
-
   const handleTripPress = (trip: Trip) => {
     router.push(`/trip-detail?tripId=${trip.id}`);
   };

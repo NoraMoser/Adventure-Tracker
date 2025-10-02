@@ -141,7 +141,7 @@ export default function DashboardScreen() {
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const { wishlistItems } = useWishlist();
-  const { trips } = useTrips();
+  const { trips, triggerAutoDetection } = useTrips();
 
   // Force re-render when auth state changes
   const [authVersion, setAuthVersion] = useState(0);
@@ -228,6 +228,7 @@ export default function DashboardScreen() {
             }, 200);
             return;
           }
+          triggerAutoDetection();
         }
         setIsInitializing(false);
 
