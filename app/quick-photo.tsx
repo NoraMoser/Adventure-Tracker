@@ -159,27 +159,6 @@ export default function QuickPhotoScreen() {
             setShowCamera(false);
           }, 100);
           console.log("Camera should be hidden now");
-          // Try to save to gallery
-          try {
-            console.log("Permission granted, creating asset from:", photo.uri);
-            const asset = await MediaLibrary.createAssetAsync(photo.uri);
-            console.log("Asset created:", asset.id);
-            const album = await MediaLibrary.getAlbumAsync("explorAble");
-            console.log("Album found:", album ? "yes" : "no");
-            if (album == null) {
-              console.log("Creating new album...");
-              await MediaLibrary.createAlbumAsync("explorAble", asset, false);
-              console.log("Album created with asset");
-            } else {
-              console.log("Adding to existing album...");
-              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-              console.log("Asset added to album");
-            }
-            console.log("Saved to gallery successfully");
-          } catch (galleryError) {
-            console.log("Could not save to gallery:", galleryError);
-            console.log("Media library permission denied");
-          }
         }
       } catch (error) {
         console.error("Camera error:", error);
@@ -262,28 +241,6 @@ export default function QuickPhotoScreen() {
         selectedCategory,
         new Date()
       );
-
-      // THEN try to save to gallery - don't let it block the save
-      // This is a "nice to have" not a requirement
-      try {
-        console.log("Attempting to save to gallery...");
-        for (const photoUri of photos) {
-          try {
-            const asset = await MediaLibrary.createAssetAsync(photoUri);
-            const album = await MediaLibrary.getAlbumAsync("explorAble");
-            if (album == null) {
-              await MediaLibrary.createAlbumAsync("explorAble", asset, false);
-            } else {
-              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-            }
-            console.log("Photo saved to gallery");
-          } catch (err) {
-            console.log("Individual photo save failed:", err);
-          }
-        }
-      } catch (galleryError) {
-        console.log("Gallery save failed (non-blocking):", galleryError);
-      }
 
       console.log("Save completed");
       const savedSpot = {
