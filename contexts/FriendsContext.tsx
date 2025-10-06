@@ -1,4 +1,4 @@
-// contexts/FriendsContext.tsx - Complete with push notifications
+// contexts/FriendsContext.tsx - Complete with push notifications and trips
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -49,7 +49,7 @@ export interface FeedComment {
 
 export interface FeedPost {
   id: string;
-  type: "activity" | "location" | "achievement";
+  type: "activity" | "location" | "trip";
   timestamp: Date;
   data: {
     id?: string;
@@ -76,6 +76,16 @@ export interface FeedPost {
     sharedAt: Date;
     likes: string[];
     comments: FeedComment[];
+    // Trip-specific fields
+    start_date?: Date;
+    end_date?: Date;
+    tripItems?: Array<{
+      type: "activity" | "spot";
+      name: string;
+      date: Date;
+    }>;
+    itemCount?: number;
+    cover_photo?: string;
   };
 }
 
@@ -776,10 +786,49 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .order("created_at", { ascending: false })
         .limit(50);
 
-      // Get user profiles
+      // NEW: Load trips where friends are creators
+      const { data: trips } = await supabase
+        .from("trips")
+        .select(`
+          *,
+          trip_items(*)
+        `)
+        .in("created_by", friendIds)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      // NEW: Also load trips where friends are tagged
+      const { data: taggedTrips } = await supabase
+        .from("trip_tags")
+        .select("trip_id")
+        .in("user_id", friendIds);
+      
+      let friendTaggedTrips: any[] = [];
+      if (taggedTrips && taggedTrips.length > 0) {
+        const tripIds = [...new Set(taggedTrips.map(t => t.trip_id))];
+        const { data: tagTrips } = await supabase
+          .from("trips")
+          .select(`
+            *,
+            trip_items(*)
+          `)
+          .in("id", tripIds)
+          .order("created_at", { ascending: false });
+        
+        friendTaggedTrips = tagTrips || [];
+      }
+
+      // Combine unique trips
+      const allTrips = [...(trips || []), ...friendTaggedTrips];
+      const uniqueTrips = allTrips.filter((trip, index, self) => 
+        index === self.findIndex((t) => t.id === trip.id)
+      );
+
+      // Get all user profiles (including trip creators)
       const allUserIds = new Set<string>();
       activities?.forEach((a) => allUserIds.add(a.user_id));
       locations?.forEach((l) => allUserIds.add(l.user_id));
+      uniqueTrips?.forEach((t) => allUserIds.add(t.created_by));
 
       const { data: profiles } = await supabase
         .from("profiles")
@@ -936,14 +985,46 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         },
       }));
 
-      // Combine and sort
-      const allPosts = [...activityPosts, ...locationPosts]
+      // NEW: Create trip posts
+      const tripPosts: FeedPost[] = uniqueTrips.map((trip) => ({
+        id: `trip-${trip.id}`,
+        type: "trip" as const,
+        timestamp: new Date(trip.created_at),
+        data: {
+          id: trip.id,
+          name: trip.name,
+          start_date: new Date(trip.start_date),
+          end_date: new Date(trip.end_date),
+          cover_photo: trip.cover_photo,
+          itemCount: trip.trip_items?.length || 0,
+          tripItems: trip.trip_items?.slice(0, 3).map((item: any) => ({
+            type: item.type,
+            name: item.data?.name || "Item",
+            date: new Date(item.data?.start_time || item.data?.created_at || trip.start_date)
+          })),
+          sharedBy: {
+            id: trip.created_by,
+            username: profileMap[trip.created_by]?.username || "",
+            displayName: profileMap[trip.created_by]?.display_name || "Unknown",
+            avatar: profileMap[trip.created_by]?.avatar,
+            profile_picture: profileMap[trip.created_by]?.profile_picture,
+            friendsSince: new Date(),
+            status: "accepted" as const,
+          },
+          sharedAt: new Date(trip.created_at),
+          likes: [], // You could implement trip likes if needed
+          comments: [], // You could implement trip comments if needed
+        },
+      }));
+
+      // Combine and sort all posts
+      const allPosts = [...activityPosts, ...locationPosts, ...tripPosts]
         .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
         .slice(0, 50);
 
       setFeed(allPosts);
       console.log(
-        `Loaded ${allPosts.length} feed items with likes and comments`
+        `Loaded ${allPosts.length} feed items (${activityPosts.length} activities, ${locationPosts.length} locations, ${tripPosts.length} trips)`
       );
     } catch (err) {
       console.error("Error loading feed:", err);
@@ -957,56 +1038,23 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       const [type, ...idParts] = itemId.split("-");
       const actualId = idParts.join("-");
 
-      console.log("Attempting to like:", { type, actualId, userId: user.id });
-
-      // Get the owner of the item
-      let itemOwnerId: string | null = null;
-      let itemName: string = "";
-      let insertResult;
-
       if (type === "activity") {
-        const { data: activity } = await supabase
-          .from("activities")
-          .select("user_id, name")
-          .eq("id", actualId)
-          .single();
-
-        itemOwnerId = activity?.user_id;
-        itemName = activity?.name || "activity";
-
-        insertResult = await supabase.from("likes").insert({
+        const insertResult = await supabase.from("likes").insert({
           activity_id: actualId,
           user_id: user.id,
         });
 
-        if (insertResult.error) {
-          console.error("Error inserting like:", insertResult.error);
-          throw insertResult.error;
-        }
-        console.log("Like inserted successfully");
+        if (insertResult.error) throw insertResult.error;
       } else if (type === "location") {
-        const { data: location } = await supabase
-          .from("locations")
-          .select("user_id, name")
-          .eq("id", actualId)
-          .single();
-
-        itemOwnerId = location?.user_id;
-        itemName = location?.name || "location";
-
-        insertResult = await supabase.from("likes").insert({
+        const insertResult = await supabase.from("likes").insert({
           location_id: actualId,
           user_id: user.id,
         });
 
-        if (insertResult.error) {
-          console.error("Error inserting like:", insertResult.error);
-          throw insertResult.error;
-        }
-        console.log("Like inserted successfully");
+        if (insertResult.error) throw insertResult.error;
       }
 
-      // Only update UI and send notifications if insert succeeded
+      // Just update UI - let the database trigger handle notifications
       setFeed((prev) =>
         prev.map((post) =>
           post.id === itemId
@@ -1017,34 +1065,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             : post
         )
       );
-
-      // Send notification to owner if it's not the liker
-      if (itemOwnerId && itemOwnerId !== user.id) {
-        await supabase.from("notifications").insert({
-          user_id: itemOwnerId,
-          from_user_id: user.id,
-          type: "like",
-          title: "New Like",
-          message: `${
-            profile.display_name || profile.username
-          } liked your ${type}: "${itemName}"`,
-          data: {
-            [`${type}_id`]: actualId,
-          },
-          read: false,
-        });
-
-        await PushNotificationHelper.sendNotificationToUser(
-          itemOwnerId,
-          "like",
-          "❤️ New Like",
-          `${profile.display_name || profile.username} liked your ${type}`,
-          {
-            type: "like",
-            [`${type}_id`]: actualId,
-          }
-        );
-      }
     } catch (error) {
       console.error("Error in likeItem:", error);
       Alert.alert("Error", "Failed to like item");
@@ -1094,77 +1114,77 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const addComment = async (
-  itemId: string,
-  text: string,
-  replyToCommentId?: string,
-  replyToUserName?: string
-) => {
-  if (!user || !profile) return;
+    itemId: string,
+    text: string,
+    replyToCommentId?: string,
+    replyToUserName?: string
+  ) => {
+    if (!user || !profile) return;
 
-  try {
-    const [type, ...idParts] = itemId.split("-");
-    const actualId = idParts.join("-");
+    try {
+      const [type, ...idParts] = itemId.split("-");
+      const actualId = idParts.join("-");
 
-    const commentData: any = {
-      user_id: user.id,
-      text: text.trim(),
-      created_at: new Date().toISOString(),
-    };
+      const commentData: any = {
+        user_id: user.id,
+        text: text.trim(),
+        created_at: new Date().toISOString(),
+      };
 
-    let itemOwnerId: string | null = null;
+      let itemOwnerId: string | null = null;
 
-    if (type === "activity") {
-      commentData.activity_id = actualId;
-      // Don't fetch owner - let trigger handle it
-    } else if (type === "location") {
-      commentData.location_id = actualId;
-      // Don't fetch owner - let trigger handle it
-    }
+      if (type === "activity") {
+        commentData.activity_id = actualId;
+        // Don't fetch owner - let trigger handle it
+      } else if (type === "location") {
+        commentData.location_id = actualId;
+        // Don't fetch owner - let trigger handle it
+      }
 
-    if (replyToCommentId) {
-      commentData.reply_to_id = replyToCommentId;
-    }
+      if (replyToCommentId) {
+        commentData.reply_to_id = replyToCommentId;
+      }
 
-    const { data: newComment, error } = await supabase
-      .from("comments")
-      .insert(commentData)
-      .select()
-      .single();
+      const { data: newComment, error } = await supabase
+        .from("comments")
+        .insert(commentData)
+        .select()
+        .single();
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // REMOVE ALL NOTIFICATION CODE HERE
-    // The database trigger will handle it
+      // REMOVE ALL NOTIFICATION CODE HERE
+      // The database trigger will handle it
 
-    // Just update local feed state
-    const comment: FeedComment = {
-      id: newComment.id,
-      userId: user.id,
-      userName: profile.display_name || profile.username || "Unknown",
-      text: text.trim(),
-      timestamp: new Date(),
-      replyTo: replyToCommentId,
-      replyToUser: replyToUserName,
-    };
+      // Just update local feed state
+      const comment: FeedComment = {
+        id: newComment.id,
+        userId: user.id,
+        userName: profile.display_name || profile.username || "Unknown",
+        text: text.trim(),
+        timestamp: new Date(),
+        replyTo: replyToCommentId,
+        replyToUser: replyToUserName,
+      };
 
-    setFeed((prev) =>
-      prev.map((post) =>
-        post.id === itemId
-          ? {
-              ...post,
-              data: {
-                ...post.data,
-                comments: [...post.data.comments, comment],
-              },
-            }
-          : post
+      setFeed((prev) =>
+        prev.map((post) =>
+          post.id === itemId
+            ? {
+                ...post,
+                data: {
+                  ...post.data,
+                  comments: [...post.data.comments, comment],
+                },
+              }
+            : post
         )
-    );
-  } catch (error) {
-    console.error("Error in addComment:", error);
-    Alert.alert("Error", "Failed to add comment");
-  }
-};
+      );
+    } catch (error) {
+      console.error("Error in addComment:", error);
+      Alert.alert("Error", "Failed to add comment");
+    }
+  };
   const deleteComment = async (itemId: string, commentId: string) => {
     if (!user) return;
 

@@ -342,6 +342,72 @@ const FeedItemCard = ({
     </View>
   );
 
+  const renderTripContent = (trip: any) => (
+    <View style={styles.tripContent}>
+      <View style={styles.tripHeader}>
+        <Text style={styles.tripName}>{trip.name}</Text>
+        <Text style={styles.tripDates}>
+          {trip.start_date && trip.end_date && (
+            <>
+              {new Date(trip.start_date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}{" "}
+              -{" "}
+              {new Date(trip.end_date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year:
+                  new Date(trip.end_date).getFullYear() !==
+                  new Date().getFullYear()
+                    ? "numeric"
+                    : undefined,
+              })}
+            </>
+          )}
+        </Text>
+      </View>
+
+      {trip.cover_photo && (
+        <Image
+          source={{ uri: trip.cover_photo }}
+          style={styles.tripCoverPhoto}
+        />
+      )}
+
+      <View style={styles.tripStats}>
+        <View style={styles.tripStatItem}>
+          <Ionicons name="calendar" size={16} color={theme.colors.forest} />
+          <Text style={styles.tripStatText}>
+            {trip.start_date &&
+              trip.end_date &&
+              Math.ceil(
+                (new Date(trip.end_date).getTime() -
+                  new Date(trip.start_date).getTime()) /
+                  (1000 * 60 * 60 * 24)
+              )}{" "}
+            days
+          </Text>
+        </View>
+        <View style={styles.tripStatItem}>
+          <Ionicons name="pin" size={16} color={theme.colors.forest} />
+          <Text style={styles.tripStatText}>{trip.itemCount || 0} items</Text>
+        </View>
+      </View>
+
+      {trip.tripItems && trip.tripItems.length > 0 && (
+        <View style={styles.tripItemsPreview}>
+          <Text style={styles.tripItemsTitle}>Includes:</Text>
+          {trip.tripItems.map((item: any, index: number) => (
+            <Text key={index} style={styles.tripItemText}>
+              • {item.name}
+            </Text>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
   const renderAchievementContent = (achievement: any) => (
     <View style={styles.achievementContent}>
       <View style={styles.achievementBadge}>
@@ -459,6 +525,8 @@ const FeedItemCard = ({
             </TouchableOpacity>
           </View>
         )}
+
+        {item.type === "trip" && renderTripContent(item.data)}
 
         {item.type === "achievement" && renderAchievementContent(item.data)}
       </View>
@@ -783,7 +851,7 @@ export default function FriendsFeedScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<
-    "all" | "activities" | "locations" | "achievements"
+    "all" | "activities" | "locations" | "trips"
   >("all");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const webViewRef = useRef<WebView>(null);
@@ -856,7 +924,7 @@ export default function FriendsFeedScreen() {
     if (filter === "all") return true;
     if (filter === "activities") return item.type === "activity";
     if (filter === "locations") return item.type === "location";
-    if (filter === "achievements") return item.type === "achievement";
+    if (filter === "trips") return item.type === "trip";
     return true;
   });
 
@@ -1025,6 +1093,7 @@ export default function FriendsFeedScreen() {
                 All
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               style={[
                 styles.filterTab,
@@ -1041,6 +1110,7 @@ export default function FriendsFeedScreen() {
                 Activities
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               style={[
                 styles.filterTab,
@@ -1057,20 +1127,21 @@ export default function FriendsFeedScreen() {
                 Places
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               style={[
                 styles.filterTab,
-                filter === "achievements" && styles.filterTabActive,
+                filter === "trips" && styles.filterTabActive,
               ]}
-              onPress={() => setFilter("achievements")}
+              onPress={() => setFilter("trips")}
             >
               <Text
                 style={[
                   styles.filterTabText,
-                  filter === "achievements" && styles.filterTabTextActive,
+                  filter === "trips" && styles.filterTabTextActive,
                 ]}
               >
-                Achievements
+                Trips
               </Text>
             </TouchableOpacity>
           </View>
@@ -1687,5 +1758,64 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     marginLeft: 4,
     fontWeight: "500",
+  },
+  tripContent: {
+    padding: 5,
+  },
+  tripHeader: {
+    marginBottom: 10,
+  },
+  tripName: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginBottom: 4,
+  },
+  tripDates: {
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
+  tripCoverPhoto: {
+    width: "100%",
+    height: 180,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  tripStats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 10,
+    backgroundColor: theme.colors.forest + "08",
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.forest + "15",
+  },
+  tripStatItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tripStatText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: theme.colors.navy,
+    fontWeight: "500",
+  },
+  tripItemsPreview: {
+    backgroundColor: theme.colors.offWhite,
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  tripItemsTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginBottom: 6,
+  },
+  tripItemText: {
+    fontSize: 13,
+    color: theme.colors.gray,
+    marginVertical: 2,
   },
 });

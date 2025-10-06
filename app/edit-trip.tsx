@@ -1,8 +1,7 @@
-// app/edit-trip.tsx - Fixed with proper date handling
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Alert,
   Image,
@@ -15,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  PanResponder,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../constants/theme";
@@ -22,7 +22,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useFriends } from "../contexts/FriendsContext";
 import { useTrips } from "../contexts/TripContext";
 
-// Friend Selection Modal (unchanged)
+// Friend Selection Modal Component
 const FriendSelectionModal = ({
   visible,
   onClose,
@@ -114,10 +114,31 @@ const FriendSelectionModal = ({
   );
 };
 
+const normalizeDate = (date: Date | string): Date => {
+  const d = date instanceof Date ? date : new Date(date);
+  const normalized = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    0,
+    0,
+    0,
+    0
+  );
+  return normalized;
+};
+
+// Helper function to set date to end of day for comparisons
+const setEndOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
 export default function EditTripScreen() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const { trips, updateTrip, deleteTrip, tagFriend, untagFriend } = useTrips();
+  const { trips, updateTrip, deleteTrip } = useTrips();
   const { friends } = useFriends();
   const { user } = useAuth();
 
@@ -134,86 +155,131 @@ export default function EditTripScreen() {
   const [saving, setSaving] = useState(false);
   const [allowFriendsToEdit, setAllowFriendsToEdit] = useState(true);
 
+  // Photo state
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [availablePhotos, setAvailablePhotos] = useState<string[]>([]);
-  const [coverPhoto, setCoverPhoto] = useState(trip?.cover_photo || null);
-  const [localCoverPhoto, setLocalCoverPhoto] = useState<string | null>(null);
-  const [hasLocalCoverChange, setHasLocalCoverChange] = useState(false);
+  const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(
+    null
+  );
 
-  // Get accepted friends only
+  // Position state with improved tracking
+  const [photoPosition, setPhotoPosition] = useState({ x: 0, y: 0 });
+  const [savedPhotoPosition, setSavedPhotoPosition] = useState({ x: 0, y: 0 });
+  const [localPositionCache, setLocalPositionCache] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [hasInitializedPosition, setHasInitializedPosition] = useState(false);
+  const [isUpdatingPosition, setIsUpdatingPosition] = useState(false);
+
+  // Store positions for each photo
+  const [photoPositions, setPhotoPositions] = useState<{
+    [key: number]: { x: number; y: number };
+  }>({});
+
+  const startPosition = useRef({ x: 0, y: 0 });
   const acceptedFriends = friends.filter((f) => f.status === "accepted");
 
-  // Initialize form with existing trip data
+  // Pan responder for dragging
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        startPosition.current = photoPosition;
+      },
+      onPanResponderMove: (evt, gesture) => {
+        setPhotoPosition({
+          x: startPosition.current.x + gesture.dx,
+          y: startPosition.current.y + gesture.dy,
+        });
+      },
+    })
+  ).current;
+
   useEffect(() => {
-    if (trip && !hasLocalCoverChange) {
-      setCoverPhoto(trip.cover_photo || null); // Add this line
+    if (!trip) return;
 
-      setName(trip.name);
-      setStartDate(
-        trip.start_date instanceof Date
-          ? trip.start_date
-          : new Date(trip.start_date)
-      );
-      setEndDate(
-        trip.end_date instanceof Date ? trip.end_date : new Date(trip.end_date)
-      );
-      setTaggedFriends(trip.tagged_friends || []);
+    // Set basic trip data with normalized dates
+    setName(trip.name);
 
-      // Check if trip items extend beyond current dates and auto-adjust
-      if (trip.items && trip.items.length > 0) {
-        const itemDates = trip.items
-          .map((item) => {
-            // Access the data property which contains the actual activity/spot
-            const itemData = item.data;
+    // Normalize dates when loading from trip
+    const normalizedStart = normalizeDate(trip.start_date);
+    const normalizedEnd = normalizeDate(trip.end_date);
 
-            if (item.type === "activity" && itemData) {
-              // Check for activity date properties
-              if (itemData.activityDate) return new Date(itemData.activityDate);
-              if (itemData.date) return new Date(itemData.date);
-            }
+    setStartDate(normalizedStart);
+    setEndDate(normalizedEnd);
+    setTaggedFriends(trip.tagged_friends || []);
 
-            if (item.type === "spot" && itemData) {
-              // Check for spot date properties
-              if (itemData.locationDate) return new Date(itemData.locationDate);
-              if (itemData.timestamp) return new Date(itemData.timestamp);
-            }
+    // Handle cover photo
+    setCoverPhoto(trip.cover_photo || null);
 
-            // Fallback to added_at which is directly on the TripItem
-            if (item.added_at) return new Date(item.added_at);
+    // Handle position initialization with better persistence
+    if (!hasInitializedPosition && !isUpdatingPosition) {
+      const initialPosition = trip.cover_photo_position ||
+        localPositionCache || { x: 0, y: 0 };
+      console.log("Initializing position with:", initialPosition);
+      setPhotoPosition(initialPosition);
+      setSavedPhotoPosition(initialPosition);
+      setHasInitializedPosition(true);
 
-            return null;
-          })
-          .filter((date): date is Date => date !== null);
+      // Cache the position locally
+      if (
+        trip.cover_photo_position &&
+        typeof trip.cover_photo_position === "object" &&
+        "x" in trip.cover_photo_position &&
+        "y" in trip.cover_photo_position
+      ) {
+        setLocalPositionCache(trip.cover_photo_position);
+      }
+    } else if (!isUpdatingPosition && localPositionCache) {
+      // Use cached position if available
+      setPhotoPosition(localPositionCache);
+      setSavedPhotoPosition(localPositionCache);
+    }
 
-        if (itemDates.length > 0) {
-          const earliestItemDate = new Date(
-            Math.min(...itemDates.map((d) => d.getTime()))
-          );
-          const latestItemDate = new Date(
-            Math.max(...itemDates.map((d) => d.getTime()))
-          );
+    if (trip.items && trip.items.length > 0) {
+      const itemDates = trip.items
+        .map((item) => {
+          const itemData = item.data;
 
-          // Adjust dates if items are outside the current range
-          const currentStart =
-            trip.start_date instanceof Date
-              ? trip.start_date
-              : new Date(trip.start_date);
-          const currentEnd =
-            trip.end_date instanceof Date
-              ? trip.end_date
-              : new Date(trip.end_date);
-
-          if (earliestItemDate < currentStart) {
-            setStartDate(earliestItemDate);
+          if (item.type === "activity" && itemData) {
+            if (itemData.activityDate)
+              return normalizeDate(itemData.activityDate);
+            if (itemData.date) return normalizeDate(itemData.date);
           }
-          if (latestItemDate > currentEnd) {
-            setEndDate(latestItemDate);
+
+          if (item.type === "spot" && itemData) {
+            if (itemData.locationDate)
+              return normalizeDate(itemData.locationDate);
+            if (itemData.timestamp) return normalizeDate(itemData.timestamp);
           }
+
+          if (item.added_at) return normalizeDate(item.added_at);
+          return null;
+        })
+        .filter((date): date is Date => date !== null);
+
+      if (itemDates.length > 0) {
+        const earliestItemDate = new Date(
+          Math.min(...itemDates.map((d) => d.getTime()))
+        );
+        const latestItemDate = new Date(
+          Math.max(...itemDates.map((d) => d.getTime()))
+        );
+
+        if (earliestItemDate < normalizedStart) {
+          setStartDate(earliestItemDate);
+        }
+        if (latestItemDate > normalizedEnd) {
+          setEndDate(latestItemDate);
         }
       }
     }
-  }, [trip]);
+  }, [trip, hasInitializedPosition, isUpdatingPosition, localPositionCache]);
 
+  // Error state
   if (!trip) {
     return (
       <SafeAreaView style={styles.container}>
@@ -231,7 +297,7 @@ export default function EditTripScreen() {
   }
 
   const formatDate = (date: Date) => {
-    const d = date instanceof Date ? date : new Date(date);
+    const d = normalizeDate(date);
     return d.toLocaleDateString("en-US", {
       weekday: "short",
       month: "long",
@@ -241,25 +307,26 @@ export default function EditTripScreen() {
   };
 
   const handleSelectCoverPhoto = () => {
-    // Get all photos from trip items
     const tripPhotos: string[] = [];
 
-      console.log('Total trip items:', trip.items.length);
+    console.log("Total trip items:", trip.items.length);
 
     trip.items.forEach((item, index) => {
-       console.log(`Item ${index}:`, {
-      type: item.type,
-      name: item.data?.name,
-      hasPhotos: !!item.data?.photos,
-      photoCount: item.data?.photos?.length || 0,
-      photos: item.data?.photos
-    });
+      console.log(`Item ${index}:`, {
+        type: item.type,
+        name: item.data?.name,
+        hasPhotos: !!item.data?.photos,
+        photoCount: item.data?.photos?.length || 0,
+        photos: item.data?.photos,
+      });
       if (item.data?.photos && Array.isArray(item.data.photos)) {
         tripPhotos.push(...item.data.photos);
       }
     });
-  console.log('All collected photos:', tripPhotos);
-  console.log('Total photos found:', tripPhotos.length);
+
+    console.log("All collected photos:", tripPhotos);
+    console.log("Total photos found:", tripPhotos.length);
+
     if (tripPhotos.length === 0) {
       Alert.alert(
         "No Photos",
@@ -272,51 +339,32 @@ export default function EditTripScreen() {
     setShowPhotoModal(true);
   };
 
-  const selectCoverPhoto = async (photoUrl: string) => {
-    try {
-      setCoverPhoto(photoUrl);
-      setHasLocalCoverChange(true); // Mark that we've made a local change
-
-      await updateTrip(trip.id, {
-        ...trip,
-        cover_photo: photoUrl,
-      });
-      setShowPhotoModal(false);
-      Alert.alert("Success", "Cover photo updated!");
-    } catch (error) {
-      setCoverPhoto(trip.cover_photo || null); // ADD THIS LINE
-      setHasLocalCoverChange(false); // Reset on error
-
-      Alert.alert("Error", "Failed to update cover photo");
-    }
-  };
-
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Error", "Please enter a trip name");
       return;
     }
 
-    if (endDate < startDate) {
+    // Normalize dates before comparison and saving
+    const normalizedStart = normalizeDate(startDate);
+    const normalizedEnd = normalizeDate(endDate);
+
+    if (normalizedEnd < normalizedStart) {
       Alert.alert("Error", "End date cannot be before start date");
       return;
     }
 
     setSaving(true);
     try {
-      console.log("Attempting to save with dates:", {
-        start_date: startDate,
-        end_date: endDate,
-        start_date_string: startDate.toISOString(),
-        end_date_string: endDate.toISOString(),
-        tripId: trip.id,
-      });
+      const positionToSave = localPositionCache || savedPhotoPosition;
 
       await updateTrip(trip.id, {
         name: name.trim(),
-        start_date: startDate,
-        end_date: endDate,
+        start_date: normalizedStart,
+        end_date: normalizedEnd,
         tagged_friends: taggedFriends,
+        cover_photo: coverPhoto,
+        cover_photo_position: positionToSave,
       });
 
       Alert.alert("Success", "Trip updated successfully!", [
@@ -377,9 +425,12 @@ export default function EditTripScreen() {
   const onStartDateChange = (event: any, selectedDate?: Date) => {
     setShowStartDatePicker(false);
     if (selectedDate) {
-      setStartDate(selectedDate);
-      if (selectedDate > endDate) {
-        setEndDate(selectedDate);
+      const normalized = normalizeDate(selectedDate);
+      setStartDate(normalized);
+
+      // Compare normalized dates
+      if (normalized > endDate) {
+        setEndDate(normalized);
       }
     }
   };
@@ -387,10 +438,13 @@ export default function EditTripScreen() {
   const onEndDateChange = (event: any, selectedDate?: Date) => {
     setShowEndDatePicker(false);
     if (selectedDate) {
-      if (selectedDate < startDate) {
+      const normalized = normalizeDate(selectedDate);
+
+      // Compare dates properly
+      if (normalized < startDate) {
         Alert.alert("Invalid Date", "End date cannot be before start date");
       } else {
-        setEndDate(selectedDate);
+        setEndDate(normalized);
       }
     }
   };
@@ -449,6 +503,61 @@ export default function EditTripScreen() {
     return earliestItemDate < originalStart || latestItemDate > originalEnd;
   };
 
+  const handleSaveCoverPhoto = async () => {
+    if (selectedPhotoIndex === null) return;
+
+    console.log("Saving cover photo with position:", {
+      photo: availablePhotos[selectedPhotoIndex],
+      position: photoPosition,
+      tripId: trip.id,
+    });
+
+    // Mark that we're updating
+    setIsUpdatingPosition(true);
+
+    // Save position for this photo
+    setPhotoPositions((prev) => ({
+      ...prev,
+      [selectedPhotoIndex]: photoPosition,
+    }));
+
+    // Cache position locally
+    setLocalPositionCache(photoPosition);
+    setSavedPhotoPosition(photoPosition);
+
+    try {
+      const updateData = {
+        cover_photo: availablePhotos[selectedPhotoIndex],
+        cover_photo_position: photoPosition,
+      };
+
+      console.log("Update data:", updateData);
+      await updateTrip(trip.id, updateData);
+      console.log("Update successful");
+
+      // Close modal
+      setShowPhotoModal(false);
+      setSelectedPhotoIndex(null);
+      Alert.alert("Success", "Cover photo updated!");
+    } catch (error) {
+      console.error("Error updating trip:", error);
+      Alert.alert("Error", "Failed to save position");
+    } finally {
+      // Clear updating flag after a delay
+      setTimeout(() => {
+        setIsUpdatingPosition(false);
+      }, 1000);
+    }
+  };
+
+  const getDurationInDays = () => {
+    const start = normalizeDate(startDate);
+    const end = normalizeDate(endDate);
+    const days =
+      Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return days > 0 ? days : 1;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -497,15 +606,48 @@ export default function EditTripScreen() {
         <View style={styles.section}>
           <Text style={styles.label}>Cover Photo</Text>
 
-          {coverPhoto || trip?.cover_photo ? (
+          {coverPhoto ? (
             <View style={styles.coverPhotoContainer}>
-              <Image
-                source={{ uri: coverPhoto }} // CHANGE from trip.cover_photo to coverPhoto
-                style={styles.coverPhotoPreview}
-              />
+              <View
+                style={{
+                  height: 200,
+                  overflow: "hidden",
+                  borderRadius: 8,
+                  position: "relative",
+                }}
+              >
+                <View
+                  style={{
+                    position: "absolute",
+                    width: 900,
+                    height: 900,
+                    left: -300,
+                    top: -350,
+                    transform: [
+                      {
+                        translateX:
+                          localPositionCache?.x || savedPhotoPosition.x,
+                      },
+                      {
+                        translateY:
+                          localPositionCache?.y || savedPhotoPosition.y,
+                      },
+                    ],
+                  }}
+                >
+                  <Image
+                    source={{ uri: coverPhoto }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      resizeMode: "contain",
+                    }}
+                  />
+                </View>
+              </View>
               <TouchableOpacity
                 style={styles.changeCoverButton}
-                onPress={() => handleSelectCoverPhoto()}
+                onPress={handleSelectCoverPhoto}
               >
                 <Ionicons name="camera" size={20} color="white" />
                 <Text style={styles.changeCoverText}>Change Photo</Text>
@@ -514,7 +656,7 @@ export default function EditTripScreen() {
           ) : (
             <TouchableOpacity
               style={styles.addCoverButton}
-              onPress={() => handleSelectCoverPhoto()}
+              onPress={handleSelectCoverPhoto}
             >
               <Ionicons
                 name="images-outline"
@@ -595,12 +737,7 @@ export default function EditTripScreen() {
           <View style={styles.durationInfo}>
             <Ionicons name="time-outline" size={16} color={theme.colors.gray} />
             <Text style={styles.durationText}>
-              Trip Duration:{" "}
-              {Math.ceil(
-                (endDate.getTime() - startDate.getTime()) /
-                  (1000 * 60 * 60 * 24)
-              ) + 1}{" "}
-              days
+              Trip Duration: {getDurationInDays()} days
             </Text>
           </View>
         </View>
@@ -634,6 +771,9 @@ export default function EditTripScreen() {
           </TouchableOpacity>
 
           <View style={styles.permissionRow}>
+            <Text style={styles.permissionText}>
+              Allow friends to edit trip
+            </Text>
             <Switch
               value={allowFriendsToEdit}
               onValueChange={setAllowFriendsToEdit}
@@ -736,6 +876,7 @@ export default function EditTripScreen() {
         selectedFriends={taggedFriends}
         onToggleFriend={toggleFriend}
       />
+
       {/* Photo Selection Modal */}
       <Modal
         visible={showPhotoModal}
@@ -746,37 +887,117 @@ export default function EditTripScreen() {
         <View style={modalStyles.overlay}>
           <View style={modalStyles.container}>
             <View style={modalStyles.header}>
-              <Text style={modalStyles.title}>Choose Cover Photo</Text>
-              <TouchableOpacity onPress={() => setShowPhotoModal(false)}>
+              <Text style={modalStyles.title}>
+                {selectedPhotoIndex !== null
+                  ? "Adjust Photo Position"
+                  : "Choose Cover Photo"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPhotoModal(false);
+                  setSelectedPhotoIndex(null);
+                }}
+              >
                 <Ionicons name="close" size={24} color={theme.colors.gray} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.photoGrid}>
-              <View style={styles.photoGridContainer}>
-                {availablePhotos.map((photo, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.photoGridItem}
-                    onPress={() => selectCoverPhoto(photo)}
+            {selectedPhotoIndex === null ? (
+              <ScrollView style={styles.photoGrid}>
+                <View style={styles.photoGridContainer}>
+                  {availablePhotos.map((photo, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.photoGridItem}
+                      onPress={() => {
+                        setCoverPhoto(photo);
+                        setSelectedPhotoIndex(index);
+                        setPhotoPosition(
+                          photoPositions[index] || { x: 0, y: 0 }
+                        );
+                      }}
+                    >
+                      <Image
+                        source={{ uri: photo }}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            ) : (
+              <View style={{ padding: 20 }}>
+                <Text
+                  style={{
+                    textAlign: "center",
+                    marginBottom: 10,
+                    color: theme.colors.gray,
+                  }}
+                >
+                  Drag to adjust position
+                </Text>
+                <View
+                  style={{
+                    width: "100%",
+                    height: 200,
+                    overflow: "hidden",
+                    borderRadius: 8,
+                    backgroundColor: theme.colors.offWhite,
+                    borderWidth: 2,
+                    borderColor: theme.colors.forest,
+                  }}
+                >
+                  <View
+                    {...panResponder.panHandlers}
+                    style={{
+                      position: "absolute",
+                      width: 900,
+                      height: 900,
+                      left: -300,
+                      top: -350,
+                      transform: [
+                        { translateX: photoPosition.x },
+                        { translateY: photoPosition.y },
+                      ],
+                    }}
                   >
                     <Image
-                      source={{ uri: photo }}
-                      style={styles.photoThumbnail}
+                      source={{ uri: availablePhotos[selectedPhotoIndex] }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        resizeMode: "contain",
+                      }}
                     />
-                    {coverPhoto === photo && (
-                      <View style={styles.selectedBadge}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={24}
-                          color="white"
-                        />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                  </View>
+                </View>
+                <Text
+                  style={{
+                    textAlign: "center",
+                    marginTop: 10,
+                    fontSize: 12,
+                    color: theme.colors.gray,
+                  }}
+                >
+                  Position: X={photoPosition.x.toFixed(0)}, Y=
+                  {photoPosition.y.toFixed(0)}
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.forest,
+                    padding: 15,
+                    borderRadius: 8,
+                    marginTop: 20,
+                    alignItems: "center",
+                  }}
+                  onPress={handleSaveCoverPhoto}
+                >
+                  <Text style={{ color: "white", fontWeight: "600" }}>
+                    Use This Photo
+                  </Text>
+                </TouchableOpacity>
               </View>
-            </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -784,8 +1005,8 @@ export default function EditTripScreen() {
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
-  // ... all existing styles remain the same ...
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
@@ -874,6 +1095,46 @@ const styles = StyleSheet.create({
     color: theme.colors.lightGray,
     marginTop: 5,
     textAlign: "right",
+  },
+  coverPhotoContainer: {
+    position: "relative",
+  },
+  changeCoverButton: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  changeCoverText: {
+    color: "white",
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  addCoverButton: {
+    backgroundColor: theme.colors.offWhite,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: theme.colors.borderGray,
+    borderRadius: 8,
+    padding: 30,
+    alignItems: "center",
+  },
+  addCoverText: {
+    color: theme.colors.navy,
+    fontSize: 16,
+    fontWeight: "500",
+    marginTop: 10,
+  },
+  addCoverHint: {
+    color: theme.colors.lightGray,
+    fontSize: 12,
+    marginTop: 5,
   },
   autoAdjustNotice: {
     flexDirection: "row",
@@ -1052,52 +1313,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  coverPhotoContainer: {
-    position: "relative",
-  },
-  coverPhotoPreview: {
-    width: "100%",
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: theme.colors.offWhite,
-  },
-  changeCoverButton: {
-    position: "absolute",
-    bottom: 10,
-    right: 10,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  changeCoverText: {
-    color: "white",
-    marginLeft: 6,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  addCoverButton: {
-    backgroundColor: theme.colors.offWhite,
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: theme.colors.borderGray,
-    borderRadius: 8,
-    padding: 30,
-    alignItems: "center",
-  },
-  addCoverText: {
-    color: theme.colors.navy,
-    fontSize: 16,
-    fontWeight: "500",
-    marginTop: 10,
-  },
-  addCoverHint: {
-    color: theme.colors.lightGray,
-    fontSize: 12,
-    marginTop: 5,
-  },
   photoGrid: {
     padding: 10,
     maxHeight: 400,
@@ -1118,27 +1333,19 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 8,
   },
-  selectedBadge: {
-    position: "absolute",
-    top: 5,
-    right: 5,
-    backgroundColor: theme.colors.forest,
-    borderRadius: 12,
-    padding: 2,
-  },
 });
 
 const modalStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
   },
   container: {
     backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
     maxHeight: "70%",
+    marginHorizontal: 20,
   },
   header: {
     flexDirection: "row",

@@ -203,7 +203,30 @@ export default function TripsScreen() {
         activeOpacity={0.7}
       >
         {coverPhoto ? (
-          <Image source={{ uri: coverPhoto }} style={styles.tripCover} />
+          <View style={styles.tripCoverContainer}>
+            <View
+              style={{
+                position: "absolute",
+                width: 700, // Slightly smaller for list view
+                height: 700,
+                left: -250, // Center horizontally
+                top: -275, // Center vertically
+                transform: [
+                  { translateX: trip.cover_photo_position?.x || 0 },
+                  { translateY: trip.cover_photo_position?.y || 0 },
+                ],
+              }}
+            >
+              <Image
+                source={{ uri: coverPhoto }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  resizeMode: "contain",
+                }}
+              />
+            </View>
+          </View>
         ) : (
           <View style={[styles.tripCover, styles.tripCoverPlaceholder]}>
             <Ionicons name="images-outline" size={40} color="#ccc" />
@@ -741,6 +764,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.gray,
     fontWeight: "500",
+  },
+  tripCoverContainer: {
+    width: "100%",
+    height: 150,
+    overflow: "hidden", // Critical for clipping
+    backgroundColor: theme.colors.offWhite,
+    position: "relative",
   },
 });
 

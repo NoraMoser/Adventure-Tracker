@@ -740,10 +740,30 @@ export default function TripDetailScreen() {
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Cover Photo */}
           {trip.cover_photo ? (
-            <Image
-              source={{ uri: trip.cover_photo }}
-              style={styles.coverPhoto}
-            />
+            <View style={styles.coverPhotoContainer}>
+              <View
+                style={{
+                  position: "absolute",
+                  width: 900, // Same size as edit screen
+                  height: 900, // Same size as edit screen
+                  left: -300, // Center horizontally
+                  top: -350, // Center vertically
+                  transform: [
+                    { translateX: trip.cover_photo_position?.x || 0 },
+                    { translateY: trip.cover_photo_position?.y || 0 },
+                  ],
+                }}
+              >
+                <Image
+                  source={{ uri: trip.cover_photo }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    resizeMode: "contain", // Match edit screen
+                  }}
+                />
+              </View>
+            </View>
           ) : (
             <View style={styles.coverPhotoPlaceholder}>
               <Ionicons name="images-outline" size={48} color="#ccc" />
@@ -1082,11 +1102,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  coverPhoto: {
-    width: "100%",
-    height: 250,
-    resizeMode: "cover",
-  },
   coverPhotoPlaceholder: {
     width: "100%",
     height: 250,
@@ -1094,6 +1109,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
+  coverPhotoContainer: {
+    width: "100%",
+    height: 250,
+    overflow: "hidden", // CRITICAL: This clips the image
+    backgroundColor: theme.colors.offWhite,
+    position: "relative",
+  },
+
   placeholderText: {
     marginTop: 10,
     color: "#999",
