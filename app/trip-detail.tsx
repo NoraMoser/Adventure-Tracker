@@ -22,9 +22,11 @@ import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
 import ViewShot from "react-native-view-shot";
 import { TripShareService } from "../services/shareService";
+import ImageViewer from "../components/ImageViewer";
+import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
 
-// Weather API configuration (using Open-Meteo free API)
-// Weather API configuration (using Open-Meteo free API)
+// Weather API configuration
 const getWeatherForLocation = async (
   lat: number,
   lon: number,
@@ -35,8 +37,6 @@ const getWeatherForLocation = async (
   try {
     const start = startDate.toISOString().split("T")[0];
     const end = endDate.toISOString().split("T")[0];
-
-    // Open-Meteo API for weather forecast - add temperature_unit parameter
     const tempUnit = useImperial ? "fahrenheit" : "celsius";
     const precipUnit = useImperial ? "inch" : "mm";
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${start}&end_date=${end}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
@@ -50,7 +50,6 @@ const getWeatherForLocation = async (
   }
 };
 
-// Weather code to icon mapping
 const getWeatherIcon = (code: number) => {
   if (code === 0) return "sunny";
   if (code <= 3) return "partly-sunny";
@@ -62,10 +61,8 @@ const getWeatherIcon = (code: number) => {
   return "cloudy";
 };
 
-// Generate trip map HTML
 const generateTripMapHTML = (tripActivities: any[], tripSpots: any[]) => {
-  // Calculate center
-  let centerLat = 47.6062; // Default Seattle
+  let centerLat = 47.6062;
   let centerLng = -122.3321;
 
   const allPoints: any[] = [];
@@ -126,7 +123,6 @@ const generateTripMapHTML = (tripActivities: any[], tripSpots: any[]) => {
         
         var markers = [];
         
-        // Add spot markers
         ${tripSpots
           .map((spot, index) => {
             if (!spot.location) return "";
@@ -151,7 +147,6 @@ const generateTripMapHTML = (tripActivities: any[], tripSpots: any[]) => {
           })
           .join("")}
         
-        // Add activity routes
         ${tripActivities
           .map((activity, index) => {
             if (!activity.route || activity.route.length === 0) return "";
@@ -170,7 +165,6 @@ const generateTripMapHTML = (tripActivities: any[], tripSpots: any[]) => {
             }</b><div class="type">${activity.type || "Activity"}</div></div>');
             markers.push(route${index});
             
-            // Add start/end markers
             var startMarker${index} = L.circleMarker(
               [${activity.route[0].latitude}, ${activity.route[0].longitude}],
               {
@@ -187,7 +181,6 @@ const generateTripMapHTML = (tripActivities: any[], tripSpots: any[]) => {
           })
           .join("")}
         
-        // Fit bounds to show all markers
         if (markers.length > 0) {
           var group = new L.featureGroup(markers);
           map.fitBounds(group.getBounds().pad(0.15));
@@ -210,17 +203,20 @@ export default function TripDetailScreen() {
   const useImperial = settings?.units === "imperial";
   const shareCardRef = useRef<ViewShot>(null);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [currentSpotImages, setCurrentSpotImages] = useState<string[]>([]);
+  const { user } = useAuth();
+  const [processedSpots, setProcessedSpots] = useState<any[]>([]);
 
   const trip = trips.find((t) => t.id === tripId);
 
-  // Updated section for handling activities with proper date fields
   const tripActivities = trip
     ? trip.items
         .filter((item) => item.type === "activity")
         .map((item) => ({
           tripItemId: item.id,
           ...item.data,
-          // Ensure we have a consistent date field
           displayDate:
             item.data.activityDate ||
             item.data.startTime ||
@@ -235,18 +231,110 @@ export default function TripDetailScreen() {
         .map((item) => ({
           tripItemId: item.id,
           ...item.data,
-          // Ensure we have a consistent date field
           displayDate:
             item.data.locationDate || item.data.timestamp || item.added_at,
         }))
     : [];
 
-  // Debug logging to see what data we have (must be before conditional return)
+  const [processedActivities, setProcessedActivities] = useState<any[]>([]);
+
+  // Add a useEffect to process activity photos
+  useEffect(() => {
+    const processActivityPhotos = async () => {
+      if (!trip || tripActivities.length === 0) {
+        setProcessedActivities([]);
+        return;
+      }
+
+      const updatedActivities = [];
+
+      for (const activity of tripActivities) {
+        let finalActivity = { ...activity };
+
+        // Check if photos need processing
+        if (activity.photos && activity.photos.length > 0) {
+          // Filter out local URIs
+          finalActivity.photos = activity.photos.filter(
+            (p: string) => p.startsWith("http://") || p.startsWith("https://")
+          );
+        }
+
+        updatedActivities.push(finalActivity);
+      }
+
+      setProcessedActivities(updatedActivities);
+    };
+
+    processActivityPhotos();
+  }, [trip?.id, JSON.stringify(tripActivities)]);
+  // Process spots to ensure photos are valid URLs
+  useEffect(() => {
+    const processSpotPhotos = async () => {
+      if (!trip || tripSpots.length === 0) {
+        setProcessedSpots([]);
+        return;
+      }
+
+      console.log("Processing spots for trip:", trip.name);
+      console.log("Is shared trip?", trip.created_by !== user?.id);
+
+      const updatedSpots = [];
+
+      for (const spot of tripSpots) {
+        let finalSpot = { ...spot };
+
+        // Check if photos need processing
+        if (spot.photos && spot.photos.length > 0) {
+          const hasLocalPhotos = spot.photos.some((p: string) =>
+            p.startsWith("file://")
+          );
+
+          // For shared trips or spots with local photos, fetch from database
+          if (hasLocalPhotos && spot.id) {
+            console.log(`Fetching DB photos for: ${spot.name}`);
+
+            const { data, error } = await supabase
+              .from("locations")
+              .select("photos")
+              .eq("id", spot.id)
+              .single();
+
+            if (data?.photos) {
+              console.log(`Found DB photos for ${spot.name}:`, data.photos);
+              finalSpot.photos = data.photos;
+            } else {
+              console.log(
+                `No DB photos found for ${spot.name}, filtering local URIs`
+              );
+              // Filter out local URIs if we can't get DB photos
+              finalSpot.photos = spot.photos.filter(
+                (p: string) =>
+                  p.startsWith("http://") || p.startsWith("https://")
+              );
+            }
+          } else {
+            // Already has valid URLs, just filter to be safe
+            finalSpot.photos = spot.photos.filter(
+              (p: string) => p.startsWith("http://") || p.startsWith("https://")
+            );
+          }
+        }
+
+        updatedSpots.push(finalSpot);
+      }
+
+      console.log("Processed spots:", updatedSpots);
+      setProcessedSpots(updatedSpots);
+    };
+
+    processSpotPhotos();
+  }, [trip?.id, JSON.stringify(tripSpots), user?.id]);
+
   useEffect(() => {
     if (trip) {
       loadWeatherData();
     }
-  }, [trip, tripActivities.length, tripSpots.length]);
+  }, [trip, tripActivities.length, processedSpots.length]);
 
   useFocusEffect(
     useCallback(() => {
@@ -255,35 +343,33 @@ export default function TripDetailScreen() {
   );
 
   const loadWeatherData = async () => {
-    if (!trip || (tripActivities.length === 0 && tripSpots.length === 0))
+    if (!trip || (tripActivities.length === 0 && processedSpots.length === 0))
       return;
 
     setLoadingWeather(true);
 
-    // Get location from first spot or activity
-    let lat = 47.6062; // Default Seattle
+    let lat = 47.6062;
     let lon = -122.3321;
 
-    const firstSpot = tripSpots.find((spot) => spot.location);
+    const firstSpot = processedSpots.find((spot) => spot.location);
     const firstActivity = tripActivities.find(
       (activity) => activity.route?.length > 0
     );
 
-    if (firstSpot && firstSpot.location) {
+    if (firstSpot?.location) {
       lat = firstSpot.location.latitude;
       lon = firstSpot.location.longitude;
-    } else if (firstActivity && firstActivity.route) {
+    } else if (firstActivity?.route) {
       lat = firstActivity.route[0].latitude;
       lon = firstActivity.route[0].longitude;
     }
 
-    // Pass the useImperial flag to the weather API
     const weather = await getWeatherForLocation(
       lat,
       lon,
       trip.start_date,
       trip.end_date,
-      useImperial // Add this parameter
+      useImperial
     );
     setWeatherData(weather);
     setLoadingWeather(false);
@@ -306,7 +392,6 @@ export default function TripDetailScreen() {
   }
 
   const formatDate = (date: Date) => {
-    // Ensure we have a valid Date object
     const d = date instanceof Date ? date : new Date(date);
     return d.toLocaleDateString("en-US", {
       weekday: "short",
@@ -338,13 +423,65 @@ export default function TripDetailScreen() {
   };
 
   const handleActivityPress = (activity: any) => {
-    // Navigate to activity detail screen using dynamic route
-    router.push(`/activity/${activity.id}`);
+    // Check for photos first
+    if (activity.photos && activity.photos.length > 0) {
+      console.log(
+        "Opening image viewer with activity photos:",
+        activity.photos
+      );
+      setCurrentSpotImages(activity.photos); // Reuse the same image viewer
+      setSelectedImageIndex(0);
+      setShowImageViewer(true);
+    } else if (trip.created_by !== user?.id) {
+      // For shared trips without photos, show details in alert
+      Alert.alert(
+        activity.name || "Activity Details",
+        `Type: ${activity.type || "Unknown"}\n` +
+          `Distance: ${(activity.distance / 1000).toFixed(2)} km\n` +
+          `Duration: ${formatDuration(activity.duration)}\n` +
+          `Date: ${new Date(
+            activity.displayDate || activity.startTime
+          ).toLocaleDateString()}\n` +
+          `${activity.notes ? `\nNotes: ${activity.notes}` : ""}`,
+        [{ text: "OK" }]
+      );
+    } else {
+      // For own trips, navigate to activity detail page
+      if (activity.id) {
+        // Check if it's a valid UUID
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(activity.id)) {
+          router.push(`/activity/${activity.id}`);
+        } else {
+          Alert.alert("Error", "Activity details not available");
+        }
+      } else {
+        Alert.alert("Error", "Activity details not available");
+      }
+    }
   };
 
   const handleSpotPress = (spot: any) => {
-    // Navigate to location detail screen using dynamic route
-    router.push(`/location/${spot.id}`);
+    console.log("handleSpotPress called for:", spot.name);
+    console.log("Spot photos:", spot.photos);
+
+    if (spot.photos && spot.photos.length > 0) {
+      console.log("Opening image viewer with photos:", spot.photos);
+      setCurrentSpotImages(spot.photos);
+      setSelectedImageIndex(0);
+      setShowImageViewer(true);
+    } else if (trip.created_by === user?.id && spot.id) {
+      // Only navigate to detail page for OWN trips with valid UUID
+      // Check if the ID looks like a valid UUID
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(spot.id)) {
+        router.push(`/location/${spot.id}`);
+      } else {
+        Alert.alert("Error", "Spot details not available");
+      }
+    }
   };
 
   const getDaysCount = () => {
@@ -376,12 +513,10 @@ export default function TripDetailScreen() {
 
       switch (shareType) {
         case "native":
-          // Native share sheet (works with any app)
           await TripShareService.shareTrip(trip, shareOptions);
           break;
 
         case "image":
-          // Share as image (great for Instagram Stories)
           await TripShareService.shareTripWithPhotos(
             trip,
             shareCardRef,
@@ -394,7 +529,6 @@ export default function TripDetailScreen() {
           break;
 
         case "facebook":
-          // Facebook specific
           const fbMessage = TripShareService.createTripMessage(
             trip,
             shareOptions
@@ -413,7 +547,6 @@ export default function TripDetailScreen() {
           break;
 
         case "whatsapp":
-          // WhatsApp
           const waMessage = TripShareService.createTripMessage(
             trip,
             shareOptions
@@ -433,7 +566,6 @@ export default function TripDetailScreen() {
           break;
 
         case "instagram":
-          // Instagram (requires image)
           if (shareCardRef.current) {
             const imageUri = await shareCardRef.current.capture();
             const instagramUrl = `instagram://library?AssetPath=${imageUri}`;
@@ -456,7 +588,6 @@ export default function TripDetailScreen() {
           break;
 
         case "export":
-          // Export as JSON
           const exportData = await TripShareService.exportTripData(trip);
           await Clipboard.setStringAsync(exportData);
           Alert.alert("Exported!", "Trip data copied to clipboard as JSON");
@@ -470,7 +601,6 @@ export default function TripDetailScreen() {
     }
   };
 
-  // Share Modal Component
   const ShareModal = () => (
     <Modal
       visible={showShareModal}
@@ -487,24 +617,25 @@ export default function TripDetailScreen() {
           <View style={styles.shareHandle} />
           <Text style={styles.shareTitle}>Share Trip</Text>
 
-          {/* Trip Preview */}
           <View style={styles.shareTripPreview}>
             <Text style={styles.sharePreviewTitle}>{trip.name}</Text>
             <Text style={styles.sharePreviewStats}>
-              {tripActivities.length} activities • {tripSpots.length} spots •{" "}
-              {getDaysCount()} days
+              {tripActivities.length} activities • {processedSpots.length} spots
+              • {getDaysCount()} days
             </Text>
-            {tripSpots.filter((s) => s.photos?.length > 0).length > 0 && (
+            {processedSpots.filter((s) => s.photos?.length > 0).length > 0 && (
               <Text style={styles.sharePreviewPhotos}>
                 📸{" "}
-                {tripSpots.reduce((sum, s) => sum + (s.photos?.length || 0), 0)}{" "}
+                {processedSpots.reduce(
+                  (sum, s) => sum + (s.photos?.length || 0),
+                  0
+                )}{" "}
                 photos
               </Text>
             )}
           </View>
 
           <ScrollView style={styles.shareOptions}>
-            {/* Primary share options */}
             <TouchableOpacity
               style={styles.shareOption}
               onPress={() => handleShareTrip("native")}
@@ -525,7 +656,6 @@ export default function TripDetailScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* Social media options */}
             <View style={styles.shareSocialSection}>
               <Text style={styles.shareSectionTitle}>
                 Share to Social Media
@@ -583,7 +713,6 @@ export default function TripDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Export option */}
             <TouchableOpacity
               style={styles.shareOption}
               onPress={() => handleShareTrip("export")}
@@ -654,7 +783,6 @@ export default function TripDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backArrow}
@@ -689,7 +817,6 @@ export default function TripDetailScreen() {
         </View>
       </View>
 
-      {/* View Mode Toggle */}
       <View style={styles.viewToggle}>
         <TouchableOpacity
           style={[
@@ -738,16 +865,15 @@ export default function TripDetailScreen() {
 
       {viewMode === "list" ? (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Cover Photo */}
           {trip.cover_photo ? (
             <View style={styles.coverPhotoContainer}>
               <View
                 style={{
                   position: "absolute",
-                  width: 900, // Same size as edit screen
-                  height: 900, // Same size as edit screen
-                  left: -300, // Center horizontally
-                  top: -350, // Center vertically
+                  width: 900,
+                  height: 900,
+                  left: -300,
+                  top: -350,
                   transform: [
                     { translateX: trip.cover_photo_position?.x || 0 },
                     { translateY: trip.cover_photo_position?.y || 0 },
@@ -759,7 +885,7 @@ export default function TripDetailScreen() {
                   style={{
                     width: "100%",
                     height: "100%",
-                    resizeMode: "contain", // Match edit screen
+                    resizeMode: "contain",
                   }}
                 />
               </View>
@@ -768,15 +894,15 @@ export default function TripDetailScreen() {
             <View style={styles.coverPhotoPlaceholder}>
               <Ionicons name="images-outline" size={48} color="#ccc" />
               <Text style={styles.placeholderText}>No cover photo yet</Text>
-              {tripSpots.length > 0 && tripSpots[0].photos?.length > 0 && (
-                <Text style={styles.placeholderHint}>
-                  (Using first spot photo as cover)
-                </Text>
-              )}
+              {processedSpots.length > 0 &&
+                processedSpots[0].photos?.length > 0 && (
+                  <Text style={styles.placeholderHint}>
+                    (Using first spot photo as cover)
+                  </Text>
+                )}
             </View>
           )}
 
-          {/* Trip Info */}
           <View style={styles.tripInfo}>
             <View style={styles.dateContainer}>
               <Ionicons
@@ -797,14 +923,13 @@ export default function TripDetailScreen() {
             )}
           </View>
 
-          {/* Stats */}
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>{tripActivities.length}</Text>
               <Text style={styles.statLabel}>Activities</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{tripSpots.length}</Text>
+              <Text style={styles.statNumber}>{processedSpots.length}</Text>
               <Text style={styles.statLabel}>Spots</Text>
             </View>
             <View style={styles.statCard}>
@@ -813,7 +938,6 @@ export default function TripDetailScreen() {
             </View>
           </View>
 
-          {/* Weather Section */}
           {weatherData && (
             <View style={styles.weatherCard}>
               <View style={styles.weatherHeader}>
@@ -839,14 +963,11 @@ export default function TripDetailScreen() {
               )}
             </View>
           )}
-
-          {/* Activities Section */}
           {tripActivities.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 Activities ({tripActivities.length})
               </Text>
-              {/* Activities Section - update the date display */}
               {tripActivities.map((activity: any) => (
                 <TouchableOpacity
                   key={activity.tripItemId}
@@ -854,13 +975,27 @@ export default function TripDetailScreen() {
                   onPress={() => handleActivityPress(activity)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.itemIcon}>
-                    <Ionicons
-                      name="fitness"
-                      size={24}
-                      color={theme.colors.forest}
+                  {/* Show activity photo if available */}
+                  {activity.photos && activity.photos.length > 0 ? (
+                    <Image
+                      source={{ uri: activity.photos[0] }}
+                      style={styles.spotImage}
+                      onError={(e) => {
+                        console.error(
+                          "Activity image failed to load:",
+                          activity.photos[0]
+                        );
+                      }}
                     />
-                  </View>
+                  ) : (
+                    <View style={styles.itemIcon}>
+                      <Ionicons
+                        name="fitness"
+                        size={24}
+                        color={theme.colors.forest}
+                      />
+                    </View>
+                  )}
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemName}>
                       {activity.name || "Unnamed Activity"}
@@ -876,88 +1011,114 @@ export default function TripDetailScreen() {
                         ? ` • ${formatDuration(activity.duration)}`
                         : ""}
                     </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleRemoveItem(
-                        activity.tripItemId,
-                        activity.name || "this activity"
-                      );
-                    }}
-                    style={styles.removeButton}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#999" />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {tripSpots.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Spots ({tripActivities.length})
-              </Text>
-              {/* Spots Section - update the date display */}
-              {tripSpots.map((spot: any) => (
-                <TouchableOpacity
-                  key={spot.tripItemId}
-                  style={styles.itemCard}
-                  onPress={() => handleSpotPress(spot)}
-                  activeOpacity={0.7}
-                >
-                  {spot.photos && spot.photos.length > 0 ? (
-                    <Image
-                      source={{ uri: spot.photos[0] }}
-                      style={styles.spotImage}
-                    />
-                  ) : (
-                    <View style={styles.itemIcon}>
-                      <Ionicons
-                        name="location"
-                        size={24}
-                        color={theme.colors.burntOrange}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>
-                      {spot.name || "Unnamed Spot"}
-                    </Text>
-                    <Text style={styles.itemMeta}>
-                      {spot.category || "No category"}
-                      {spot.displayDate
-                        ? ` • ${new Date(
-                            spot.displayDate
-                          ).toLocaleDateString()}`
-                        : ""}
-                    </Text>
-                    {spot.description && (
-                      <Text style={styles.itemDescription} numberOfLines={1}>
-                        {spot.description}
+                    {/* Show photo count for activities */}
+                    {activity.photos && activity.photos.length > 1 && (
+                      <Text style={styles.photoCount}>
+                        📸 {activity.photos.length} photos
                       </Text>
                     )}
                   </View>
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleRemoveItem(
-                        spot.tripItemId,
-                        spot.name || "this spot"
-                      );
-                    }}
-                    style={styles.removeButton}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#999" />
-                  </TouchableOpacity>
+                  {trip.created_by === user?.id && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleRemoveItem(
+                          activity.tripItemId,
+                          activity.name || "this activity"
+                        );
+                      }}
+                      style={styles.removeButton}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
           )}
 
-          {/* Empty State */}
-          {tripActivities.length === 0 && tripSpots.length === 0 && (
+          {processedSpots.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Spots ({processedSpots.length})
+              </Text>
+              {processedSpots.map((spot: any, index: number) => {
+                console.log(
+                  `Rendering spot: ${spot.name}, photos:`,
+                  spot.photos
+                );
+
+                return (
+                  <TouchableOpacity
+                    key={spot.tripItemId || `spot-${index}`}
+                    style={styles.itemCard}
+                    onPress={() => handleSpotPress(spot)}
+                    activeOpacity={0.7}
+                  >
+                    {spot.photos && spot.photos.length > 0 ? (
+                      <Image
+                        source={{ uri: spot.photos[0] }}
+                        style={styles.spotImage}
+                        onError={(e) => {
+                          console.error(
+                            "Image failed to load:",
+                            spot.photos[0]
+                          );
+                        }}
+                      />
+                    ) : (
+                      <View style={styles.itemIcon}>
+                        <Ionicons
+                          name="location"
+                          size={24}
+                          color={theme.colors.burntOrange}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.itemInfo}>
+                      <Text style={styles.itemName}>
+                        {spot.name || "Unnamed Spot"}
+                      </Text>
+                      <Text style={styles.itemMeta}>
+                        {spot.category || "No category"}
+                        {spot.displayDate
+                          ? ` • ${new Date(
+                              spot.displayDate
+                            ).toLocaleDateString()}`
+                          : ""}
+                      </Text>
+                      {spot.description && (
+                        <Text style={styles.itemDescription} numberOfLines={1}>
+                          {spot.description}
+                        </Text>
+                      )}
+                      {spot.photos && spot.photos.length > 1 && (
+                        <Text style={styles.photoCount}>
+                          📸 {spot.photos.length} photos
+                        </Text>
+                      )}
+                    </View>
+                    {trip.created_by === user?.id && (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleRemoveItem(
+                            spot.tripItemId,
+                            spot.name || "this spot"
+                          );
+                        }}
+                        style={styles.removeButton}
+                      >
+                        <Ionicons name="close-circle" size={20} color="#999" />
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {tripActivities.length === 0 && processedSpots.length === 0 && (
             <View style={styles.emptyState}>
               <Ionicons name="trail-sign-outline" size={48} color="#ccc" />
               <Text style={styles.emptyText}>
@@ -969,7 +1130,6 @@ export default function TripDetailScreen() {
             </View>
           )}
 
-          {/* Add Items Button */}
           <TouchableOpacity
             style={styles.addItemsButton}
             onPress={() => {
@@ -986,7 +1146,9 @@ export default function TripDetailScreen() {
       ) : (
         <View style={styles.mapContainer}>
           <WebView
-            source={{ html: generateTripMapHTML(tripActivities, tripSpots) }}
+            source={{
+              html: generateTripMapHTML(tripActivities, processedSpots),
+            }}
             style={styles.map}
             javaScriptEnabled={true}
             domStorageEnabled={true}
@@ -1013,7 +1175,18 @@ export default function TripDetailScreen() {
           </View>
         </View>
       )}
+
       <ShareModal />
+
+      <ImageViewer
+        visible={showImageViewer}
+        images={currentSpotImages}
+        imageIndex={selectedImageIndex}
+        onClose={() => {
+          setShowImageViewer(false);
+          setCurrentSpotImages([]);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1109,15 +1282,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   coverPhotoContainer: {
     width: "100%",
     height: 250,
-    overflow: "hidden", // CRITICAL: This clips the image
+    overflow: "hidden",
     backgroundColor: theme.colors.offWhite,
     position: "relative",
   },
-
   placeholderText: {
     marginTop: 10,
     color: "#999",
@@ -1248,7 +1419,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
-    // Add shadow for better touch feedback
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1481,6 +1651,11 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     textAlign: "center",
     padding: 20,
+    fontStyle: "italic",
+  },
+  photoCount: {
+    fontSize: 11,
+    color: theme.colors.forest,
     fontStyle: "italic",
   },
 });

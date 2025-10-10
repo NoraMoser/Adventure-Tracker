@@ -55,6 +55,7 @@ interface LocationContextType {
   loading: boolean;
   error: string | null;
   refreshSpots: () => Promise<void>;
+  migrateLocalPhotosToSupabase: () => Promise<number | undefined>; // ADD THIS LINE
 }
 
 export type { SavedSpot };
@@ -169,6 +170,20 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
           rating: spot.rating,
         }));
         setSavedSpots(transformedSpots);
+
+        const needsMigration = transformedSpots.some((spot) =>
+          spot.photos?.some((photo) => !photo.startsWith("http"))
+        );
+
+        if (needsMigration) {
+          console.log("Found local photos, starting migration...");
+          // Don't await this - let it run in background
+          migrateLocalPhotosToSupabase().then((count) => {
+            if (count && count > 0) {
+              console.log(`Auto-migrated ${count} photos`);
+            }
+          });
+        }
       } else {
         setSavedSpots([]);
       }
@@ -228,17 +243,14 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       try {
-        console.log("Attempting to upload photo:", photo);
         const uploadedUrl = await PhotoService.uploadPhoto(
           photo,
           "location-photos",
           user.id
         );
         if (uploadedUrl) {
-          console.log("Successfully uploaded photo to:", uploadedUrl);
           finalUrls.push(uploadedUrl);
         } else {
-          console.log("Failed to upload photo:", photo);
         }
       } catch (err) {
         console.error("Error uploading photo:", photo, err);
@@ -453,7 +465,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         )
       );
 
-      console.log("Spot updated successfully");
     } catch (err) {
       console.error("Error updating spot:", err);
       setError("Failed to update location");
@@ -509,7 +520,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         })
       );
 
-      console.log("Photo added successfully");
     } catch (err) {
       console.error("Error adding photo to spot:", err);
       setError("Failed to add photo");
@@ -547,6 +557,61 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  const migrateLocalPhotosToSupabase = async () => {
+    if (!user) return;
+
+    let migrationCount = 0;
+    setLoading(true);
+
+    try {
+      for (const spot of savedSpots) {
+        if (!spot.photos || spot.photos.length === 0) continue;
+
+        // Check if any photos are still local URIs
+        const localPhotos = spot.photos.filter(
+          (photo) => !photo.startsWith("http") && !photo.startsWith("https")
+        );
+
+        if (localPhotos.length > 0) {
+          console.log(
+            `Migrating ${localPhotos.length} photos for spot: ${spot.name}`
+          );
+
+          // Upload all photos (processPhotosForUpload handles both local and remote)
+          const updatedPhotoUrls = await processPhotosForUpload(spot.photos);
+
+          // Update in database
+          const { error: updateError } = await supabase
+            .from("locations")
+            .update({
+              photos: updatedPhotoUrls,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", spot.id)
+            .eq("user_id", user.id);
+
+          if (updateError) throw updateError;
+
+          migrationCount += localPhotos.length;
+        }
+      }
+
+      if (migrationCount > 0) {
+        console.log(
+          `Successfully migrated ${migrationCount} photos to Supabase`
+        );
+        await loadSavedSpots(); // Reload to get updated URLs
+      }
+
+      return migrationCount;
+    } catch (error) {
+      console.error("Migration error:", error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const value: LocationContextType = {
     location,
     savedSpots,
@@ -559,6 +624,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     loading,
     error,
     refreshSpots,
+    migrateLocalPhotosToSupabase,
   };
 
   return (

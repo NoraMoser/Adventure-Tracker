@@ -20,7 +20,6 @@ class SyncService {
     try {
       // Get last sync time
       const lastSyncTime = await AsyncStorage.getItem('lastSyncTime');
-      console.log('🔄 Last sync time:', lastSyncTime);
 
       // Sync activities
       const activitiesResult = await this.syncActivities(userId, lastSyncTime);
@@ -78,7 +77,6 @@ class SyncService {
         // Check for duplicate based on name and start time
         const activityKey = `${activity.name}_${new Date(activity.startTime).getTime()}`;
         if (existingMap.has(activityKey)) {
-          console.log('🔄 Skipping duplicate activity:', activity.name);
           continue;
         }
 

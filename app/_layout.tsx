@@ -39,7 +39,6 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Skip if in Expo Go or notifications not available
     if (!user || !Notifications || !NotificationService) {
-      console.log("Notifications not available in Expo Go");
       return;
     }
 
@@ -51,7 +50,6 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
     // Listen for incoming notifications while app is foregrounded
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification: any) => {
-        console.log("Notification received:", notification);
       });
 
     // Listen for notification interactions (user taps on notification)

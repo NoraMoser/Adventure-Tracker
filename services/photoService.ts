@@ -81,7 +81,6 @@ export class PhotoService {
         return response;
       } catch (error: any) {
         lastError = error;
-        console.log(`Fetch attempt ${i + 1} failed:`, error.message);
         
         if (i < maxRetries - 1) {
           // Wait before retrying (exponential backoff)
@@ -172,8 +171,6 @@ export class PhotoService {
           return null;
         }
 
-        console.log("Base64 data length:", base64Data.length);
-
         // Upload to Supabase Storage
         console.log("Uploading to Supabase Storage...");
         const { data, error } = await supabase.storage
@@ -192,7 +189,6 @@ export class PhotoService {
           .from(bucket)
           .getPublicUrl(fileName);
 
-        console.log("Photo uploaded successfully:", urlData.publicUrl);
         return urlData.publicUrl;
         
       } catch (error: any) {

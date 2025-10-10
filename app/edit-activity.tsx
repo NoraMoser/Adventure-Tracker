@@ -104,7 +104,6 @@ export default function EditActivityScreen() {
       console.log('Attempting to send message:', data);
       originalPostMessage.call(window.ReactNativeWebView, data);
     };
-    console.log('WebView JavaScript injected and ready');
     true; // Required for iOS
   })();
 `;
@@ -112,11 +111,6 @@ export default function EditActivityScreen() {
   const handleMapMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-
-      console.log("=== Map Message Received ===");
-      console.log("Type:", data.type);
-      console.log("Route points:", data.route?.length || 0);
-      console.log("Distance:", data.distance);
 
       if (data.type === "routeUpdated") {
         // Log the actual route data
@@ -565,7 +559,6 @@ export default function EditActivityScreen() {
         }
         
         function stopRedrawing() {
-  console.log('stopRedrawing called, newRoutePoints:', newRoutePoints.length);
   
   if (newRoutePoints.length === 0) {
     isRedrawing = false;
@@ -619,9 +612,7 @@ export default function EditActivityScreen() {
   
   // Set a flag that route was redrawn
   window.routeWasRedrawn = true;
-  
-  console.log('Stored redrawn route:', window.savedRedrawRoute);
-  
+    
   // Clean up visuals
   newRouteMarkers.forEach(function(marker) {
     map.removeLayer(marker);

@@ -15,14 +15,3 @@ if (!fs.existsSync(assetsDir)) {
 } else {
   console.log('✅ Assets directory already exists');
 }
-
-// Create placeholder message
-console.log('\n📱 To create your app icons:');
-console.log('1. Go to https://www.appicon.co/');
-console.log('2. Upload an image with your logo');
-console.log('3. Use background color: #2d5a3d (forest green)');
-console.log('4. Download and extract the icons');
-console.log('5. Copy the following files to your assets folder:');
-console.log('   - icon.png (1024x1024)');
-console.log('   - adaptive-icon.png (1024x1024)');
-console.log('   - splash.png (1284x2778)');

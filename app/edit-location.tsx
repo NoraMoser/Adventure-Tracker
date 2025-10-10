@@ -165,7 +165,6 @@ export default function EditLocationScreen() {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        console.log("Taking picture...");
 
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
@@ -173,10 +172,7 @@ export default function EditLocationScreen() {
           skipProcessing: true,
         });
 
-        console.log("Photo result:", photo);
-
         if (photo && photo.uri) {
-          console.log("Adding photo URI:", photo.uri);
           setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
 
           // Force camera to unmount and remount

@@ -66,7 +66,6 @@ export class MemoryNotificationService {
       // Register location tracking for proximity alerts
       await this.registerLocationTracking(userId);
       
-      console.log('Memory notification services initialized with home location:', this.homeLocation);
     } catch (error) {
       console.error('Error initializing memory services:', error);
     }
@@ -86,7 +85,6 @@ export class MemoryNotificationService {
 
       if (profile?.home_location) {
         this.homeLocation = profile.home_location;
-        console.log('Using user-defined home location:', this.homeLocation);
         return;
       }
 
@@ -104,7 +102,6 @@ export class MemoryNotificationService {
           latitude: frequentSpots[0].latitude,
           longitude: frequentSpots[0].longitude,
         };
-        console.log('Auto-detected home location from most visited spot:', frequentSpots[0].name);
       }
     } catch (error) {
       console.error('Error setting home location:', error);
@@ -399,7 +396,6 @@ export class MemoryNotificationService {
     if (this.lastProximityCheck) {
       const timeSinceLastCheck = Date.now() - this.lastProximityCheck.getTime();
       if (timeSinceLastCheck < CHECK_INTERVAL * 1000) {
-        console.log('Too soon since last proximity check');
         return [];
       }
     }
@@ -565,7 +561,6 @@ export class MemoryNotificationService {
         body = `You're back near "${closestPlace.name}" - visited ${closestPlace.visitCount} times`;
       } else {
         // Don't notify for recent, infrequent spots
-        console.log('Skipping notification for recent, infrequent spot');
         return;
       }
     }
@@ -635,7 +630,6 @@ export class MemoryNotificationService {
           }
         );
       } catch (localError) {
-        console.log('Local notification failed (normal in Expo Go):', localError);
       }
     } catch (error) {
       console.error('Failed to send proximity notifications:', error);
