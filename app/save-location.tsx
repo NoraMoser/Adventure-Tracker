@@ -132,6 +132,7 @@ export default function SaveLocationScreen() {
         return;
       }
     }
+
     if (!name.trim()) {
       Alert.alert("Error", "Please enter a location name");
       return;
@@ -147,8 +148,8 @@ export default function SaveLocationScreen() {
 
     setSaving(true);
     try {
-      // Save the location
-      await saveCurrentLocation(
+      // Save the location and GET THE RETURNED VALUE
+      const savedSpot = await saveCurrentLocation(
         name.trim(),
         description.trim(),
         photos,
@@ -156,45 +157,49 @@ export default function SaveLocationScreen() {
         new Date()
       );
 
-      // Create the spot object manually since saveCurrentLocation returns void
-      const savedSpot: any = {
-        id: Date.now().toString(),
-        name: name.trim(),
-        description: description.trim(),
-        location: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-        },
-        category: category,
-        photos: [],
-        timestamp: new Date().toISOString(),
-        locationDate: new Date().toISOString(),
-      };
-
-      // Auto-add to trip if applicable
-      const trip: any = await checkAndAddToTrip(
-        savedSpot,
-        "spot",
-        savedSpot.name,
-        {
-          latitude: location.latitude,
-          longitude: location.longitude,
-        },
-        true
-      );
-
-      if (trip && trip.name && trip.id) {
-        Alert.alert("Success!", `Location saved and added to "${trip.name}"!`, [
+      // Check if we got a valid saved spot back
+      if (savedSpot) {
+        console.log("Checking auto-add to trip...");
+console.log("Saved spot:", savedSpot);
+console.log("Location:", {
+  latitude: savedSpot.location.latitude,
+  longitude: savedSpot.location.longitude,
+});
+        // Auto-add to trip if applicable - properly type the return value
+        const trip = (await checkAndAddToTrip(
+          savedSpot,
+          "spot",
+          savedSpot.name,
           {
-            text: "View Trip",
-            onPress: () => router.push(`/trip-detail?tripId=${trip.id}`),
+            latitude: savedSpot.location.latitude,
+            longitude: savedSpot.location.longitude,
           },
-          {
-            text: "OK",
-            onPress: () => router.back(),
-          },
-        ]);
+          true
+        )) as { name?: string; id?: string } | null; // Add this type assertion
+
+        if (trip?.name && trip?.id) {
+          Alert.alert(
+            "Success!",
+            `Location saved and added to "${trip.name}"!`,
+            [
+              {
+                text: "View Trip",
+                onPress: () => router.push(`/trip-detail?tripId=${trip.id}`),
+              },
+              {
+                text: "OK",
+                onPress: () => router.back(),
+              },
+            ]
+          );
+        } else {
+          Alert.alert("Success", "Location saved successfully!", [
+            { text: "OK", onPress: () => router.back() },
+          ]);
+        }
       } else {
+        // If saveCurrentLocation returned null, still show success
+        // (the location might have been saved but not returned properly)
         Alert.alert("Success", "Location saved successfully!", [
           { text: "OK", onPress: () => router.back() },
         ]);

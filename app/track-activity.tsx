@@ -27,6 +27,7 @@ import {
   State,
 } from "react-native-gesture-handler";
 import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
+import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip"; // Add this import
 
 type ActivityType =
   | "bike"
@@ -89,7 +90,7 @@ export default function TrackActivityScreen() {
   const [finalDuration, setFinalDuration] = useState(0);
   const [finalSpeed, setFinalSpeed] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
-
+  
   // Camera states
   const [showCamera, setShowCamera] = useState(false);
   const cameraRef = useRef<CameraView>(null);
@@ -98,6 +99,7 @@ export default function TrackActivityScreen() {
   const scale = useSharedValue(1);
   const baseScale = useSharedValue(1);
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
+  const { checkAndAddToTrip } = useAutoAddToTrip();
 
   useEffect(() => {
     if (loading || manualLoading) {
@@ -243,19 +245,50 @@ export default function TrackActivityScreen() {
     try {
       const name = activityName.trim() || `${selectedActivity} activity`;
 
-      const activityData = {
-        name,
-        notes: activityNotes,
-        photos,
-        activityDate,
-        distance: finalDistance,
-        duration: finalDuration,
-      };
+      // Get the saved activity from stopTracking
+      const savedActivity = await stopTracking(name, activityNotes, photos);
 
-      console.log("Saving activity with date...", activityData);
+      // Check for auto-add to trip if we have a saved activity and route
+      if (savedActivity && currentRoute && currentRoute.length > 0) {
 
-      await stopTracking(name, activityNotes, photos);
+        const trip = (await checkAndAddToTrip(
+          savedActivity,
+          "activity",
+          savedActivity.name,
+          {
+            latitude: currentRoute[0].latitude,
+            longitude: currentRoute[0].longitude,
+          },
+          true
+        )) as { name?: string; id?: string } | null;
 
+        if (trip?.name && trip?.id) {
+          setActivityName("");
+          setActivityNotes("");
+          setPhotos([]);
+          setShowSaveDialog(false);
+          setIsSaving(false);
+          setActivityDate(new Date());
+
+          Alert.alert(
+            "Success!",
+            `Activity saved and added to "${trip.name}"!`,
+            [
+              {
+                text: "View Trip",
+                onPress: () => router.push(`/trip-detail?tripId=${trip.id}`),
+              },
+              {
+                text: "OK",
+                onPress: () => router.back(),
+              },
+            ]
+          );
+          return;
+        }
+      }
+
+      // Default success if no trip match
       setActivityName("");
       setActivityNotes("");
       setPhotos([]);

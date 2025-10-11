@@ -40,7 +40,7 @@ interface LocationContextType {
     photos?: string[],
     category?: CategoryType,
     locationDate?: Date
-  ) => Promise<void>;
+  ) => Promise<SavedSpot | null>; // Change return type
   saveManualLocation: (
     name: string,
     coords: LocationCoords,
@@ -351,11 +351,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
   const saveCurrentLocation = async (
     name: string,
-    description?: string,
-    photos?: string[],
-    category: CategoryType = "other",
-    locationDate?: Date
-  ) => {
+    description: string,
+    photos: string[],
+    category: CategoryType,
+    locationDate: Date // Add this parameter
+  ): Promise<any> => {
     if (!location) {
       setError("No location available to save");
       return;
@@ -370,7 +370,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       setLoading(true);
       setError(null);
 
-      await saveSpot({
+      // Store the result of saveSpot
+      const newLocation = await saveSpot({
         name,
         location,
         locationDate: locationDate || new Date(),
@@ -384,6 +385,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       console.log("Location saved successfully");
+      return newLocation; // Now this exists
     } catch (err) {
       console.error("Error saving current location:", err);
       setError("Failed to save location");
@@ -464,7 +466,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
           spot.id === spotId ? { ...updatedSpot, photos: photoUrls } : spot
         )
       );
-
     } catch (err) {
       console.error("Error updating spot:", err);
       setError("Failed to update location");
@@ -519,7 +520,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
           return s;
         })
       );
-
     } catch (err) {
       console.error("Error adding photo to spot:", err);
       setError("Failed to add photo");

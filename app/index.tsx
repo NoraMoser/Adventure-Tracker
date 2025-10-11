@@ -141,7 +141,8 @@ export default function DashboardScreen() {
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const { wishlistItems } = useWishlist();
-  const { trips, triggerAutoDetection } = useTrips();
+  const { trips, triggerAutoDetection, showPendingClusters } = useTrips();
+  const [reviewingTrips, setReviewingTrips] = useState(false);
 
   // Force re-render when auth state changes
   const [authVersion, setAuthVersion] = useState(0);
@@ -1255,6 +1256,51 @@ export default function DashboardScreen() {
               </View>
             )}
           </TouchableOpacity>
+          {/* ADD THIS NEW BUTTON */}
+          <TouchableOpacity
+            style={[
+              styles.quickAction,
+              reviewingTrips && styles.quickActionDisabled,
+            ]}
+            onPress={async () => {
+              if (reviewingTrips) return;
+
+              try {
+                setReviewingTrips(true);
+                await showPendingClusters();
+              } catch (error) {
+                console.error("Error reviewing trips:", error);
+                Alert.alert(
+                  "Error",
+                  "Failed to check for trips. Please try again."
+                );
+              } finally {
+                setReviewingTrips(false);
+              }
+            }}
+            disabled={reviewingTrips}
+          >
+            {reviewingTrips ? (
+              <ActivityIndicator size="small" color={theme.colors.forest} />
+            ) : (
+              <Ionicons name="airplane" size={24} color={theme.colors.forest} />
+            )}
+            <Text style={styles.quickActionText}>
+              {reviewingTrips ? "Checking..." : "Create Trips"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickAction}
+            onPress={() => router.push("/friends")}
+          >
+            <Ionicons
+              name="people"
+              size={24}
+              color={theme.colors.burntOrange}
+            />
+            <Text style={styles.quickActionText}>Friends</Text>
+          </TouchableOpacity>
         </View>
       </Animated.View>
 
@@ -2039,6 +2085,54 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: theme.colors.navy,
     marginLeft: 12,
+  },
+  tripManagementSection: {
+    backgroundColor: theme.colors.white,
+    paddingVertical: 20,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  tripCount: {
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
+  reviewTripsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    padding: 15,
+  },
+  reviewTripsContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  reviewTripsText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  reviewTripsTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginBottom: 2,
+  },
+  reviewTripsSubtitle: {
+    fontSize: 13,
+    color: theme.colors.gray,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  quickActionDisabled: {
+    opacity: 0.6,
   },
 });
 

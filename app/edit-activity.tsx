@@ -545,10 +545,8 @@ export default function EditActivityScreen() {
         // Toggle redraw function
         function toggleRedraw() {
           if (isRedrawing) {
-            console.log('Toggle: Stopping redraw mode');
             stopRedrawing();
           } else {
-            console.log('Toggle: Starting redraw mode');
             startRedraw();
           }
         }

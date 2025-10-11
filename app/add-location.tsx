@@ -165,10 +165,8 @@ export default function AddLocationScreen() {
           skipProcessing: true,
         });
 
-        console.log("Photo result:", photo);
 
         if (photo && photo.uri) {
-          console.log("Adding photo URI:", photo.uri);
           setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
 
           // Force camera to unmount and remount

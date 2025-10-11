@@ -324,9 +324,6 @@ export default function EditTripScreen() {
       }
     });
 
-    console.log("All collected photos:", tripPhotos);
-    console.log("Total photos found:", tripPhotos.length);
-
     if (tripPhotos.length === 0) {
       Alert.alert(
         "No Photos",

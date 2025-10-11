@@ -68,13 +68,13 @@ interface ActivityContextType {
   startTracking: (activityType: ActivityType) => Promise<void>;
   pauseTracking: () => void;
   resumeTracking: () => void;
-  stopTracking: (
-    name: string,
-    notes?: string,
-    photos?: string[]
-  ) => Promise<void>;
+stopTracking: (
+  name: string,
+  notes?: string,
+  photos?: string[]
+) => Promise<Activity | void>; 
   deleteActivity: (activityId: string) => Promise<void>;
-  addManualActivity: (activity: Partial<Activity>) => Promise<void>;
+  addManualActivity: (activity: Partial<Activity>) => Promise<Activity>; // Change this line
   updateActivity: (
     activityId: string,
     updatedData: Partial<Activity>
@@ -768,58 +768,68 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const stopTracking = async (
-    name: string,
-    notes?: string,
-    photos?: string[]
-  ) => {
-    try {
-      console.log("Stopping tracking...");
+  name: string,
+  notes?: string,
+  photos?: string[]
+) => {
+  try {
+    console.log("Stopping tracking...");
 
-      if (name === "" && notes === "DISCARD_ACTIVITY") {
-        await cleanupTracking();
-        return;
-      }
-
-      if (!startTimeRef.current) {
-        throw new Error("No activity data to save");
-      }
-
-      const finalDuration = Math.floor(
-        (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-      );
-
-      const avgSpeed =
-        currentDistance > 0
-          ? currentDistance / 1000 / (finalDuration / 3600)
-          : 0;
-
-      const activity: Activity = {
-        id: Date.now().toString(),
-        type: currentActivity,
-        name: name || `${currentActivity} activity`,
-        activityDate: new Date(),
-        startTime: new Date(startTimeRef.current),
-        endTime: new Date(),
-        duration: finalDuration,
-        distance: currentDistance,
-        route: Array.isArray(currentRoute) ? currentRoute : [],
-        averageSpeed: avgSpeed,
-        maxSpeed: maxSpeedRef.current,
-        notes: notes,
-        photos: photos,
-        isManualEntry: false,
-        createdAt: new Date(),
-      };
-
-      await saveActivity(activity);
+    if (name === "" && notes === "DISCARD_ACTIVITY") {
       await cleanupTracking();
-
-      console.log("Activity saved successfully");
-    } catch (err: any) {
-      console.error("Error stopping tracking:", err);
-      throw err;
+      return;
     }
-  };
+
+    if (!startTimeRef.current) {
+      throw new Error("No activity data to save");
+    }
+
+    const finalDuration = Math.floor(
+      (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
+    );
+
+    const avgSpeed =
+      currentDistance > 0
+        ? currentDistance / 1000 / (finalDuration / 3600)
+        : 0;
+
+    const activity: Activity = {
+      id: Date.now().toString(),
+      type: currentActivity,
+      name: name || `${currentActivity} activity`,
+      activityDate: new Date(),
+      startTime: new Date(startTimeRef.current),
+      endTime: new Date(),
+      duration: finalDuration,
+      distance: currentDistance,
+      route: Array.isArray(currentRoute) ? currentRoute : [],
+      averageSpeed: avgSpeed,
+      maxSpeed: maxSpeedRef.current,
+      notes: notes,
+      photos: photos,
+      isManualEntry: false,
+      createdAt: new Date(),
+    };
+
+    await saveActivity(activity);
+    
+    // Get the saved activity with proper ID from database
+    const savedActivity = {
+      ...activity,
+      id: activities[0]?.id || activity.id // Get the real ID from state after save
+    };
+    
+    await cleanupTracking();
+
+    console.log("Activity saved successfully");
+    return savedActivity; // RETURN THE ACTIVITY HERE
+  } catch (err: any) {
+    console.error("Error stopping tracking:", err);
+    throw err;
+  }
+
+};
+
   const savePhotosToGallery = async (photos: string[]) => {
     try {
 
@@ -1031,6 +1041,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     };
 
     await saveActivity(newActivity);
+      return newActivity; // Add this line
+
   };
 
   const value: ActivityContextType = {

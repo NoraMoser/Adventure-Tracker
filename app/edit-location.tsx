@@ -276,7 +276,6 @@ export default function EditLocationScreen() {
           "location-photos",
           user.id
         );
-        console.log("New photos uploaded:", newUploadedUrls);
       }
 
       // Combine existing URLs with newly uploaded URLs

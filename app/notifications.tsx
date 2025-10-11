@@ -148,7 +148,6 @@ export default function NotificationsScreen() {
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log("New notification:", payload);
           loadNotifications();
         }
       )

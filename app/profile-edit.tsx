@@ -120,7 +120,6 @@ export default function ProfileEditScreen() {
       const avatarBucket = buckets?.find(bucket => bucket.name === 'avatars');
       
       if (!avatarBucket) {
-        console.log('Creating avatars bucket...');
         const { error } = await supabase.storage.createBucket('avatars', {
           public: true,
           allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'],

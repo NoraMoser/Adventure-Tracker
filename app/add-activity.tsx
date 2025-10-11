@@ -1,4 +1,4 @@
-// add-activity.tsx - Updated with Date Selection
+// add-activity.tsx - Complete version with auto-add to trip
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
@@ -23,6 +23,7 @@ import { ActivityType, useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { Camera, CameraView } from "expo-camera";
+import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 
 const { width, height } = Dimensions.get("window");
 
@@ -42,13 +43,14 @@ export default function AddActivityScreen() {
   const { location: currentLocation } = useLocation();
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
+  const { checkAndAddToTrip } = useAutoAddToTrip();
 
   // Use default activity type from settings
   const [activityType, setActivityType] = useState<ActivityType>(
     settings.defaultActivityType || "bike"
   );
   const [name, setName] = useState("");
-  const [activityDate, setActivityDate] = useState(new Date()); // NEW: Activity date separate from time
+  const [activityDate, setActivityDate] = useState(new Date());
   const [startTime, setStartTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -115,7 +117,7 @@ export default function AddActivityScreen() {
     const activity = {
       type: activityType,
       name: name.trim(),
-      activityDate: activityDate, // NEW: Store the activity date
+      activityDate: activityDate,
       startTime: combinedDateTime,
       endTime: new Date(combinedDateTime.getTime() + durationInSeconds * 1000),
       duration: durationInSeconds,
@@ -129,11 +131,56 @@ export default function AddActivityScreen() {
     };
 
     try {
-      await addManualActivity(activity);
+      // Save the activity and get the returned value
+      const savedActivity = await addManualActivity(activity);
+
+      // Determine location for trip checking
+      let activityLocation = null;
+
+      if (drawnRoute && drawnRoute.length > 0) {
+        activityLocation = {
+          latitude: drawnRoute[0].latitude,
+          longitude: drawnRoute[0].longitude,
+        };
+      } else if (currentLocation) {
+        activityLocation = currentLocation;
+      }
+
+      // Only check for trips if we have a location
+      if (activityLocation) {
+        const trip = (await checkAndAddToTrip(
+          savedActivity,
+          "activity",
+          savedActivity.name,
+          activityLocation,
+          true
+        )) as { name?: string; id?: string } | null;
+
+        if (trip?.name && trip?.id) {
+          Alert.alert(
+            "Success!",
+            `Activity saved and added to "${trip.name}"!`,
+            [
+              {
+                text: "View Trip",
+                onPress: () => router.push(`/trip-detail?tripId=${trip.id}`),
+              },
+              {
+                text: "OK",
+                onPress: () => router.back(),
+              },
+            ]
+          );
+          return;
+        }
+      }
+
+      // Default success message if no trip match or no location
       Alert.alert("Success", "Activity added successfully!", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (error) {
+      console.error("Error saving activity:", error);
       Alert.alert("Error", "Failed to save activity");
     }
   };
@@ -156,19 +203,14 @@ export default function AddActivityScreen() {
   };
 
   const handleTakePhoto = async () => {
-    console.log("Camera button tapped!");
-    console.log("Current showCamera state:", showCamera);
     setShowCamera(true);
-    console.log("Set showCamera to true");
   };
 
-  // Add this function to actually take the picture:
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
         console.log("Taking picture...");
 
-        // Take the picture
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
@@ -177,12 +219,10 @@ export default function AddActivityScreen() {
 
         console.log("Photo result:", photo);
 
-        // Add the photo to the array
         if (photo && photo.uri) {
           setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
         }
 
-        // Always close camera after taking picture
         setTimeout(() => {
           setShowCamera(false);
         }, 100);
@@ -233,7 +273,6 @@ export default function AddActivityScreen() {
         setDrawnRoute(data.route);
         setRouteDistance(data.distance);
 
-        // Update the distance field with the calculated distance
         if (data.distance > 0) {
           const displayDistance =
             distanceUnit === "km"
@@ -251,7 +290,6 @@ export default function AddActivityScreen() {
     const centerLat = currentLocation?.latitude || 47.6062;
     const centerLng = currentLocation?.longitude || -122.3321;
 
-    // ... (rest of the map HTML generation stays the same)
     return `
       <!DOCTYPE html>
       <html>
@@ -259,8 +297,6 @@ export default function AddActivityScreen() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-        <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
         <style>
           body { margin: 0; padding: 0; }
           #map { height: 100vh; width: 100vw; }
@@ -284,9 +320,6 @@ export default function AddActivityScreen() {
             color: #2d5a3d;
             font-size: 16px;
             font-weight: bold;
-          }
-             .leaflet-draw-toolbar a {
-            background-color: white !important;
           }
           .instructions {
             position: absolute;
@@ -314,7 +347,6 @@ export default function AddActivityScreen() {
           Click points on the map to draw your route
         </div>
         <script>
-          // Map initialization code (same as before)
           var map = L.map('map', {
             tap: true,
             zoomControl: true,
@@ -326,35 +358,27 @@ export default function AddActivityScreen() {
             maxZoom: 19
           }).addTo(map);
 
-          // Route drawing code remains the same...
-          // // Variables for route drawing
           var routePoints = [];
           var routeLine = null;
           var markers = [];
           var totalDistance = 0;
 
-          // Function to calculate distance between two points
           function calculateDistance(lat1, lon1, lat2, lon2) {
-            var R = 6371000; // Earth's radius in meters
+            var R = 6371000;
             var φ1 = lat1 * Math.PI / 180;
             var φ2 = lat2 * Math.PI / 180;
             var Δφ = (lat2 - lat1) * Math.PI / 180;
             var Δλ = (lon2 - lon1) * Math.PI / 180;
-
             var a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
                     Math.cos(φ1) * Math.cos(φ2) *
                     Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
             var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-            return R * c; // Distance in meters
+            return R * c;
           }
 
-          // Function to add a point to the route
           function addRoutePoint(lat, lng) {
-            // Add point to array
             routePoints.push([lat, lng]);
 
-            // Create and add marker
             var color = routePoints.length === 1 ? '#2d5a3d' : '#cc5500';
             var markerIcon = L.divIcon({
               className: 'custom-div-icon',
@@ -369,15 +393,12 @@ export default function AddActivityScreen() {
             }).addTo(map);
             markers.push(marker);
 
-            // Update route line
             if (routePoints.length >= 2) {
-              // Remove old line if exists
               if (routeLine) {
                 map.removeLayer(routeLine);
                 routeLine = null;
               }
 
-              // Create new line
               routeLine = L.polyline(routePoints, {
                 color: '#2d5a3d',
                 weight: 4,
@@ -385,10 +406,8 @@ export default function AddActivityScreen() {
               }).addTo(map);
             }
 
-            // Calculate and update distance
             updateDistance();
 
-            // Update instructions
             if (routePoints.length === 1) {
               document.getElementById('instructions').innerText = 'Continue clicking to draw your route';
             } else {
@@ -396,7 +415,6 @@ export default function AddActivityScreen() {
             }
           }
 
-          // Function to update distance calculation
           function updateDistance() {
             totalDistance = 0;
             
@@ -409,7 +427,6 @@ export default function AddActivityScreen() {
               }
             }
 
-            // Update display
             var displayDistance = totalDistance;
             var unit = '${distanceUnit}';
             if (unit === 'km') {
@@ -419,7 +436,6 @@ export default function AddActivityScreen() {
             }
             document.getElementById('distance').innerText = displayDistance + ' ' + unit;
 
-            // Send data back to React Native
             if (routePoints.length > 0) {
               var routeData = routePoints.map(function(point) {
                 return {
@@ -437,19 +453,14 @@ export default function AddActivityScreen() {
             }
           }
 
-          // Handle map clicks - simplified
           map.on('click', function(e) {
             e.originalEvent.preventDefault();
             e.originalEvent.stopPropagation();
-            
             addRoutePoint(e.latlng.lat, e.latlng.lng);
           });
 
-          // Add clear button
           var clearControl = L.Control.extend({
-            options: {
-              position: 'topleft'
-            },
+            options: { position: 'topleft' },
             onAdd: function(map) {
               var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
               var button = L.DomUtil.create('a', '', container);
@@ -464,7 +475,6 @@ export default function AddActivityScreen() {
                 L.DomEvent.preventDefault(e);
                 L.DomEvent.stopPropagation(e);
                 
-                // Clear everything
                 routePoints = [];
                 markers.forEach(function(marker) {
                   map.removeLayer(marker);
@@ -478,7 +488,6 @@ export default function AddActivityScreen() {
                 document.getElementById('distance').innerText = '0.00 ${distanceUnit}';
                 document.getElementById('instructions').innerText = 'Click points on the map to draw your route';
                 
-                // Send empty route back
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                   type: 'routeUpdated',
                   route: [],
@@ -494,11 +503,8 @@ export default function AddActivityScreen() {
           
           map.addControl(new clearControl());
 
-          // Add undo button
           var undoControl = L.Control.extend({
-            options: {
-              position: 'topleft'
-            },
+            options: { position: 'topleft' },
             onAdd: function(map) {
               var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
               var button = L.DomUtil.create('a', '', container);
@@ -514,16 +520,13 @@ export default function AddActivityScreen() {
                 L.DomEvent.stopPropagation(e);
                 
                 if (routePoints.length > 0) {
-                  // Remove last point
                   routePoints.pop();
                   
-                  // Remove last marker
                   if (markers.length > 0) {
                     var lastMarker = markers.pop();
                     map.removeLayer(lastMarker);
                   }
                   
-                  // Redraw route
                   if (routeLine) {
                     map.removeLayer(routeLine);
                     routeLine = null;
@@ -537,10 +540,8 @@ export default function AddActivityScreen() {
                     }).addTo(map);
                   }
                   
-                  // Update distance
                   updateDistance();
                   
-                  // Update instructions
                   if (routePoints.length === 0) {
                     document.getElementById('instructions').innerText = 'Click points on the map to draw your route';
                   }
@@ -555,7 +556,6 @@ export default function AddActivityScreen() {
           
           map.addControl(new undoControl());
 
-          // Load existing route if any
           var existingRoute = ${JSON.stringify(drawnRoute)};
           if (existingRoute && existingRoute.length > 0) {
             existingRoute.forEach(function(point, index) {
@@ -572,18 +572,27 @@ export default function AddActivityScreen() {
               markers.push(marker);
             });
             
-            updateRoute();
+            if (routePoints.length >= 2) {
+              routeLine = L.polyline(routePoints, {
+                color: '#2d5a3d',
+                weight: 4,
+                opacity: 0.8
+              }).addTo(map);
+            }
+            
+            updateDistance();
             
             if (routePoints.length > 0) {
               var group = new L.featureGroup(markers);
               map.fitBounds(group.getBounds().pad(0.1));
             }
-          }        
-            </script>
+          }
+        </script>
       </body>
       </html>
     `;
   };
+
   if (showCamera) {
     return (
       <View style={styles.cameraContainer}>
@@ -631,8 +640,7 @@ export default function AddActivityScreen() {
           <TouchableOpacity
             style={styles.closeButton}
             onPress={() => {
-              setZoom(0); // Reset zoom when closing
-
+              setZoom(0);
               setShowCamera(false);
             }}
           >
@@ -659,7 +667,6 @@ export default function AddActivityScreen() {
         )}
       </View>
 
-      {/* Activity Type Selection */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Activity Type</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -697,7 +704,6 @@ export default function AddActivityScreen() {
         </ScrollView>
       </View>
 
-      {/* Activity Name */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Activity Name *</Text>
         <TextInput
@@ -709,7 +715,6 @@ export default function AddActivityScreen() {
         />
       </View>
 
-      {/* Date & Time - UPDATED */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Date & Time</Text>
         <View style={styles.dateTimeContainer}>
@@ -767,8 +772,6 @@ export default function AddActivityScreen() {
         />
       )}
 
-      {/* Rest of the component remains the same */}
-      {/* Duration */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Duration *</Text>
         <View style={styles.durationContainer}>
@@ -799,8 +802,6 @@ export default function AddActivityScreen() {
         </View>
       </View>
 
-      {/* Photos Section */}
-      {/* Route Drawing Button */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Route (Optional)</Text>
         <TouchableOpacity
@@ -821,7 +822,6 @@ export default function AddActivityScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Distance */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>
           Distance {routeDistance > 0 ? "(from route)" : "(Optional)"}
@@ -833,7 +833,7 @@ export default function AddActivityScreen() {
             onChangeText={setDistance}
             keyboardType="decimal-pad"
             placeholder="0.0"
-            editable={!routeDistance} // Disable if route distance is calculated
+            editable={!routeDistance}
           />
           <View style={styles.unitToggle}>
             <TouchableOpacity
@@ -872,7 +872,6 @@ export default function AddActivityScreen() {
         </View>
       </View>
 
-      {/* Notes */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Notes (Optional)</Text>
         <TextInput
@@ -931,9 +930,6 @@ export default function AddActivityScreen() {
         )}
       </View>
 
-      {/* Route, Distance, Notes sections remain the same */}
-
-      {/* Save Button */}
       <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
         <Ionicons name="save-outline" size={20} color={theme.colors.white} />
         <Text style={styles.saveButtonText}>Save Activity</Text>
@@ -946,7 +942,6 @@ export default function AddActivityScreen() {
         <Text style={styles.cancelButtonText}>Cancel</Text>
       </TouchableOpacity>
 
-      {/* Map Modal for Drawing Route */}
       <Modal
         visible={showMapModal}
         animationType="slide"
@@ -1063,7 +1058,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   dateButton: {
-    flex: 1.2, // Slightly wider for date
+    flex: 1.2,
   },
   dateTimeContent: {
     marginLeft: 10,
@@ -1104,7 +1099,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
   },
-
   drawRouteButton: {
     flexDirection: "row",
     alignItems: "center",

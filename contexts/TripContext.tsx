@@ -85,6 +85,7 @@ interface TripContextType {
     lon2: number
   ) => number;
   fixAllTripPhotos: () => Promise<void>;
+  showPendingClusters: () => Promise<void>;
 }
 
 const TripContext = createContext<TripContextType | undefined>(undefined);
@@ -101,6 +102,61 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   const hasRunAutoDetection = useRef(false);
   const autoDetectionInProgress = useRef(false);
   const rejectedTripIds = useRef<Set<string>>(new Set());
+  const [pendingClusters, setPendingClusters] = useState<TripCluster[]>([]);
+
+  const checkDistanceFromPendingClusters = async (currentLocation: {
+    latitude: number;
+    longitude: number;
+  }) => {
+    if (pendingClusters.length === 0 || !currentUserId) return;
+
+    const SUGGEST_DISTANCE_KM = 32; // ~20 miles
+    const clustersToSuggest: TripCluster[] = [];
+    const clustersToKeep: TripCluster[] = [];
+
+    for (const cluster of pendingClusters) {
+      // Calculate center of cluster
+      const clusterLocations = cluster.items
+        .map((item) => item.location)
+        .filter((loc) => loc !== null);
+
+      if (clusterLocations.length === 0) {
+        // No location data, keep pending
+        clustersToKeep.push(cluster);
+        continue;
+      }
+
+      const centerLat =
+        clusterLocations.reduce((sum, loc) => sum + loc.latitude, 0) /
+        clusterLocations.length;
+      const centerLng =
+        clusterLocations.reduce((sum, loc) => sum + loc.longitude, 0) /
+        clusterLocations.length;
+
+      const distance = calculateDistance(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        centerLat,
+        centerLng
+      );
+
+      if (distance > SUGGEST_DISTANCE_KM) {
+        // User has moved away, suggest this cluster
+        clustersToSuggest.push(cluster);
+      } else {
+        // Still nearby, keep pending
+        clustersToKeep.push(cluster);
+      }
+    }
+
+    // Update pending clusters
+    setPendingClusters(clustersToKeep);
+
+    // Show suggestions for clusters user has moved away from
+    if (clustersToSuggest.length > 0) {
+      await showTripSelectionUI(clustersToSuggest);
+    }
+  };
 
   // Helper function to calculate distance between two locations
   const calculateDistance = (
@@ -1173,18 +1229,38 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         `Created ${validClusters.length} valid trip clusters from ${clusters.length} initial clusters`
       );
 
-      if (validClusters.length === 0) {
+      if (validClusters.length > 0) {
         console.log(
-          "No valid trip clusters found (all were single items or too old)"
+          `Storing ${validClusters.length} clusters for later suggestion`
         );
-        autoDetectionInProgress.current = false;
-        return;
+        setPendingClusters((prev) => [...prev, ...validClusters]);
       }
 
-      await showTripSelectionUI(validClusters);
+      autoDetectionInProgress.current = false;
     } catch (error) {
       console.error("Error in detailed auto-detection:", error);
       autoDetectionInProgress.current = false;
+    }
+  };
+
+  // Add this function to manually show pending clusters
+  const showPendingClusters = async () => {
+    if (pendingClusters.length > 0) {
+      await showTripSelectionUI(pendingClusters);
+      setPendingClusters([]); // Clear after showing
+    } else {
+      // If no pending clusters, run detection first
+      await runDetailedAutoDetection();
+      // Then show any newly detected clusters
+      if (pendingClusters.length > 0) {
+        await showTripSelectionUI(pendingClusters);
+        setPendingClusters([]);
+      } else {
+        Alert.alert(
+          "No trips to organize",
+          "All your adventures are already organized into trips!"
+        );
+      }
     }
   };
 
@@ -1432,6 +1508,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         smartAddToTrip,
         calculateDistance,
         fixAllTripPhotos,
+        showPendingClusters,
       }}
     >
       {children}

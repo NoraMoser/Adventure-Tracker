@@ -158,7 +158,6 @@ export default function QuickPhotoScreen() {
           setTimeout(() => {
             setShowCamera(false);
           }, 100);
-          console.log("Camera should be hidden now");
         }
       } catch (error) {
         console.error("Camera error:", error);
@@ -168,7 +167,6 @@ export default function QuickPhotoScreen() {
   };
 
   const removePhoto = (index: number) => {
-    console.log("Removing photo at index:", index);
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -195,81 +193,70 @@ export default function QuickPhotoScreen() {
   };
 
   const saveQuickLog = async () => {
-    console.log("Saving quick log...");
+  console.log("Saving quick log...");
 
-    if (photos.length === 0) {
-      Alert.alert("Error", "Please take at least one photo");
-      return;
+  if (photos.length === 0) {
+    Alert.alert("Error", "Please take at least one photo");
+    return;
+  }
+
+  setSaving(true);
+  try {
+    const spotName =
+      title || caption || `Quick log ${new Date().toLocaleDateString()}`;
+    console.log("Saving spot with name:", spotName);
+
+    // Check if we have location
+    if (!location) {
+      await getLocation();
+
+      // Wait for location to potentially update
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      if (!location) {
+        // Use fallback with saveManualLocation
+        await saveManualLocation(
+          spotName,
+          { latitude: 37.7749, longitude: -122.4194 },
+          caption,
+          photos,
+          selectedCategory,
+          new Date()
+        );
+        Alert.alert("Saved!", "Your moment has been logged.", [
+          { text: "Done", onPress: () => router.back() },
+        ]);
+        return;
+      }
     }
 
-    setSaving(true);
-    try {
-      const spotName =
-        title || caption || `Quick log ${new Date().toLocaleDateString()}`;
-      console.log("Saving spot with name:", spotName);
+    // Save to context and GET THE ACTUAL RETURNED SPOT
+    console.log("Have location, saving with real coordinates:", location);
+    const savedSpot = await saveCurrentLocation(
+      spotName,
+      caption,
+      photos,
+      selectedCategory,
+      new Date()
+    );
 
-      // Check if we have location
-      if (!location) {
-        console.log("No location available, trying to get it now...");
-        await getLocation();
+    console.log("Save completed, returned spot:", savedSpot);
 
-        // Wait for location to potentially update
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        if (!location) {
-          console.log("Still no location, using fallback");
-          // Use fallback with saveManualLocation
-          await saveManualLocation(
-            spotName,
-            { latitude: 37.7749, longitude: -122.4194 },
-            caption,
-            photos,
-            selectedCategory,
-            new Date()
-          );
-          return;
-        }
-      }
-
-      // MOVE THE MEDIALIBRARY CODE AFTER THE MAIN SAVE
-      // Save to context first
-      console.log("Have location, saving with real coordinates:", location);
-      await saveCurrentLocation(
-        spotName,
-        caption,
-        photos,
-        selectedCategory,
-        new Date()
-      );
-
-      console.log("Save completed");
-      const savedSpot = {
-        id: Date.now().toString(),
-        name: spotName,
-        description: caption,
-        location: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-        },
-        category: selectedCategory,
-        photos: photos,
-        timestamp: new Date().toISOString(),
-        locationDate: new Date().toISOString(),
-      };
-
+    // Only proceed with trip check if we have a valid saved spot
+    if (savedSpot) {
       try {
-        const trip = (await checkAndAddToTrip(
-          savedSpot,
+        const trip = await checkAndAddToTrip(
+          savedSpot,  // Use the REAL saved spot, not a fake one
           "spot",
           savedSpot.name,
           {
-            latitude: location.latitude,
-            longitude: location.longitude,
+            latitude: savedSpot.location.latitude,
+            longitude: savedSpot.location.longitude,
           },
           true
-        )) as { name?: string; id?: string } | null;
+        ) as { name?: string; id?: string } | null;
 
-        if (trip && trip.name && trip.id) {
+        if (trip?.name && trip?.id) {
           Alert.alert(
             "Saved to Trip!",
             `Your moment has been logged and added to "${trip.name}".`,
@@ -294,37 +281,37 @@ export default function QuickPhotoScreen() {
               },
             ]
           );
-        } else {
-          Alert.alert("Saved!", "Your moment has been logged.", [
-            {
-              text: "Take Another",
-              onPress: () => {
-                setPhotos([]);
-                setCaption("");
-                setTitle("");
-                setSelectedCategory("other");
-                setShowCamera(true);
-              },
-            },
-            {
-              text: "Done",
-              onPress: () => router.back(),
-            },
-          ]);
+          return;
         }
       } catch (tripError) {
         console.log("Trip add failed:", tripError);
-        Alert.alert("Saved!", "Your moment has been logged.", [
-          { text: "Done", onPress: () => router.back() },
-        ]);
       }
-    } catch (error) {
-      console.error("Error in saveQuickLog:", error);
-      Alert.alert("Error", `Failed to save: ${error.message || error}`);
-    } finally {
-      setSaving(false);
     }
-  };
+
+    // Default success message if no trip match or savedSpot was null
+    Alert.alert("Saved!", "Your moment has been logged.", [
+      {
+        text: "Take Another",
+        onPress: () => {
+          setPhotos([]);
+          setCaption("");
+          setTitle("");
+          setSelectedCategory("other");
+          setShowCamera(true);
+        },
+      },
+      {
+        text: "Done",
+        onPress: () => router.back(),
+      },
+    ]);
+  } catch (error) {
+    console.error("Error in saveQuickLog:", error);
+    Alert.alert("Error", `Failed to save: ${error.message || error}`);
+  } finally {
+    setSaving(false);
+  }
+};
 
   const CategorySelector = () => {
     const categoryList = Object.entries(categories).filter(

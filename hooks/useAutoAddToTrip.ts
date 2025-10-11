@@ -62,6 +62,9 @@ export function useAutoAddToTrip() {
     }
 
     // Check if location is near home
+    let isNearHome = false;
+    let homeLocation = null;
+    
     if (user) {
       const { data: profile } = await supabase
         .from('profiles')
@@ -70,6 +73,7 @@ export function useAutoAddToTrip() {
         .single();
       
       if (profile?.home_location) {
+        homeLocation = profile.home_location;
         const homeRadius = profile.home_radius || 2; // Default 2km
         const distanceFromHome = calculateDistance(
           location.latitude,
@@ -78,9 +82,10 @@ export function useAutoAddToTrip() {
           profile.home_location.longitude
         );
         
-        if (distanceFromHome <= homeRadius) {
-          console.log('Item is within home area, not suggesting trip');
-          return null;
+        isNearHome = distanceFromHome <= homeRadius;
+        
+        if (isNearHome) {
+          console.log("Item is within home area, applying stricter matching rules");
         }
       }
     }
@@ -89,32 +94,53 @@ export function useAutoAddToTrip() {
     const itemDate =
       item.activityDate || item.locationDate || item.timestamp || new Date();
     const itemDateObj = new Date(itemDate);
+    const now = new Date();
 
-    // Find matching trips (filter out old trips and check date/location proximity)
+    // Find matching trips (filter based on dates and location)
     const candidateTrips = trips.filter((trip) => {
       const tripStart = new Date(trip.start_date);
       const tripEnd = new Date(trip.end_date);
-      const now = new Date();
       
-      // Skip trips older than 90 days
-      const tripAge = Math.abs(now.getTime() - tripEnd.getTime());
-      const maxAge = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
+      // Calculate days since trip ended
+      const daysSinceTripEnd = Math.floor((now.getTime() - tripEnd.getTime()) / (1000 * 60 * 60 * 24));
       
-      if (tripAge > maxAge) {
-        console.log(`Skipping old trip: ${trip.name}`);
+      // For home locations, only consider very recent trips (within 14 days)
+      // For travel locations, consider trips up to 30 days old
+      const maxTripAge = isNearHome ? 14 : 30;
+      
+      if (daysSinceTripEnd > maxTripAge) {
+        console.log(`Skipping old trip: ${trip.name} (ended ${daysSinceTripEnd} days ago)`);
         return false;
       }
 
-      // Check date proximity (within 7 days instead of 30)
-      const expandedStart = new Date(tripStart);
-      expandedStart.setDate(expandedStart.getDate() - 7);
-      const expandedEnd = new Date(tripEnd);
-      expandedEnd.setDate(expandedEnd.getDate() + 7);
+      // Check date proximity
+      let isDateMatch = false;
+      
+      if (isNearHome) {
+        // For home locations: item must be during trip OR within 1 day
+        const oneDayBefore = new Date(tripStart);
+        oneDayBefore.setDate(oneDayBefore.getDate() - 1);
+        const oneDayAfter = new Date(tripEnd);
+        oneDayAfter.setDate(oneDayAfter.getDate() + 1);
+        
+        isDateMatch = itemDateObj >= oneDayBefore && itemDateObj <= oneDayAfter;
+        
+        // Extra check: if trip is currently active, always match home items
+        const tripIsActive = now >= tripStart && now <= tripEnd;
+        if (tripIsActive) {
+          isDateMatch = true;
+        }
+      } else {
+        // For travel locations: more lenient, 7 days before/after
+        const expandedStart = new Date(tripStart);
+        expandedStart.setDate(expandedStart.getDate() - 7);
+        const expandedEnd = new Date(tripEnd);
+        expandedEnd.setDate(expandedEnd.getDate() + 7);
+        
+        isDateMatch = itemDateObj >= expandedStart && itemDateObj <= expandedEnd;
+      }
 
-      const isDateNearby =
-        itemDateObj >= expandedStart && itemDateObj <= expandedEnd;
-
-      if (!isDateNearby) return false;
+      if (!isDateMatch) return false;
 
       // Check location proximity if trip has items
       if (trip.items && trip.items.length > 0) {
@@ -132,17 +158,57 @@ export function useAutoAddToTrip() {
             tripItemLocation.longitude
           );
 
-          return distance <= 100; // Within 100km
+          // Different proximity requirements based on context
+          let maxDistance = 100; // Default 100km for travel
+          
+          if (isNearHome && homeLocation) {
+            // For home locations, if trip has mostly nearby items, be strict
+            // But if trip has distant items, it's probably a travel trip
+            const avgDistance = trip.items.reduce((sum, ti) => {
+              const loc = ti.data.location || (ti.data.route && ti.data.route[0]);
+              if (!loc || !homeLocation) return sum;
+              return sum + calculateDistance(
+                loc.latitude,
+                loc.longitude,
+                homeLocation.latitude,
+                homeLocation.longitude
+              );
+            }, 0) / trip.items.length;
+            
+            // If average distance of trip items is > 50km from home, it's a travel trip
+            maxDistance = avgDistance > 50 ? 200 : 20;
+          }
+
+          return distance <= maxDistance;
         });
 
         return hasNearbyItem;
       }
 
-      return true; // Empty trip, just use date
+      // For empty trips, be more permissive
+      return true;
+    })
+    // Sort by: 1) Currently active trips first, 2) Most recent trips
+    .sort((a, b) => {
+      const aStart = new Date(a.start_date).getTime();
+      const aEnd = new Date(a.end_date).getTime();
+      const bStart = new Date(b.start_date).getTime();
+      const bEnd = new Date(b.end_date).getTime();
+      const nowTime = now.getTime();
+      
+      // Check if trips are currently active
+      const aIsActive = nowTime >= aStart && nowTime <= aEnd;
+      const bIsActive = nowTime >= bStart && nowTime <= bEnd;
+      
+      if (aIsActive && !bIsActive) return -1;
+      if (!aIsActive && bIsActive) return 1;
+      
+      // Otherwise sort by end date (most recent first)
+      return bEnd - aEnd;
     });
 
     if (candidateTrips.length === 0) {
-      // No existing trips match - don't auto-create
+      console.log("No matching trips found for item");
       return null;
     }
 
