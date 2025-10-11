@@ -139,22 +139,18 @@ export class PhotoService {
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        console.log(`Upload attempt ${attempt + 1} for photo to ${bucket}...`);
 
         // Don't skip file:// URIs - they're valid from ImagePicker!
         if (!photoUri) {
-          console.log("No photo URI provided");
           return null;
         }
 
         // If it's already a URL, return it
         if (photoUri.startsWith("http://") || photoUri.startsWith("https://")) {
-          console.log("Photo is already a URL, returning:", photoUri);
           return photoUri;
         }
 
         // Compress the image first
-        console.log("Compressing image...");
         const compressedUri = await this.compressImage(photoUri);
 
         // Generate unique filename
@@ -163,7 +159,6 @@ export class PhotoService {
         const fileName = `${userId}/${timestamp}_${random}.jpg`;
 
         // Convert to base64
-        console.log("Converting to base64...");
         const base64Data = await this.uriToBase64(compressedUri);
 
         if (!base64Data) {

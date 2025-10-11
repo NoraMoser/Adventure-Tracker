@@ -148,7 +148,6 @@ class SyncService {
         
         if (existingMap.has(locationKey)) {
           const existing = existingMap.get(locationKey);
-          console.log(`🔄 Skipping duplicate location: ${location.name} at ${locationKey}`);
           
           // Optional: Update the local ID to match the database ID
           if (existing) {

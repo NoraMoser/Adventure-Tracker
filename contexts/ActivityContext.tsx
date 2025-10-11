@@ -452,16 +452,9 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
             movementThresholds.maxSpeed * (timeDiff / 3600) * 1000;
 
           if (distance <= maxReasonableDistance * 1.5) {
-            // 50% buffer
-            console.log(
-              `GPS gap detected (${timeDiff}s), connecting ${distance}m`
-            );
             setCurrentDistance((d) => d + distance);
             return [...currentPoints, location];
           } else {
-            console.log(
-              `GPS jump too large for ${currentActivity}: ${distance}m in ${timeDiff}s`
-            );
             // For vehicles, still accept it if gap is long enough
             if (currentActivity === "bike" || currentActivity === "other") {
               if (timeDiff > 60) {
@@ -475,7 +468,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
         // Normal continuous tracking
         if (distance > movementThresholds.maxJump) {
-          console.log(`Unreasonable jump for ${currentActivity}: ${distance}m`);
           return currentPoints;
         }
 
@@ -509,10 +501,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         return newRoute;
       });
     } else {
-      // Still update location for UI even with poor accuracy
-      console.log(
-        `Poor accuracy (${location.accuracy}m) but keeping for reference`
-      );
+  
       setCurrentLocation(location);
 
       // For vehicles with poor GPS, still try to track
@@ -699,7 +688,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         }
       }, 10000);
 
-      console.log("Tracking started successfully");
     } catch (err: any) {
       console.error("Error starting tracking:", err);
       setError(err.message || "Failed to start tracking");
@@ -710,8 +698,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const resumeTracking = async () => {
-    console.log("Resuming tracking");
-
     if (pauseStartRef.current) {
       pausedTimeRef.current += Date.now() - pauseStartRef.current;
       pauseStartRef.current = null;

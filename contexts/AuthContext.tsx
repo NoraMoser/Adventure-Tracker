@@ -185,16 +185,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const now = new Date();
       const timeSince = now.getTime() - lastRefresh.current.getTime();
 
-      console.log("🔄 Session refresh check:", {
-        timeSinceLastRefresh: `${(timeSince / 1000).toFixed(1)}s`,
-        willRefresh: timeSince >= 300000, // 5 minutes
-      });
-
       if (timeSince < 300000) {
         return true;
       }
-
-      console.log("🔄 Starting refresh...");
 
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Refresh timeout")), 5000)
@@ -236,7 +229,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateLastActive = async (userId: string) => {
     try {
-      console.log("🔍 AuthContext: Updating last active for:", userId);
       await supabase
         .from("profiles")
         .update({ last_active: new Date().toISOString() })

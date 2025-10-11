@@ -59,13 +59,11 @@ const CameraModal: React.FC<CameraModalProps> = ({
           skipProcessing: true,
         });
         
-        console.log("Photo result:", photo);
         
         if (photo) {
           // If base64 is available, use it for WebView compatibility
           if (photo.base64) {
             const dataUrl = `data:image/jpeg;base64,${photo.base64}`;
-            console.log('Photo converted to base64, length:', photo.base64.length);
             onPhotoTaken(dataUrl);
           } else if (photo.uri) {
             // Fallback to URI if base64 not available

@@ -130,7 +130,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
   const loadSavedSpots = async () => {
     if (!user) {
-      console.log("loadSavedSpots: No user present");
       setSavedSpots([]);
       return;
     }
@@ -138,7 +137,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     try {
       setLoading(true);
       setError(null);
-      console.log("Loading saved spots from Supabase for user:", user.id);
 
       const { data, error: fetchError } = await supabase
         .from("locations")
@@ -573,9 +571,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         );
 
         if (localPhotos.length > 0) {
-          console.log(
-            `Migrating ${localPhotos.length} photos for spot: ${spot.name}`
-          );
 
           // Upload all photos (processPhotosForUpload handles both local and remote)
           const updatedPhotoUrls = await processPhotosForUpload(spot.photos);

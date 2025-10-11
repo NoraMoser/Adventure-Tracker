@@ -295,9 +295,6 @@ export default function FriendProfileScreen() {
 
     // Remove yourself from the set
     profileFriendIds.delete(user.id);
-    
-    console.log(friend.displayName + ' is friends with:', Array.from(profileFriendIds));
-    console.log('You are friends with:', friends.map(f => f.id));
 
     // Find mutual friends
     const mutuals = friends.filter(f => 

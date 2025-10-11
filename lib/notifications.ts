@@ -192,7 +192,6 @@ export class PushNotificationHelper {
         }
       }
 
-      console.log('Push notification sent successfully');
       return true;
     } catch (error) {
       console.error('Failed to send push notification:', error);

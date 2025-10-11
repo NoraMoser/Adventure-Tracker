@@ -134,7 +134,6 @@ export class MemoryNotificationService {
    */
   private static async registerBackgroundFetch() {
     if (!BackgroundFetch) {
-      console.log('BackgroundFetch not available in this environment');
       return;
     }
     
@@ -366,7 +365,6 @@ export class MemoryNotificationService {
               yearsAgo,
             }
           );
-          console.log('Push notification sent');
         } catch (pushError) {
           console.log('Push notification failed (normal in Expo Go):', pushError);
         }
@@ -388,7 +386,6 @@ export class MemoryNotificationService {
     
     // Skip if near home
     if (this.isNearHome(currentLocation)) {
-      console.log('Near home location, skipping proximity check');
       return [];
     }
 
@@ -725,7 +722,6 @@ export class MemoryNotificationService {
 
       if (!error) {
         this.homeLocation = location;
-        console.log('Home location updated:', location);
       }
     } catch (error) {
       console.error('Error updating home location:', error);

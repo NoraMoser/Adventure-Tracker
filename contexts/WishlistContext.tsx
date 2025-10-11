@@ -281,7 +281,6 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
 
       setWishlistItems((prev) => prev.filter((item) => item.id !== id));
 
-      console.log('Wishlist item removed successfully');
     } catch (err) {
       console.error('Error removing wishlist item:', err);
       setError('Failed to remove item from wishlist');

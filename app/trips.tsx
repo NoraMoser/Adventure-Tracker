@@ -12,6 +12,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../constants/theme";
@@ -104,13 +105,46 @@ export default function TripsScreen() {
   const [viewMode, setViewMode] = useState<"my" | "shared" | "all">("all");
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [tripToMerge, setTripToMerge] = useState<Trip | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const userId = user?.id || "default-user";
   const myTrips = getMyTrips();
   const sharedTrips = getSharedTrips();
 
-  const displayedTrips =
-    viewMode === "my" ? myTrips : viewMode === "shared" ? sharedTrips : trips;
+  const getFilteredTrips = () => {
+    let baseTrips =
+      viewMode === "my" ? myTrips : viewMode === "shared" ? sharedTrips : trips;
+
+    if (searchQuery.trim() === "") {
+      return baseTrips;
+    }
+
+    const query = searchQuery.toLowerCase();
+    return baseTrips.filter((trip) => {
+      // Search in trip name
+      if (trip.name.toLowerCase().includes(query)) return true;
+
+      // Search in trip dates
+      const dateRange = `${new Date(
+        trip.start_date
+      ).toLocaleDateString()} - ${new Date(
+        trip.end_date
+      ).toLocaleDateString()}`;
+      if (dateRange.toLowerCase().includes(query)) return true;
+
+      // Search in trip items
+      if (trip.items) {
+        return trip.items.some((item) => {
+          const itemName = item.data.name || item.data.description || "";
+          return itemName.toLowerCase().includes(query);
+        });
+      }
+
+      return false;
+    });
+  };
+
+  const displayedTrips = getFilteredTrips();
 
   const handleTripPress = (trip: Trip) => {
     router.push(`/trip-detail?tripId=${trip.id}`);
@@ -327,6 +361,38 @@ export default function TripsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={theme.colors.gray} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search trips, places, or dates..."
+            placeholderTextColor={theme.colors.lightGray}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={theme.colors.gray}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {searchQuery.length > 0 && (
+          <Text style={styles.searchResults}>
+            {displayedTrips.length}{" "}
+            {displayedTrips.length === 1 ? "trip" : "trips"} found
+          </Text>
+        )}
+      </View>
+
       {/* Merge Suggestions */}
       <MergeSuggestions onMerge={handleSmartMerge} />
 
@@ -421,7 +487,7 @@ export default function TripsScreen() {
         </View>
       ) : (
         <FlatList
-          data={displayedTrips}
+          data={displayedTrips} // Changed from filteredTrips
           renderItem={renderTripCard}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
@@ -771,6 +837,33 @@ const styles = StyleSheet.create({
     overflow: "hidden", // Critical for clipping
     backgroundColor: theme.colors.offWhite,
     position: "relative",
+  },
+  searchContainer: {
+    padding: 15,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.navy,
+    padding: 4,
+  },
+  searchResults: {
+    marginTop: 8,
+    fontSize: 13,
+    color: theme.colors.gray,
+    fontStyle: "italic",
   },
 });
 

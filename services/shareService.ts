@@ -581,11 +581,6 @@ export class ShareService {
         },
       };
 
-      // In a real app, this would be an API call to your backend
-      // For now, we'll return the shared activity object so it can be added to the feed
-      console.log("Sharing activity to friends:", friendIds);
-      console.log("Shared activity data:", sharedActivity);
-
       return {
         success: true,
         sharedActivity,

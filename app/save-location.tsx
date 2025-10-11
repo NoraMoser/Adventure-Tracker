@@ -159,12 +159,6 @@ export default function SaveLocationScreen() {
 
       // Check if we got a valid saved spot back
       if (savedSpot) {
-        console.log("Checking auto-add to trip...");
-console.log("Saved spot:", savedSpot);
-console.log("Location:", {
-  latitude: savedSpot.location.latitude,
-  longitude: savedSpot.location.longitude,
-});
         // Auto-add to trip if applicable - properly type the return value
         const trip = (await checkAndAddToTrip(
           savedSpot,

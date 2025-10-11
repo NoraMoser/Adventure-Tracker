@@ -380,7 +380,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       .single();
 
     if (existingTripItem) {
-      console.log("Item already in trip:", existingTripItem.trip_id);
       return null;
     }
 
@@ -595,10 +594,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       if (updates.cover_photo_position !== undefined) {
         updateData.cover_photo_position = updates.cover_photo_position;
-        console.log(
-          "Including position in update:",
-          updates.cover_photo_position
-        );
       }
 
       const { error } = await supabase
@@ -1184,9 +1179,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
             now.getTime() - 14 * 24 * 60 * 60 * 1000
           );
           if (latestDate < fourteenDaysAgo) {
-            console.log(
-              `Skipping old day trip cluster from ${latestDate.toDateString()}`
-            );
+        
             return false;
           }
         }
@@ -1225,14 +1218,8 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           .reduce((sum: number, i: any) => sum + (i.data.distance || 0), 0);
       }
 
-      console.log(
-        `Created ${validClusters.length} valid trip clusters from ${clusters.length} initial clusters`
-      );
-
       if (validClusters.length > 0) {
-        console.log(
-          `Storing ${validClusters.length} clusters for later suggestion`
-        );
+      
         setPendingClusters((prev) => [...prev, ...validClusters]);
       }
 

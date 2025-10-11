@@ -291,7 +291,6 @@ export default function TripDetailScreen() {
 
           // For shared trips or spots with local photos, fetch from database
           if (hasLocalPhotos && spot.id) {
-            console.log(`Fetching DB photos for: ${spot.name}`);
 
             const { data, error } = await supabase
               .from("locations")
@@ -463,8 +462,6 @@ export default function TripDetailScreen() {
   };
 
   const handleSpotPress = (spot: any) => {
-    console.log("handleSpotPress called for:", spot.name);
-    console.log("Spot photos:", spot.photos);
 
     if (spot.photos && spot.photos.length > 0) {
       console.log("Opening image viewer with photos:", spot.photos);
