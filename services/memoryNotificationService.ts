@@ -350,8 +350,6 @@ export class MemoryNotificationService {
           throw error;
         }
 
-        console.log('Notification created successfully:', data);
-
         // Try to send push notification (this may fail in Expo Go, which is okay)
         try {
           await PushNotificationHelper.sendNotificationToUser(

@@ -419,7 +419,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         category,
       });
 
-      console.log("Manual location saved successfully");
     } catch (err) {
       console.error("Error saving manual location:", err);
       setError("Failed to save location");

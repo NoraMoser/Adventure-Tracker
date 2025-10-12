@@ -373,7 +373,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       hasSyncedThisSession.current = false;
       setLoading(false);
 
-      console.log("Sign out completed");
     } catch (error) {
       console.error("Sign out error:", error);
       // Still clear state on error

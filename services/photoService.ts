@@ -250,7 +250,6 @@ export class PhotoService {
         return false;
       }
 
-      console.log("Photo deleted successfully");
       return true;
     } catch (error) {
       console.error("Error deleting photo:", error);

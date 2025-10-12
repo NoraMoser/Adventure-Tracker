@@ -734,11 +734,14 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       // NEW: Load trips where friends are creators
       const { data: trips } = await supabase
         .from("trips")
-        .select(`
+        .select(
+          `
           *,
           trip_items(*)
-        `)
+        `
+        )
         .in("created_by", friendIds)
+        .in("status", ["active", "completed"])
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -747,26 +750,29 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .from("trip_tags")
         .select("trip_id")
         .in("user_id", friendIds);
-      
+
       let friendTaggedTrips: any[] = [];
       if (taggedTrips && taggedTrips.length > 0) {
-        const tripIds = [...new Set(taggedTrips.map(t => t.trip_id))];
+        const tripIds = [...new Set(taggedTrips.map((t) => t.trip_id))];
         const { data: tagTrips } = await supabase
           .from("trips")
-          .select(`
+          .select(
+            `
             *,
             trip_items(*)
-          `)
+          `
+          )
           .in("id", tripIds)
+          .in("status", ["active", "completed"])
           .order("created_at", { ascending: false });
-        
+
         friendTaggedTrips = tagTrips || [];
       }
 
       // Combine unique trips
       const allTrips = [...(trips || []), ...friendTaggedTrips];
-      const uniqueTrips = allTrips.filter((trip, index, self) => 
-        index === self.findIndex((t) => t.id === trip.id)
+      const uniqueTrips = allTrips.filter(
+        (trip, index, self) => index === self.findIndex((t) => t.id === trip.id)
       );
 
       // Get all user profiles (including trip creators)
@@ -945,7 +951,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           tripItems: trip.trip_items?.slice(0, 3).map((item: any) => ({
             type: item.type,
             name: item.data?.name || "Item",
-            date: new Date(item.data?.start_time || item.data?.created_at || trip.start_date)
+            date: new Date(
+              item.data?.start_time || item.data?.created_at || trip.start_date
+            ),
           })),
           sharedBy: {
             id: trip.created_by,
@@ -968,9 +976,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .slice(0, 50);
 
       setFeed(allPosts);
-      console.log(
-        `Loaded ${allPosts.length} feed items (${activityPosts.length} activities, ${locationPosts.length} locations, ${tripPosts.length} trips)`
-      );
     } catch (err) {
       console.error("Error loading feed:", err);
     }

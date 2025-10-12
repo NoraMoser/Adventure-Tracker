@@ -1,7 +1,6 @@
 // services/shareService.ts - Fixed with unit preferences
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
-console.log("Available FileSystem properties:", Object.keys(FileSystem));
 import * as Linking from "expo-linking";
 import * as Sharing from "expo-sharing";
 import { Alert, Platform, Share } from "react-native";

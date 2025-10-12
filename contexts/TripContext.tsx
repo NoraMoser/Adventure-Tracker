@@ -698,7 +698,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
               .eq("id", item.id);
 
             fixedCount++;
-            console.log(`Fixed photos for: ${item.data.name}`);
           }
         }
       }
@@ -1159,7 +1158,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const validClusters = clusters.filter((cluster) => {
         if (cluster.items.length < 2) {
-          console.log(`Skipping single-item cluster`);
           return false;
         }
 

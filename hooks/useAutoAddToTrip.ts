@@ -109,7 +109,6 @@ export function useAutoAddToTrip() {
       const maxTripAge = isNearHome ? 14 : 30;
       
       if (daysSinceTripEnd > maxTripAge) {
-        console.log(`Skipping old trip: ${trip.name} (ended ${daysSinceTripEnd} days ago)`);
         return false;
       }
 

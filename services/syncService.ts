@@ -180,7 +180,6 @@ class SyncService {
             // Update local location with the database ID
             location.id = data.id;
             syncedCount++;
-            console.log(`🔄 Synced location: ${location.name}`);
           } else if (error) {
             console.error('🔄 Error syncing location:', error);
           }

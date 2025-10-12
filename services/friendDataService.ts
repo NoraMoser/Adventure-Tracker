@@ -56,7 +56,6 @@ export class FriendDataService {
    */
   static async loadFriendLocations(friendId: string): Promise<SavedSpot[]> {
     try {
-      console.log("Loading locations for friend:", friendId);
 
       const { data, error } = await supabase
         .from("locations")

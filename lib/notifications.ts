@@ -234,7 +234,6 @@ export class PushNotificationHelper {
 
       const preferenceKey = typeMapping[notificationType] || notificationType;
       if (preferences[preferenceKey] === false) {
-        console.log(`User has disabled ${notificationType} notifications`);
         return false;
       }
 

@@ -90,7 +90,6 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
     try {
       setLoading(true);
       setError(null);
-      console.log('Loading wishlist from Supabase for user:', user.id);
 
       const { data, error: fetchError } = await supabase
         .from('wishlist_items')
