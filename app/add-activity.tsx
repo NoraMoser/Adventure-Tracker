@@ -209,8 +209,6 @@ export default function AddActivityScreen() {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        console.log("Taking picture...");
-
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,

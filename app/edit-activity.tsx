@@ -101,7 +101,6 @@ export default function EditActivityScreen() {
   (function() {
     const originalPostMessage = window.ReactNativeWebView.postMessage;
     window.ReactNativeWebView.postMessage = function(data) {
-      console.log('Attempting to send message:', data);
       originalPostMessage.call(window.ReactNativeWebView, data);
     };
     true; // Required for iOS

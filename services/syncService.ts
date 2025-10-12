@@ -36,9 +36,7 @@ class SyncService {
       // Update last sync time
       await AsyncStorage.setItem('lastSyncTime', new Date().toISOString());
       
-      console.log('🔄 Sync complete:', result);
     } catch (error) {
-      console.error('🔄 Sync error:', error);
       result.success = false;
       result.errors.push(String(error));
     }

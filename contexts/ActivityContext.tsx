@@ -840,8 +840,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   const saveActivity = async (activity: Activity): Promise<void> => {
     if (!user) throw new Error("No user logged in");
 
-    console.log("Saving activity to database...");
-
     if (refreshSession) {
       const sessionValid = await refreshSession();
       if (!sessionValid) {

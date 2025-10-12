@@ -214,16 +214,13 @@ export default function ProfileEditScreen() {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        console.log("Taking profile picture...");
         
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
           skipProcessing: true,
         });
-        
-        console.log("Profile photo result:", photo);
-        
+                
         if (photo && photo.uri) {
           // Upload the photo
           uploadProfilePicture(photo.uri);

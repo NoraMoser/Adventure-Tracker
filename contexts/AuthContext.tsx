@@ -415,7 +415,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      console.log("Starting data sync for user:", user.id);
       const result = await syncService.syncAllData(user.id);
 
       if (result.success) {
@@ -424,7 +423,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           result.synced.locations +
           result.synced.achievements;
         if (totalSynced > 0) {
-          console.log(`Successfully synced ${totalSynced} items`);
           Alert.alert(
             "Data Synced!",
             `Synced ${result.synced.activities} activities, ${result.synced.locations} locations`

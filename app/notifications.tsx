@@ -53,7 +53,7 @@ export default function NotificationsScreen() {
   useEffect(() => {
     if (user) {
       loadNotifications();
-      setupRealtimeSubscription();
+      return setupRealtimeSubscription();
     }
   }, [user]);
 

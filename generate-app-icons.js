@@ -11,7 +11,6 @@ const assetsDir = path.join(projectRoot, 'assets');
 // Create assets directory if it doesn't exist
 if (!fs.existsSync(assetsDir)) {
   fs.mkdirSync(assetsDir, { recursive: true });
-  console.log('✅ Created assets directory');
 } else {
   console.log('✅ Assets directory already exists');
 }

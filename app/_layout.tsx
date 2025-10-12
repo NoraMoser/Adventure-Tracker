@@ -137,7 +137,6 @@ export default function RootLayout() {
 
           const channels = supabase.getChannels();
           if (channels.length > 0) {
-            console.log("Resetting realtime subscriptions");
             await supabase.removeAllChannels();
           }
         } catch (err) {

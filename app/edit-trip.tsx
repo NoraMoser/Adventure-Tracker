@@ -219,7 +219,6 @@ export default function EditTripScreen() {
     if (!hasInitializedPosition && !isUpdatingPosition) {
       const initialPosition = trip.cover_photo_position ||
         localPositionCache || { x: 0, y: 0 };
-      console.log("Initializing position with:", initialPosition);
       setPhotoPosition(initialPosition);
       setSavedPhotoPosition(initialPosition);
       setHasInitializedPosition(true);
@@ -521,9 +520,7 @@ export default function EditTripScreen() {
         cover_photo_position: photoPosition,
       };
 
-      console.log("Update data:", updateData);
       await updateTrip(trip.id, updateData);
-      console.log("Update successful");
 
       // Close modal
       setShowPhotoModal(false);

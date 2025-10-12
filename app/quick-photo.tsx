@@ -60,17 +60,14 @@ export default function QuickPhotoScreen() {
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
 
   useEffect(() => {
-    console.log("QuickPhotoScreen mounted");
 
     const attemptLocation = async () => {
-      console.log("Attempting to get location...");
       try {
         await getLocation();
 
         // If still no location, try again after a delay
         setTimeout(async () => {
           if (!location) {
-            console.log("First location attempt failed, trying again...");
             await getLocation();
           } else {
             // Fetch suggestions when we have location
@@ -189,7 +186,6 @@ export default function QuickPhotoScreen() {
   };
 
   const saveQuickLog = async () => {
-  console.log("Saving quick log...");
 
   if (photos.length === 0) {
     Alert.alert("Error", "Please take at least one photo");
@@ -200,7 +196,6 @@ export default function QuickPhotoScreen() {
   try {
     const spotName =
       title || caption || `Quick log ${new Date().toLocaleDateString()}`;
-    console.log("Saving spot with name:", spotName);
 
     // Check if we have location
     if (!location) {
@@ -227,7 +222,6 @@ export default function QuickPhotoScreen() {
     }
 
     // Save to context and GET THE ACTUAL RETURNED SPOT
-    console.log("Have location, saving with real coordinates:", location);
     const savedSpot = await saveCurrentLocation(
       spotName,
       caption,
@@ -235,8 +229,6 @@ export default function QuickPhotoScreen() {
       selectedCategory,
       new Date()
     );
-
-    console.log("Save completed, returned spot:", savedSpot);
 
     // Only proceed with trip check if we have a valid saved spot
     if (savedSpot) {
