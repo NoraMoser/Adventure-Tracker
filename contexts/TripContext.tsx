@@ -571,7 +571,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateTrip = async (tripId: string, updates: Partial<Trip>) => {
-    console.log("updateTrip called with:", { tripId, updates });
 
     try {
       const updateData: any = {};

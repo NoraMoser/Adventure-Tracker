@@ -279,8 +279,6 @@ export default function FriendProfileScreen() {
       .or(`user_id.eq.${friend.id},friend_id.eq.${friend.id}`)
       .eq('status', 'accepted');
 
-    console.log('Raw friendships for', friend.displayName, ':', friendsFriendships);
-
     if (!friendsFriendships) return;
 
     // Build set of friend's friends
@@ -302,7 +300,6 @@ export default function FriendProfileScreen() {
       profileFriendIds.has(f.id) // Is in both friend lists
     );
     
-    console.log('Mutual friends:', mutuals);
     setMutualFriends(mutuals);
   } catch (error) {
     console.error('Error:', error);

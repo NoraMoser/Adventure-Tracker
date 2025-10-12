@@ -621,7 +621,7 @@ export default function PastActivitiesScreen() {
           <AddToTripButton
             item={item}
             type="activity"
-            iconSize={22}
+            iconSize={28}
             style={styles.actionButton}
           />
 

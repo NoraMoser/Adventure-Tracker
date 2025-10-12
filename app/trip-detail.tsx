@@ -299,12 +299,8 @@ export default function TripDetailScreen() {
               .single();
 
             if (data?.photos) {
-              console.log(`Found DB photos for ${spot.name}:`, data.photos);
               finalSpot.photos = data.photos;
             } else {
-              console.log(
-                `No DB photos found for ${spot.name}, filtering local URIs`
-              );
               // Filter out local URIs if we can't get DB photos
               finalSpot.photos = spot.photos.filter(
                 (p: string) =>

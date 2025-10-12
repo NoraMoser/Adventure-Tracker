@@ -10,11 +10,6 @@ export class PhotoService {
   static async initializeStorage() {
     try {
       const { data: buckets } = await supabase.storage.listBuckets();
-      console.log("Available buckets:", buckets);
-      console.log(
-        "Existing buckets:",
-        buckets?.map((b) => b.name)
-      );
       // Don't try to create buckets - they should already exist
       // Just verify they're there
       const requiredBuckets = [

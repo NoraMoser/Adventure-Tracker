@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabase';
 
 class SyncService {
   async syncAllData(userId: string) {
-    console.log('🔄 Starting sync for user:', userId);
     
     const result = {
       success: true,

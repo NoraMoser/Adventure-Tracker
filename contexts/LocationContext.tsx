@@ -92,10 +92,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   // Load saved spots when user changes
   useEffect(() => {
     if (user) {
-      console.log("LocationContext: User changed, loading spots for:", user.id);
       loadSavedSpots();
     } else {
-      console.log("LocationContext: No user, clearing saved spots");
       setSavedSpots([]);
       setLocation(null);
       setError(null);
@@ -382,7 +380,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         await savePhotosToGallery(photos);
       }
 
-      console.log("Location saved successfully");
       return newLocation; // Now this exists
     } catch (err) {
       console.error("Error saving current location:", err);
@@ -591,9 +588,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       if (migrationCount > 0) {
-        console.log(
-          `Successfully migrated ${migrationCount} photos to Supabase`
-        );
         await loadSavedSpots(); // Reload to get updated URLs
       }
 

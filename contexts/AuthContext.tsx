@@ -337,7 +337,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.removeItem("offlineMode");
 
       setIsOfflineMode(false);
-      console.log("Sign in successful - auth state listener will handle sync");
     } catch (error: any) {
       Alert.alert("Sign In Error", error.message);
       throw error;

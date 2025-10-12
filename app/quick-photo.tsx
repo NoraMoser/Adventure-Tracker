@@ -78,7 +78,6 @@ export default function QuickPhotoScreen() {
         // Try once more after longer delay
         setTimeout(async () => {
           if (!location) {
-            console.log("Second location attempt failed, trying again...");
             await getLocation();
           } else if (!locationSuggestions.length) {
             // Try suggestions again if we didn't get them yet
@@ -673,7 +672,6 @@ export default function QuickPhotoScreen() {
                   <TouchableOpacity
                     style={styles.refreshLocationButton}
                     onPress={async () => {
-                      console.log("Refreshing location...");
                       await getLocation();
                       fetchLocationSuggestions();
                     }}

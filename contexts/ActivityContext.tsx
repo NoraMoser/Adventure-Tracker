@@ -421,7 +421,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         const currentPoints = Array.isArray(prev) ? prev : [];
 
         if (currentPoints.length === 0) {
-          console.log("First GPS point recorded");
           return [location];
         }
 

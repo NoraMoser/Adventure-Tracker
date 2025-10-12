@@ -39,10 +39,8 @@ const CameraModal: React.FC<CameraModalProps> = ({
   };
 
   const takePhoto = async () => {
-    console.log('Opening camera...');
     const hasPermission = await requestPermissions();
     if (!hasPermission) {
-      console.log('No camera permission');
       return;
     }
     setShowCamera(true);
@@ -51,7 +49,6 @@ const CameraModal: React.FC<CameraModalProps> = ({
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        console.log("Taking picture...");
         
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.7,

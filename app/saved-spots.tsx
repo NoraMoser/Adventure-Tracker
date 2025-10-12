@@ -468,12 +468,11 @@ const AnimatedListItem = ({
                 </TouchableOpacity>
               ))}
             </View>
-
             <View style={styles.cardActions}>
               <AddToTripButton
                 item={item}
                 type="spot"
-                iconSize={20}
+                iconSize={28}
                 style={{ marginRight: 8 }}
               />
               <TouchableOpacity

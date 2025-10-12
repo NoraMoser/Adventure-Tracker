@@ -351,18 +351,13 @@ export default function TrackActivityScreen() {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        console.log("Taking picture...");
-
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
           skipProcessing: true,
         });
 
-        console.log("Photo result:", photo);
-
         if (photo && photo.uri) {
-          console.log("Adding photo URI:", photo.uri);
           setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
 
           setCameraKey((prev) => prev + 1);
