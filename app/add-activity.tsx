@@ -217,8 +217,6 @@ export default function AddActivityScreen() {
           skipProcessing: true,
         });
 
-        console.log("Photo result:", photo);
-
         if (photo && photo.uri) {
           setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
         }

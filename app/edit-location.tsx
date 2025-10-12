@@ -270,7 +270,6 @@ export default function EditLocationScreen() {
       // Upload new photos if any
       let newUploadedUrls: string[] = [];
       if (newLocalPhotos.length > 0) {
-        console.log("Uploading new photos...");
         newUploadedUrls = await PhotoService.uploadPhotos(
           newLocalPhotos,
           "location-photos",

@@ -250,9 +250,7 @@ export default function ProfileEditScreen() {
     if (!user) return;
 
     setUploadingImage(true);
-    try {
-      console.log('Starting profile picture upload...');
-      
+    try {      
       // Import PhotoService
       const { PhotoService } = await import('../services/photoService');
       
@@ -264,7 +262,6 @@ export default function ProfileEditScreen() {
       );
 
       if (uploadedUrl) {
-        console.log('Profile picture uploaded successfully:', uploadedUrl);
         setProfilePicture(uploadedUrl);
         
         // Save to database

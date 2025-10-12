@@ -122,7 +122,6 @@ export default function RootLayout() {
 
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState === "active" && isSubscribed) {
-        console.log("App resumed - refreshing connections");
 
         try {
           const {

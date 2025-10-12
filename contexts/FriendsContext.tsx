@@ -415,31 +415,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         return;
       }
 
-      // 3. Send notification to requester that their request was accepted
-      await supabase.from("notifications").insert({
-        user_id: request.from_user_id,
-        from_user_id: user.id,
-        type: "friend_accepted",
-        title: "Friend Request Accepted",
-        message: `${
-          profile?.display_name || profile?.username
-        } accepted your friend request!`,
-        data: { friend_id: user.id },
-        read: false,
-      });
-
-      // Send push notification
-      await PushNotificationHelper.sendNotificationToUser(
-        request.from_user_id,
-        "friend_accepted",
-        "Friend Request Accepted",
-        `${profile?.display_name || profile?.username} is now your friend!`,
-        {
-          type: "friend_accepted",
-          friend_id: user.id,
-        }
-      );
-
       // 4. Update local state immediately
       setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
 
@@ -586,36 +561,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .single();
 
       if (requestError) throw requestError;
-
-      // Create notification in database
-      await supabase.from("notifications").insert({
-        user_id: targetUser.id,
-        from_user_id: user.id,
-        type: "friend_request",
-        title: "New Friend Request",
-        message: `${
-          profile?.display_name || profile?.username || "Someone"
-        } sent you a friend request`,
-        data: {
-          request_id: newRequest.id,
-          message: message,
-        },
-        read: false,
-      });
-
-      // Send push notification
-      await PushNotificationHelper.sendNotificationToUser(
-        targetUser.id,
-        "friend_request",
-        "New Friend Request",
-        `${
-          profile?.display_name || profile?.username
-        } wants to be your friend!`,
-        {
-          type: "friend_request",
-          request_id: newRequest.id,
-        }
-      );
 
       Alert.alert(
         "Success",

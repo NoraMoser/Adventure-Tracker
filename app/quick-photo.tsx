@@ -139,7 +139,6 @@ export default function QuickPhotoScreen() {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        console.log("Taking picture with Camera component...");
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
@@ -147,11 +146,8 @@ export default function QuickPhotoScreen() {
         });
 
         if (photo) {
-          console.log("Photo taken:", photo.uri);
           setPhotos((prev) => {
-            console.log("Previous photos:", prev);
             const newPhotos = [...prev, photo.uri];
-            console.log("New photos array:", newPhotos);
             return newPhotos;
           });
           // Add a small delay to ensure state updates

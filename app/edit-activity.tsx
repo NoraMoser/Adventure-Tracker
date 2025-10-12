@@ -113,21 +113,10 @@ export default function EditActivityScreen() {
       const data = JSON.parse(event.nativeEvent.data);
 
       if (data.type === "routeUpdated") {
-        // Log the actual route data
-        if (data.route && data.route.length > 0) {
-          console.log("First point:", data.route[0]);
-          console.log("Last point:", data.route[data.route.length - 1]);
-        }
-
+   
         // Update both route and distance
         setRoute(data.route || []);
         setDistance(data.distance || 0);
-
-        console.log(
-          "State updated - route now has",
-          data.route?.length,
-          "points"
-        );
       }
     } catch (error) {
       console.error("Error parsing map message:", error);

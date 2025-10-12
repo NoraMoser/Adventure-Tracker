@@ -312,13 +312,6 @@ export default function EditTripScreen() {
     console.log("Total trip items:", trip.items.length);
 
     trip.items.forEach((item, index) => {
-      console.log(`Item ${index}:`, {
-        type: item.type,
-        name: item.data?.name,
-        hasPhotos: !!item.data?.photos,
-        photoCount: item.data?.photos?.length || 0,
-        photos: item.data?.photos,
-      });
       if (item.data?.photos && Array.isArray(item.data.photos)) {
         tripPhotos.push(...item.data.photos);
       }
