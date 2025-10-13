@@ -18,7 +18,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ExplorableIcon, ExplorableLogo } from "../components/Logo";
 import { theme } from "../constants/theme";
-import { ActivityType } from "../contexts/ActivityContext";
 import { useSettings } from "../contexts/SettingsContext";
 
 const { width, height } = Dimensions.get("window");
@@ -47,8 +46,6 @@ export default function OnboardingScreen() {
   const [selectedUnits, setSelectedUnits] = useState<"metric" | "imperial">(
     "metric"
   );
-  const [selectedActivity, setSelectedActivity] =
-    useState<ActivityType>("bike");
   const [locationPermissionGranted, setLocationPermissionGranted] =
     useState(false);
 
@@ -101,7 +98,6 @@ export default function OnboardingScreen() {
       // Save user preferences
       await updateSettings({
         units: selectedUnits,
-        defaultActivityType: selectedActivity,
       });
 
       // Save user name if provided
@@ -125,7 +121,7 @@ export default function OnboardingScreen() {
       id: "welcome",
       title: "Welcome to",
       subtitle:
-        "Track your adventures, save your favorite spots, and explore new places",
+        "Organize your adventures into trips, track activities, and save your favorite spots",
       backgroundColor: theme.colors.offWhite,
       textColor: theme.colors.navy,
       customContent: (
@@ -159,78 +155,158 @@ export default function OnboardingScreen() {
       ),
     },
     {
+      id: "trips",
+      title: "Organize with Trips",
+      subtitle: "Create trips to group your adventures together",
+      icon: "airplane",
+      backgroundColor: theme.colors.navy,
+      textColor: theme.colors.white,
+      customContent: (
+        <View style={styles.tripsPreview}>
+          <View style={styles.tripExample}>
+            <View style={styles.tripIconContainer}>
+              <Ionicons name="airplane" size={40} color={theme.colors.white} />
+            </View>
+            <Text style={styles.tripExampleTitle}>Weekend in Seattle</Text>
+            <Text style={styles.tripExampleSubtitle}>3 activities • 5 spots</Text>
+          </View>
+          <View style={styles.tripFeatures}>
+            <View style={styles.tripFeature}>
+              <Ionicons name="calendar" size={24} color={theme.colors.white} />
+              <Text style={styles.tripFeatureText}>Set dates</Text>
+            </View>
+            <View style={styles.tripFeature}>
+              <Ionicons name="people" size={24} color={theme.colors.white} />
+              <Text style={styles.tripFeatureText}>Tag friends</Text>
+            </View>
+            <View style={styles.tripFeature}>
+              <Ionicons name="images" size={24} color={theme.colors.white} />
+              <Text style={styles.tripFeatureText}>Collect memories</Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
       id: "track",
       title: "Track Activities",
-      subtitle: "Record your bikes, runs, hikes, and more with GPS tracking",
+      subtitle: "Record your adventures and add them to trips",
       icon: "fitness",
       backgroundColor: theme.colors.forest,
       textColor: theme.colors.white,
       customContent: (
-        <View style={styles.featureGrid}>
-          <View style={styles.featureItem}>
-            <Ionicons name="bicycle" size={40} color={theme.colors.white} />
-            <Text style={styles.featureText}>Bike</Text>
+        <View style={styles.featureContainer}>
+          <View style={styles.featureGrid}>
+            <View style={styles.featureItem}>
+              <Ionicons name="bicycle" size={40} color={theme.colors.white} />
+              <Text style={styles.featureText}>Bike</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Ionicons name="walk" size={40} color={theme.colors.white} />
+              <Text style={styles.featureText}>Run</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Ionicons name="trail-sign" size={40} color={theme.colors.white} />
+              <Text style={styles.featureText}>Hike</Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Ionicons name="boat" size={40} color={theme.colors.white} />
+              <Text style={styles.featureText}>Paddle</Text>
+            </View>
           </View>
-          <View style={styles.featureItem}>
-            <Ionicons name="walk" size={40} color={theme.colors.white} />
-            <Text style={styles.featureText}>Run</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <Ionicons name="trail-sign" size={40} color={theme.colors.white} />
-            <Text style={styles.featureText}>Hike</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <Ionicons name="boat" size={40} color={theme.colors.white} />
-            <Text style={styles.featureText}>Paddle</Text>
+          <View style={styles.addToTripHint}>
+            <Ionicons name="airplane" size={20} color={theme.colors.white} />
+            <Text style={styles.addToTripHintText}>
+              Add any activity to a trip with one tap
+            </Text>
           </View>
         </View>
       ),
     },
     {
       id: "save",
-      title: "Save Locations",
-      subtitle: "Mark your favorite spots and organize them by category",
+      title: "Save Special Spots",
+      subtitle: "Mark locations you love and organize them into trips",
       icon: "location",
-      backgroundColor: theme.colors.navy,
+      backgroundColor: theme.colors.burntOrange,
       textColor: theme.colors.white,
       customContent: (
-        <View style={styles.categoriesPreview}>
-          <View style={styles.categoryRow}>
-            <View
-              style={[styles.categoryBadge, { backgroundColor: "#cc5500" }]}
-            >
-              <Ionicons name="umbrella" size={24} color="white" />
-              <Text style={styles.categoryLabel}>Beach</Text>
+        <View style={styles.spotsPreview}>
+          <View style={styles.categoriesPreview}>
+            <View style={styles.categoryRow}>
+              <View
+                style={[styles.categoryBadge, { backgroundColor: "#cc5500" }]}
+              >
+                <Ionicons name="umbrella" size={24} color="white" />
+                <Text style={styles.categoryLabel}>Beach</Text>
+              </View>
+              <View
+                style={[styles.categoryBadge, { backgroundColor: "#2d5a3d" }]}
+              >
+                <Ionicons name="walk" size={24} color="white" />
+                <Text style={styles.categoryLabel}>Trail</Text>
+              </View>
             </View>
-            <View
-              style={[styles.categoryBadge, { backgroundColor: "#2d5a3d" }]}
-            >
-              <Ionicons name="walk" size={24} color="white" />
-              <Text style={styles.categoryLabel}>Trail</Text>
+            <View style={styles.categoryRow}>
+              <View
+                style={[styles.categoryBadge, { backgroundColor: "#8b5cf6" }]}
+              >
+                <Ionicons name="camera" size={24} color="white" />
+                <Text style={styles.categoryLabel}>View</Text>
+              </View>
+              <View
+                style={[styles.categoryBadge, { backgroundColor: "#059669" }]}
+              >
+                <Ionicons name="bonfire" size={24} color="white" />
+                <Text style={styles.categoryLabel}>Camp</Text>
+              </View>
             </View>
           </View>
-          <View style={styles.categoryRow}>
-            <View
-              style={[styles.categoryBadge, { backgroundColor: "#8b5cf6" }]}
-            >
-              <Ionicons name="camera" size={24} color="white" />
-              <Text style={styles.categoryLabel}>Viewpoint</Text>
+          <View style={styles.addToTripHint}>
+            <Ionicons name="airplane" size={20} color={theme.colors.white} />
+            <Text style={styles.addToTripHintText}>
+              Save spots to remember them or add to trips
+            </Text>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "auto-trips",
+      title: "Smart Trip Detection",
+      subtitle: "Let us find and suggest trips you can create",
+      backgroundColor: theme.colors.forest,
+      textColor: theme.colors.white,
+      customContent: (
+        <View style={styles.autoTripPreview}>
+          <View style={styles.autoTripCard}>
+            <Ionicons name="sparkles" size={50} color="#FFD700" />
+            <Text style={styles.autoTripTitle}>One-Tap Organization</Text>
+            <Text style={styles.autoTripText}>
+              Tap "Create Trips" and we'll detect activities and spots from the same time or location to suggest trips
+            </Text>
+          </View>
+          <View style={styles.autoTripExample}>
+            <View style={styles.autoTripExampleHeader}>
+              <Ionicons name="calendar" size={20} color={theme.colors.white} />
+              <Text style={styles.autoTripExampleDate}>Oct 12-13, 2024</Text>
             </View>
-            <View
-              style={[styles.categoryBadge, { backgroundColor: "#059669" }]}
-            >
-              <Ionicons name="bonfire" size={24} color="white" />
-              <Text style={styles.categoryLabel}>Camping</Text>
-            </View>
+            <Text style={styles.autoTripExampleTitle}>Mountain Weekend</Text>
+            <Text style={styles.autoTripExampleDetails}>
+              2 hikes • 3 viewpoints • 1 camping spot
+            </Text>
+            <Text style={styles.autoTripExampleNote}>
+              You decide which to create!
+            </Text>
           </View>
         </View>
       ),
     },
     {
       id: "friends",
-      title: "Connect with Friends",
-      subtitle: "Share your adventures and discover new places together",
-      backgroundColor: theme.colors.burntOrange,
+      title: "Share with Friends",
+      subtitle: "Tag friends in trips and see their adventures",
+      backgroundColor: theme.colors.navy,
       textColor: theme.colors.white,
       customContent: (
         <View style={styles.friendsPreview}>
@@ -240,9 +316,9 @@ export default function OnboardingScreen() {
               size={50}
               color={theme.colors.white}
             />
-            <Text style={styles.friendFeatureTitle}>Friends Feed</Text>
+            <Text style={styles.friendFeatureTitle}>Tag Friends in Trips</Text>
             <Text style={styles.friendFeatureText}>
-              See what your friends are exploring
+              Share your adventures and see mutual trips
             </Text>
           </View>
           <View style={styles.friendFeatureRow}>
@@ -253,18 +329,18 @@ export default function OnboardingScreen() {
             <View style={styles.friendFeatureSmall}>
               <Ionicons name="share-social" size={30} color="#4ECDC4" />
               <Text style={styles.friendFeatureSmallText}>
-                Share Activities
+                Share Spots
               </Text>
             </View>
           </View>
           <View style={styles.friendFeatureRow}>
             <View style={styles.friendFeatureSmall}>
               <Ionicons name="location-sharp" size={30} color="#FFD700" />
-              <Text style={styles.friendFeatureSmallText}>Recommend Spots</Text>
+              <Text style={styles.friendFeatureSmallText}>Find Mutual Places</Text>
             </View>
             <View style={styles.friendFeatureSmall}>
-              <Ionicons name="notifications" size={30} color="#9B59B6" />
-              <Text style={styles.friendFeatureSmallText}>Stay Updated</Text>
+              <Ionicons name="airplane" size={30} color="#9B59B6" />
+              <Text style={styles.friendFeatureSmallText}>Mutual Trips</Text>
             </View>
           </View>
         </View>
@@ -272,13 +348,19 @@ export default function OnboardingScreen() {
     },
     {
       id: "wishlist",
-      title: "Plan Adventures",
-      subtitle: "Create a wishlist of places you want to explore",
+      title: "Plan Future Adventures",
+      subtitle: "Save places you want to visit and ideas for future trips",
       icon: "heart",
-      backgroundColor: theme.colors.forest,
+      backgroundColor: theme.colors.burntOrange,
       textColor: theme.colors.white,
       customContent: (
         <View style={styles.wishlistPreview}>
+          <View style={styles.wishlistExplainer}>
+            <Ionicons name="heart" size={40} color={theme.colors.white} />
+            <Text style={styles.wishlistExplainerText}>
+              Add your own ideas or heart spots from friends' posts
+            </Text>
+          </View>
           <View style={styles.priorityItem}>
             <Ionicons name="flame" size={30} color="#FFD700" />
             <Text style={styles.priorityText}>Must See</Text>
@@ -297,7 +379,7 @@ export default function OnboardingScreen() {
     {
       id: "preferences",
       title: "Your Preferences",
-      subtitle: "Choose your units and default activity",
+      subtitle: "Choose your preferred distance units",
       backgroundColor: theme.colors.white,
       textColor: theme.colors.navy,
       customContent: (
@@ -337,68 +419,9 @@ export default function OnboardingScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={[styles.preferenceLabel, { marginTop: 30 }]}>
-            Default Activity
+          <Text style={styles.unitsHint}>
+            You can change this anytime in Settings
           </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={true} // CHANGE false to true
-            style={styles.activityScroll}
-            nestedScrollEnabled={true} // ADD THIS LINE
-          >
-            {(
-              [
-                "bike",
-                "run",
-                "walk",
-                "hike",
-                "paddleboard",
-                "climb",
-                "other",
-              ] as ActivityType[]
-            ).map((activity) => {
-              const icons = {
-                bike: "bicycle",
-                run: "walk",
-                walk: "footsteps",
-                hike: "trail-sign",
-                paddleboard: "boat",
-                climb: "trending-up",
-                other: "fitness",
-              };
-              return (
-                <TouchableOpacity
-                  key={activity}
-                  style={[
-                    styles.activityOption,
-                    selectedActivity === activity &&
-                      styles.activityOptionActive,
-                  ]}
-                  onPress={() => setSelectedActivity(activity)}
-                >
-                  <Ionicons
-                    name={icons[activity] as any}
-                    size={24}
-                    color={
-                      selectedActivity === activity
-                        ? theme.colors.white
-                        : theme.colors.forest
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.activityText,
-                      selectedActivity === activity &&
-                        styles.activityTextActive,
-                    ]}
-                  >
-                    {activity.charAt(0).toUpperCase() + activity.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
         </View>
       ),
     },
@@ -406,9 +429,9 @@ export default function OnboardingScreen() {
       id: "permissions",
       title: "Enable Location",
       subtitle:
-        "We need location access to track your activities and save your spots",
+        "Location access lets you track activities and save spots accurately",
       icon: "navigate",
-      backgroundColor: theme.colors.navy,
+      backgroundColor: theme.colors.forest,
       textColor: theme.colors.white,
       action: requestLocationPermission,
       actionLabel: locationPermissionGranted
@@ -423,7 +446,7 @@ export default function OnboardingScreen() {
               color={theme.colors.white}
             />
             <Text style={styles.permissionText}>
-              Track your routes accurately
+              Track your routes with GPS
             </Text>
           </View>
           <View style={styles.permissionItem}>
@@ -433,7 +456,7 @@ export default function OnboardingScreen() {
               color={theme.colors.white}
             />
             <Text style={styles.permissionText}>
-              Save your current location
+              Save spots at your location
             </Text>
           </View>
           <View style={styles.permissionItem}>
@@ -443,7 +466,7 @@ export default function OnboardingScreen() {
               color={theme.colors.white}
             />
             <Text style={styles.permissionText}>
-              Find nearby points of interest
+              Get notified near saved places
             </Text>
           </View>
           <View style={styles.permissionItem}>
@@ -469,23 +492,42 @@ export default function OnboardingScreen() {
             color={theme.colors.forest}
           />
           <View style={styles.summaryContainer}>
-            <Text style={styles.summaryTitle}>Your Settings:</Text>
+            <Text style={styles.summaryTitle}>You're ready to:</Text>
             <View style={styles.summaryItem}>
               <Ionicons
-                name="speedometer"
+                name="airplane"
                 size={20}
                 color={theme.colors.navy}
               />
               <Text style={styles.summaryText}>
-                Units: {selectedUnits === "metric" ? "Kilometers" : "Miles"}
+                Create trips to organize adventures
               </Text>
             </View>
             <View style={styles.summaryItem}>
               <Ionicons name="fitness" size={20} color={theme.colors.navy} />
               <Text style={styles.summaryText}>
-                Default:{" "}
-                {selectedActivity.charAt(0).toUpperCase() +
-                  selectedActivity.slice(1)}
+                Track activities and add to trips
+              </Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Ionicons
+                name="location"
+                size={20}
+                color={theme.colors.navy}
+              />
+              <Text style={styles.summaryText}>
+                Save spots and organize them
+              </Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Ionicons
+                name="speedometer"
+                size={20}
+                color={theme.colors.gray}
+              />
+              <Text style={styles.summaryText}>
+                Units: {selectedUnits === "metric" ? "Kilometers" : "Miles"}
               </Text>
             </View>
             <View style={styles.summaryItem}>
@@ -631,7 +673,7 @@ export default function OnboardingScreen() {
                     styles.actionButton,
                     {
                       backgroundColor: locationPermissionGranted
-                        ? theme.colors.forest
+                        ? theme.colors.white + "40"
                         : theme.colors.white,
                       opacity: locationPermissionGranted ? 0.8 : 1,
                     },
@@ -643,9 +685,7 @@ export default function OnboardingScreen() {
                     style={[
                       styles.actionButtonText,
                       {
-                        color: locationPermissionGranted
-                          ? theme.colors.white
-                          : theme.colors.forest,
+                        color: theme.colors.forest,
                       },
                     ]}
                   >
@@ -847,6 +887,56 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     marginTop: 10,
   },
+  tripsPreview: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  tripExample: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 25,
+  },
+  tripIconContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  tripExampleTitle: {
+    color: theme.colors.white,
+    fontSize: 20,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  tripExampleSubtitle: {
+    color: theme.colors.white,
+    fontSize: 14,
+    opacity: 0.8,
+  },
+  tripFeatures: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+  },
+  tripFeature: {
+    alignItems: "center",
+  },
+  tripFeatureText: {
+    color: theme.colors.white,
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  featureContainer: {
+    width: "100%",
+    marginBottom: 20,
+  },
   featureGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -856,14 +946,32 @@ const styles = StyleSheet.create({
   featureItem: {
     alignItems: "center",
     margin: 15,
-    minWidth: 70, // Add minimum width to prevent text cutoff
+    minWidth: 70,
   },
   featureText: {
     color: theme.colors.white,
     marginTop: 8,
     fontSize: 14,
-    textAlign: "center", // Add text alignment
-    width: 70, // Set fixed width to ensure text has space
+    textAlign: "center",
+    width: 70,
+  },
+  addToTripHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    padding: 15,
+    borderRadius: 12,
+  },
+  addToTripHintText: {
+    color: theme.colors.white,
+    fontSize: 14,
+    marginLeft: 10,
+    fontWeight: "500",
+  },
+  spotsPreview: {
+    width: "100%",
+    marginBottom: 20,
   },
   categoriesPreview: {
     marginBottom: 20,
@@ -886,6 +994,68 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     fontWeight: "500",
+  },
+  autoTripPreview: {
+    alignItems: "center",
+    marginBottom: 20,
+    width: "100%",
+  },
+  autoTripCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 20,
+  },
+  autoTripTitle: {
+    color: theme.colors.white,
+    fontSize: 20,
+    fontWeight: "600",
+    marginTop: 15,
+    marginBottom: 10,
+  },
+  autoTripText: {
+    color: theme.colors.white,
+    fontSize: 14,
+    textAlign: "center",
+    opacity: 0.9,
+    lineHeight: 20,
+  },
+  autoTripExample: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 12,
+    padding: 15,
+    width: "100%",
+  },
+  autoTripExampleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  autoTripExampleDate: {
+    color: theme.colors.white,
+    fontSize: 12,
+    marginLeft: 8,
+    opacity: 0.8,
+  },
+  autoTripExampleTitle: {
+    color: theme.colors.white,
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  autoTripExampleDetails: {
+    color: theme.colors.white,
+    fontSize: 13,
+    opacity: 0.8,
+  },
+  autoTripExampleNote: {
+    color: theme.colors.white,
+    fontSize: 12,
+    opacity: 0.7,
+    marginTop: 8,
+    fontStyle: "italic",
   },
   friendsPreview: {
     alignItems: "center",
@@ -923,21 +1093,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: "center",
   },
-  wishlistPreview: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  priorityItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 10,
-  },
-  priorityText: {
-    color: theme.colors.white,
-    marginLeft: 15,
-    fontSize: 18,
-    fontWeight: "500",
-  },
   preferencesContainer: {
     width: "100%",
     marginBottom: 20,
@@ -971,33 +1126,11 @@ const styles = StyleSheet.create({
   unitTextActive: {
     color: theme.colors.white,
   },
-  activityScroll: {
-    flexDirection: "row",
-    marginTop: 10,
-    maxHeight: 80, // ADD THIS LINE
-  },
-  activityOption: {
-    alignItems: "center",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    marginRight: 10,
-    borderWidth: 2,
-    borderColor: theme.colors.borderGray,
-    minWidth: 70, // ADD THIS LINE
-  },
-  activityOptionActive: {
-    backgroundColor: theme.colors.forest,
-    borderColor: theme.colors.forest,
-  },
-  activityText: {
+  unitsHint: {
     fontSize: 12,
     color: theme.colors.gray,
-    marginTop: 5,
-  },
-  activityTextActive: {
-    color: theme.colors.white,
+    marginTop: 10,
+    textAlign: "center",
   },
   permissionInfo: {
     marginBottom: 20,
@@ -1049,6 +1182,11 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     marginLeft: 10,
   },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: theme.colors.borderGray,
+    marginVertical: 10,
+  },
   bottomNav: {
     paddingHorizontal: 20,
     paddingBottom: 30,
@@ -1099,4 +1237,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginRight: 8,
   },
+  wishlistPreview: {
+  alignItems: "center",
+  marginBottom: 20,
+},
+wishlistExplainer: {
+  alignItems: "center",
+  marginBottom: 25,
+  backgroundColor: "rgba(255, 255, 255, 0.15)",
+  padding: 20,
+  borderRadius: 12,
+  width: "100%",
+},
+wishlistExplainerText: {
+  color: theme.colors.white,
+  fontSize: 15,
+  marginTop: 12,
+  textAlign: "center",
+  lineHeight: 22,
+},
+priorityItem: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginVertical: 10,
+},
+priorityText: {
+  color: theme.colors.white,
+  marginLeft: 15,
+  fontSize: 18,
+  fontWeight: "500",
+},
 });
