@@ -78,10 +78,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     const checkStorage = async () => {
       try {
         const { data: buckets } = await supabase.storage.listBuckets();
-        console.log(
-          "Available storage buckets:",
-          buckets?.map((b) => b.name)
-        );
       } catch (err) {
         console.log("Could not list buckets:", err);
       }
@@ -172,7 +168,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         );
 
         if (needsMigration) {
-          console.log("Found local photos, starting migration...");
           // Don't await this - let it run in background
           migrateLocalPhotosToSupabase().then((count) => {
             if (count && count > 0) {
@@ -542,7 +537,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
       setSavedSpots((prev) => prev.filter((spot) => spot.id !== spotId));
 
-      console.log("Spot deleted successfully");
     } catch (err) {
       console.error("Error deleting spot:", err);
       setError("Failed to delete spot");

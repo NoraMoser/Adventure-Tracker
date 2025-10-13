@@ -162,7 +162,6 @@ export class PhotoService {
         }
 
         // Upload to Supabase Storage
-        console.log("Uploading to Supabase Storage...");
         const { data, error } = await supabase.storage
           .from(bucket)
           .upload(fileName, decode(base64Data), {
@@ -208,8 +207,6 @@ export class PhotoService {
     if (!photoUris || photoUris.length === 0) {
       return [];
     }
-
-    console.log(`Starting upload of ${photoUris.length} photos...`);
 
     const uploadPromises = photoUris.map((uri) =>
       this.uploadPhoto(uri, bucket, userId)

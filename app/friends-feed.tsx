@@ -1,4 +1,4 @@
-// friends-feed.tsx - Updated with Map View
+// friends-feed.tsx - Updated with Friend Filtering
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
@@ -19,9 +19,10 @@ import {
 import { WebView } from "react-native-webview";
 import { TouchableImage } from "../components/TouchableImage";
 import { theme } from "../constants/theme";
-import { useFriends } from "../contexts/FriendsContext";
+import { useFriends, FeedPost } from "../contexts/FriendsContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
+import { supabase } from "../lib/supabase";
 
 // Keep your existing UserAvatar component exactly as is
 const UserAvatar = ({
@@ -93,6 +94,7 @@ const UserAvatar = ({
     </View>
   );
 };
+
 // Updated generateMiniMapHTML function with better zoom for activities
 const generateMiniMapHTML = (route: any[], name: string) => {
   const coords = route.map((p) => `[${p.latitude}, ${p.longitude}]`).join(",");
@@ -853,6 +855,9 @@ export default function FriendsFeedScreen() {
   const [filter, setFilter] = useState<
     "all" | "activities" | "locations" | "trips"
   >("all");
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [selectedFriendFeed, setSelectedFriendFeed] = useState<FeedPost[]>([]);
+  const [loadingFriendFeed, setLoadingFriendFeed] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const webViewRef = useRef<WebView>(null);
 
@@ -920,11 +925,262 @@ export default function FriendsFeedScreen() {
     );
   };
 
-  const filteredFeed = feed.filter((item) => {
-    if (filter === "all") return true;
-    if (filter === "activities") return item.type === "activity";
-    if (filter === "locations") return item.type === "location";
-    if (filter === "trips") return item.type === "trip";
+  // NEW: Handle friend avatar click
+  const handleFriendClick = async (friendId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (selectedFriendId === friendId) {
+      // Clicking the same friend clears the filter
+      setSelectedFriendId(null);
+      setSelectedFriendFeed([]);
+    } else {
+      // Select a new friend to filter by
+      setSelectedFriendId(friendId);
+      await loadFriendSpecificFeed(friendId);
+    }
+  };
+
+  // NEW: Load feed specifically for one friend from the database
+  const loadFriendSpecificFeed = async (friendId: string) => {
+    setLoadingFriendFeed(true);
+    try {
+      // Load activities from this specific friend
+      const { data: activities } = await supabase
+        .from("activities")
+        .select("*")
+        .eq("user_id", friendId)
+        .order("start_time", { ascending: false })
+        .limit(100);
+
+      // Load locations from this specific friend
+      const { data: locations } = await supabase
+        .from("locations")
+        .select("*")
+        .eq("user_id", friendId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      // Load trips from this specific friend
+      const { data: trips } = await supabase
+        .from("trips")
+        .select(
+          `
+          *,
+          trip_items(*)
+        `
+        )
+        .eq("created_by", friendId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      // Get friend's profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", friendId)
+        .single();
+
+      if (!profile) {
+        setSelectedFriendFeed([]);
+        setLoadingFriendFeed(false);
+        return;
+      }
+
+      // Load likes for this friend's activities and locations
+      const activityIds = activities?.map((a) => a.id) || [];
+      const locationIds = locations?.map((l) => l.id) || [];
+
+      const { data: activityLikes } = await supabase
+        .from("likes")
+        .select("activity_id, user_id")
+        .in("activity_id", activityIds);
+
+      const { data: locationLikes } = await supabase
+        .from("likes")
+        .select("location_id, user_id")
+        .in("location_id", locationIds);
+
+      // Load comments
+      const { data: activityComments } = await supabase
+        .from("comments")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
+        .in("activity_id", activityIds)
+        .order("created_at", { ascending: false });
+
+      const { data: locationComments } = await supabase
+        .from("comments")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
+        .in("location_id", locationIds)
+        .order("created_at", { ascending: false });
+
+      // Create lookup maps
+      const activityLikesMap: Record<string, string[]> = {};
+      activityLikes?.forEach((like) => {
+        if (!activityLikesMap[like.activity_id]) {
+          activityLikesMap[like.activity_id] = [];
+        }
+        activityLikesMap[like.activity_id].push(like.user_id);
+      });
+
+      const locationLikesMap: Record<string, string[]> = {};
+      locationLikes?.forEach((like) => {
+        if (!locationLikesMap[like.location_id]) {
+          locationLikesMap[like.location_id] = [];
+        }
+        locationLikesMap[like.location_id].push(like.user_id);
+      });
+
+      const activityCommentsMap: Record<string, any[]> = {};
+      activityComments?.forEach((comment) => {
+        if (!activityCommentsMap[comment.activity_id]) {
+          activityCommentsMap[comment.activity_id] = [];
+        }
+        activityCommentsMap[comment.activity_id].push({
+          id: comment.id,
+          userId: comment.user_id,
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
+          text: comment.text,
+          timestamp: new Date(comment.created_at),
+          replyTo: comment.reply_to_id,
+        });
+      });
+
+      const locationCommentsMap: Record<string, any[]> = {};
+      locationComments?.forEach((comment) => {
+        if (!locationCommentsMap[comment.location_id]) {
+          locationCommentsMap[comment.location_id] = [];
+        }
+        locationCommentsMap[comment.location_id].push({
+          id: comment.id,
+          userId: comment.user_id,
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
+          text: comment.text,
+          timestamp: new Date(comment.created_at),
+          replyTo: comment.reply_to_id,
+        });
+      });
+
+      // Create friend object
+      const friendData = {
+        id: friendId,
+        username: profile.username || "",
+        displayName: profile.display_name || profile.username || "Unknown",
+        avatar: profile.avatar,
+        profile_picture: profile.profile_picture,
+        friendsSince: new Date(),
+        status: "accepted" as const,
+      };
+
+      // Transform into feed posts
+      const activityPosts: FeedPost[] = (activities || []).map((activity) => ({
+        id: `activity-${activity.id}`,
+        type: "activity" as const,
+        timestamp: new Date(activity.start_time),
+        data: {
+          id: activity.id,
+          name: activity.name,
+          type: activity.type,
+          distance: activity.distance || 0,
+          duration: activity.duration || 0,
+          averageSpeed: activity.average_speed || 0,
+          maxSpeed: activity.max_speed || 0,
+          elevationGain: activity.elevation_gain || 0,
+          startTime: new Date(activity.start_time),
+          activityDate: activity.activity_date
+            ? new Date(activity.activity_date)
+            : undefined,
+          notes: activity.notes,
+          route: activity.route || [],
+          sharedBy: friendData,
+          sharedAt: new Date(activity.created_at || activity.start_time),
+          likes: activityLikesMap[activity.id] || [],
+          comments: activityCommentsMap[activity.id] || [],
+        },
+      }));
+
+      const locationPosts: FeedPost[] = (locations || []).map((location) => ({
+        id: `location-${location.id}`,
+        type: "location" as const,
+        timestamp: new Date(location.created_at),
+        data: {
+          id: location.id,
+          name: location.name,
+          location: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
+          locationDate: location.location_date
+            ? new Date(location.location_date)
+            : undefined,
+          description: location.description,
+          photos: location.photos || [],
+          category: location.category,
+          sharedBy: friendData,
+          sharedAt: new Date(location.created_at),
+          likes: locationLikesMap[location.id] || [],
+          comments: locationCommentsMap[location.id] || [],
+        },
+      }));
+
+      const tripPosts: FeedPost[] = (trips || []).map((trip) => ({
+        id: `trip-${trip.id}`,
+        type: "trip" as const,
+        timestamp: new Date(trip.created_at),
+        data: {
+          id: trip.id,
+          name: trip.name,
+          start_date: new Date(trip.start_date),
+          end_date: new Date(trip.end_date),
+          cover_photo: trip.cover_photo,
+          itemCount: trip.trip_items?.length || 0,
+          tripItems: trip.trip_items?.slice(0, 3).map((item: any) => ({
+            type: item.type,
+            name: item.data?.name || "Item",
+            date: new Date(
+              item.data?.start_time || item.data?.created_at || trip.start_date
+            ),
+          })),
+          sharedBy: friendData,
+          sharedAt: new Date(trip.created_at),
+          likes: [],
+          comments: [],
+        },
+      }));
+
+      // Combine and sort
+      const allPosts = [...activityPosts, ...locationPosts, ...tripPosts].sort(
+        (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+      );
+
+      setSelectedFriendFeed(allPosts);
+    } catch (error) {
+      console.error("Error loading friend feed:", error);
+      setSelectedFriendFeed([]);
+    } finally {
+      setLoadingFriendFeed(false);
+    }
+  };
+
+  // NEW: Get the selected friend's name for display
+  const selectedFriendName = selectedFriendId
+    ? friends.find((f) => f.id === selectedFriendId)?.displayName ||
+      friends.find((f) => f.id === selectedFriendId)?.username
+    : null;
+
+  // Use selectedFriendFeed when filtering by friend, otherwise use main feed
+  const feedToFilter = selectedFriendId ? selectedFriendFeed : feed;
+
+  const filteredFeed = feedToFilter.filter((item) => {
+    // Filter by content type
+    if (filter === "activities" && item.type !== "activity") return false;
+    if (filter === "locations" && item.type !== "location") return false;
+    if (filter === "trips" && item.type !== "trip") return false;
+
     return true;
   });
 
@@ -937,14 +1193,26 @@ export default function FriendsFeedScreen() {
       />
       <Text style={styles.emptyTitle}>No Activity Yet</Text>
       <Text style={styles.emptyText}>
-        The adventures of your friends will appear here
+        {selectedFriendId
+          ? `No posts from ${selectedFriendName}`
+          : "The adventures of your friends will appear here"}
       </Text>
-      <TouchableOpacity
-        style={styles.findFriendsButton}
-        onPress={() => router.push("/friends")}
-      >
-        <Text style={styles.findFriendsText}>Find Friends</Text>
-      </TouchableOpacity>
+      {selectedFriendId && (
+        <TouchableOpacity
+          style={styles.clearFilterButton}
+          onPress={() => setSelectedFriendId(null)}
+        >
+          <Text style={styles.clearFilterText}>Show All Posts</Text>
+        </TouchableOpacity>
+      )}
+      {!selectedFriendId && (
+        <TouchableOpacity
+          style={styles.findFriendsButton}
+          onPress={() => router.push("/friends")}
+        >
+          <Text style={styles.findFriendsText}>Find Friends</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -986,7 +1254,7 @@ export default function FriendsFeedScreen() {
         }}
       />
 
-      {/* View Mode Toggle - This is at the TOP level of the screen */}
+      {/* View Mode Toggle */}
       <View style={styles.viewToggle}>
         <TouchableOpacity
           style={[
@@ -1036,7 +1304,7 @@ export default function FriendsFeedScreen() {
       {/* Conditionally show either list or map view */}
       {viewMode === "list" ? (
         <>
-          {/* Online Friends Bar */}
+          {/* Online Friends Bar - UPDATED with click handlers */}
           {friends.length > 0 && (
             <View style={styles.onlineBar}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -1048,20 +1316,41 @@ export default function FriendsFeedScreen() {
                       new Date().getTime() -
                         new Date(friend.lastActive).getTime() <
                         300000;
+                    const isSelected = selectedFriendId === friend.id;
 
                     return (
                       <TouchableOpacity
                         key={friend.id}
-                        style={styles.onlineFriend}
-                        onPress={() =>
-                          router.push(`/friend-profile/${friend.id}`)
-                        }
+                        style={[
+                          styles.onlineFriend,
+                          isSelected && styles.selectedFriend,
+                        ]}
+                        onPress={() => handleFriendClick(friend.id)}
                       >
-                        <View style={styles.onlineAvatar}>
+                        <View
+                          style={[
+                            styles.onlineAvatar,
+                            isSelected && styles.selectedAvatar,
+                          ]}
+                        >
                           <UserAvatar user={friend} size={46} />
                           {isOnline && <View style={styles.onlineIndicator} />}
+                          {isSelected && (
+                            <View style={styles.selectedCheckmark}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={20}
+                                color={theme.colors.forest}
+                              />
+                            </View>
+                          )}
                         </View>
-                        <Text style={styles.onlineName}>
+                        <Text
+                          style={[
+                            styles.onlineName,
+                            isSelected && styles.selectedName,
+                          ]}
+                        >
                           {
                             (friend.displayName || friend.username).split(
                               " "
@@ -1072,6 +1361,29 @@ export default function FriendsFeedScreen() {
                     );
                   })}
               </ScrollView>
+            </View>
+          )}
+
+          {/* NEW: Active Filter Indicator */}
+          {selectedFriendId && (
+            <View style={styles.activeFilterBar}>
+              <View style={styles.activeFilterContent}>
+                <Ionicons
+                  name="filter"
+                  size={16}
+                  color={theme.colors.forest}
+                />
+                <Text style={styles.activeFilterText}>
+                  Showing posts from {selectedFriendName}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedFriendId(null)}>
+                <Ionicons
+                  name="close-circle"
+                  size={20}
+                  color={theme.colors.burntOrange}
+                />
+              </TouchableOpacity>
             </View>
           )}
 
@@ -1150,6 +1462,13 @@ export default function FriendsFeedScreen() {
           {loading && !refreshing ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={theme.colors.forest} />
+            </View>
+          ) : loadingFriendFeed ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.colors.forest} />
+              <Text style={styles.loadingText}>
+                Loading {selectedFriendName}'s posts...
+              </Text>
             </View>
           ) : (
             <FlatList
@@ -1287,6 +1606,63 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.gray,
     fontWeight: "500",
+  },
+
+  // NEW STYLES for friend filtering
+  selectedFriend: {
+    backgroundColor: theme.colors.forest + "15",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  selectedAvatar: {
+    borderWidth: 3,
+    borderColor: theme.colors.forest,
+    borderRadius: 25,
+  },
+  selectedCheckmark: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: "white",
+    borderRadius: 10,
+  },
+  selectedName: {
+    color: theme.colors.forest,
+    fontWeight: "700",
+  },
+  activeFilterBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "10",
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.forest + "20",
+  },
+  activeFilterContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  activeFilterText: {
+    fontSize: 14,
+    color: theme.colors.forest,
+    marginLeft: 8,
+    fontWeight: "500",
+  },
+  clearFilterButton: {
+    backgroundColor: theme.colors.forest,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 15,
+  },
+  clearFilterText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
   },
 
   // All your other existing styles
@@ -1607,6 +1983,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: theme.colors.gray,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1679,7 +2060,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
-  // Add these at the end of your styles object:
   miniMapContainer: {
     height: 150,
     borderRadius: 8,

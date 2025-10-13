@@ -741,7 +741,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         `
         )
         .in("created_by", friendIds)
-        .in("status", ["active", "completed"])
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -763,7 +762,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           `
           )
           .in("id", tripIds)
-          .in("status", ["active", "completed"])
           .order("created_at", { ascending: false });
 
         friendTaggedTrips = tagTrips || [];

@@ -322,7 +322,6 @@ export class ShareService {
           });
 
           // Note: The message has been copied to clipboard
-          console.log("Message copied to clipboard for pasting");
         } else {
           // For additional photos, just share them
           await Sharing.shareAsync(photoUri, {

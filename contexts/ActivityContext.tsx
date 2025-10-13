@@ -564,7 +564,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
       // If no last known location or it's too old, get current position
       if (!initialLocation || Date.now() - initialLocation.timestamp > 60000) {
-        console.log("No recent last known location, getting current...");
 
         // Try with balanced accuracy first (faster)
         try {
@@ -572,7 +571,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
             accuracy: Location.Accuracy.Balanced,
           });
         } catch (err) {
-          console.log("Balanced accuracy failed, trying high accuracy...");
           // Fall back to high accuracy if balanced fails
           initialLocation = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
@@ -806,7 +804,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     
     await cleanupTracking();
 
-    console.log("Activity saved successfully");
     return savedActivity; // RETURN THE ACTIVITY HERE
   } catch (err: any) {
     console.error("Error stopping tracking:", err);

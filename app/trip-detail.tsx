@@ -318,7 +318,6 @@ export default function TripDetailScreen() {
         updatedSpots.push(finalSpot);
       }
 
-      console.log("Processed spots:", updatedSpots);
       setProcessedSpots(updatedSpots);
     };
 
@@ -460,7 +459,6 @@ export default function TripDetailScreen() {
   const handleSpotPress = (spot: any) => {
 
     if (spot.photos && spot.photos.length > 0) {
-      console.log("Opening image viewer with photos:", spot.photos);
       setCurrentSpotImages(spot.photos);
       setSelectedImageIndex(0);
       setShowImageViewer(true);
@@ -1036,10 +1034,6 @@ export default function TripDetailScreen() {
                 Spots ({processedSpots.length})
               </Text>
               {processedSpots.map((spot: any, index: number) => {
-                console.log(
-                  `Rendering spot: ${spot.name}, photos:`,
-                  spot.photos
-                );
 
                 return (
                   <TouchableOpacity

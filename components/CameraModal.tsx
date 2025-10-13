@@ -92,25 +92,20 @@ const CameraModal: React.FC<CameraModalProps> = ({
   };
 
   const chooseFromLibrary = async () => {
-    console.log('Choosing from library...');
     const hasPermission = await requestPermissions();
     if (!hasPermission) {
-      console.log('No media library permission');
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('Launching image library...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.7,
       });
 
-      console.log('Library result:', result);
 
       if (!result.canceled && result.assets[0]) {
-        console.log('Selected photo URI:', result.assets[0].uri);
         
         // Convert to base64 for WebView compatibility
         try {
@@ -118,7 +113,6 @@ const CameraModal: React.FC<CameraModalProps> = ({
             encoding: 'base64', // Changed from FileSystem.EncodingType.Base64
           });
           const dataUrl = `data:image/jpeg;base64,${base64}`;
-          console.log('Photo converted to base64, length:', base64.length);
           onPhotoTaken(dataUrl);
         } catch (error) {
           console.error('Error converting photo to base64:', error);

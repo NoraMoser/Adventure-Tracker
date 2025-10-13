@@ -702,7 +702,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
-    console.log(`Migration complete. Fixed ${fixedCount} trip items.`);
     Alert.alert(
       "Success",
       `Fixed ${fixedCount} trip items with local photo URLs`
@@ -755,7 +754,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
             .single();
 
           if (spotFromDb) {
-            console.log("Using spot data from database with proper photo URLs");
             processedItemData = { ...spotFromDb };
           }
         } else if (itemType === "activity") {
@@ -766,9 +764,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
             .single();
 
           if (activityFromDb) {
-            console.log(
-              "Using activity data from database with proper photo URLs"
-            );
             processedItemData = { ...activityFromDb };
           }
         }
@@ -781,7 +776,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         );
 
         if (hasLocalPhotos) {
-          console.log("Found local photos, uploading to Supabase...");
           const uploadedPhotos = [];
           for (const photo of processedItemData.photos) {
             if (photo.startsWith("http://") || photo.startsWith("https://")) {
@@ -1318,7 +1312,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           break;
         }
 
-        console.log(`Skipping previously rejected cluster ${currentIndex + 1}`);
         currentIndex++;
       }
 

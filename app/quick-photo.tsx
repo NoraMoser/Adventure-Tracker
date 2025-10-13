@@ -95,7 +95,6 @@ export default function QuickPhotoScreen() {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === "granted");
-      console.log("Camera permission:", status);
     })();
   }, []);
 

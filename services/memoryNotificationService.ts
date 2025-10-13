@@ -280,8 +280,6 @@ export class MemoryNotificationService {
   static async sendMemoryNotifications(userId: string, memories: MemoryItem[]) {
     if (memories.length === 0) return;
 
-    console.log('sendMemoryNotifications called with:', { userId, memoriesCount: memories.length });
-
     // Group memories by years ago
     const memoryGroups = new Map<number, MemoryItem[]>();
     const today = new Date();
@@ -594,8 +592,6 @@ export class MemoryNotificationService {
         console.error('Database error creating proximity notification:', error);
         throw error;
       }
-
-      console.log('Proximity notification created:', data);
 
       // Try to send push notification
       try {

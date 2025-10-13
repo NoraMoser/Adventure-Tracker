@@ -44,7 +44,6 @@ static async registerForPushNotifications() {
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Push notification permission denied');
       return null;
     }
 
@@ -125,7 +124,6 @@ static async registerForPushNotifications() {
         content,
         trigger: null, // Immediate notification
       });
-      console.log('Local notification sent:', title);
     } catch (error) {
       console.error('Error sending local notification:', error);
     }
