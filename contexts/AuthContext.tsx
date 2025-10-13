@@ -68,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth state listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("🔍 Auth state changed:", event);
 
         if (event === "SIGNED_IN" && session) {
           setSession(session);
@@ -212,7 +211,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data?.session) {
-        console.log("✅ Got new session, updating state...");
         setSession(data.session);
         setUser(data.session.user);
         lastRefresh.current = new Date();

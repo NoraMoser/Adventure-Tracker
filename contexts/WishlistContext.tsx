@@ -69,7 +69,6 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('Wishlist change received:', payload);
           loadWishlist();
         }
       )
@@ -82,7 +81,6 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const loadWishlist = async () => {
     if (!user) {
-      console.log('loadWishlist: No user present');
       setWishlistItems([]);
       return;
     }
@@ -199,7 +197,6 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
         setWishlistItems((prev) => [newItem, ...prev]);
       }
 
-      console.log('Wishlist item added successfully');
     } catch (err) {
       console.error('Error adding wishlist item:', err);
       setError('Failed to add item to wishlist');

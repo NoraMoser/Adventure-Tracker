@@ -216,7 +216,6 @@ class SyncService {
         // Check for duplicate
         const achievementKey = `${achievement.type}_${achievement.name}`;
         if (existingMap.has(achievementKey)) {
-          console.log('🔄 Skipping duplicate achievement:', achievement.name);
           continue;
         }
 
@@ -257,7 +256,6 @@ class SyncService {
   // Method to reset sync (use with caution!)
   async resetSync() {
     await AsyncStorage.removeItem('lastSyncTime');
-    console.log('🔄 Sync reset - next sync will check all data');
   }
 }
 

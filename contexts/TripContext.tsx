@@ -247,7 +247,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           filter: `user_id=eq.${currentUserId}`,
         },
         (payload) => {
-          console.log("Trip tag change detected:", payload);
           loadTrips();
         }
       )
@@ -661,8 +660,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const fixAllTripPhotos = async () => {
     if (!currentUserId) return;
-
-    console.log("Starting trip photos migration...");
 
     const { data: tripItems, error } = await supabase
       .from("trip_items")
@@ -1275,8 +1272,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     const rejectCluster = async (cluster: TripCluster) => {
       if (!currentUserId) return;
 
-      console.log(`Rejecting cluster with ${cluster.items.length} items`);
-
       try {
         for (const item of cluster.items) {
           const { error } = await supabase
@@ -1317,7 +1312,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (currentIndex >= clusters.length) {
         if (selectedClusters.length === 0) {
-          console.log("No trips to create (all rejected or skipped)");
           autoDetectionInProgress.current = false;
           return;
         }

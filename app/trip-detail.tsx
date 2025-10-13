@@ -275,9 +275,6 @@ export default function TripDetailScreen() {
         return;
       }
 
-      console.log("Processing spots for trip:", trip.name);
-      console.log("Is shared trip?", trip.created_by !== user?.id);
-
       const updatedSpots = [];
 
       for (const spot of tripSpots) {
@@ -419,10 +416,6 @@ export default function TripDetailScreen() {
   const handleActivityPress = (activity: any) => {
     // Check for photos first
     if (activity.photos && activity.photos.length > 0) {
-      console.log(
-        "Opening image viewer with activity photos:",
-        activity.photos
-      );
       setCurrentSpotImages(activity.photos); // Reuse the same image viewer
       setSelectedImageIndex(0);
       setShowImageViewer(true);

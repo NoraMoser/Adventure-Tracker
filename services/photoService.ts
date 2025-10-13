@@ -216,10 +216,6 @@ export class PhotoService {
 
     // Filter out failed uploads
     const successfulUploads = results.filter((url) => url !== null) as string[];
-    console.log(
-      `Successfully uploaded ${successfulUploads.length} out of ${photoUris.length} photos`
-    );
-
     return successfulUploads;
   }
 

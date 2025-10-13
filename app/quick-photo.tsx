@@ -477,13 +477,6 @@ export default function QuickPhotoScreen() {
     );
   }
 
-  console.log(
-    "Main UI should render - showCamera:",
-    showCamera,
-    "photos:",
-    photos.length
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView

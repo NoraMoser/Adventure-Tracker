@@ -69,7 +69,6 @@ const CameraModal: React.FC<CameraModalProps> = ({
                 encoding: 'base64', // Changed from FileSystem.EncodingType.Base64
               });
               const dataUrl = `data:image/jpeg;base64,${base64}`;
-              console.log('Photo converted to base64, length:', base64.length);
               onPhotoTaken(dataUrl);
             } catch (error) {
               console.error('Error converting photo to base64:', error);

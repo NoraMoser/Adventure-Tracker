@@ -155,7 +155,6 @@ export class MemoryNotificationService {
     try {
       const { status } = await Location.requestBackgroundPermissionsAsync();
       if (status !== 'granted') {
-        console.log('Background location permission denied');
         return;
       }
 
@@ -318,8 +317,6 @@ export class MemoryNotificationService {
 
         body = `You have ${parts.join(', ')} from this day!`;
       }
-
-      console.log('Creating notification with:', { title, body, userId });
 
       try {
         // Create in-app notification

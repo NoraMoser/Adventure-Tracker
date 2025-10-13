@@ -250,7 +250,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const cleanupTracking = async () => {
-    console.log("Cleaning up tracking...");
 
     if (locationSubscription.current) {
       locationSubscription.current.remove();
@@ -735,7 +734,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const pauseTracking = () => {
-    console.log("Pausing tracking");
     setIsPaused(true);
     pauseStartRef.current = Date.now();
 
@@ -756,8 +754,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   photos?: string[]
 ) => {
   try {
-    console.log("Stopping tracking...");
-
     if (name === "" && notes === "DISCARD_ACTIVITY") {
       await cleanupTracking();
       return;

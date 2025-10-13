@@ -111,7 +111,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log("Location change received:", payload);
           loadSavedSpots();
         }
       )

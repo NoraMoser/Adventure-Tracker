@@ -219,7 +219,7 @@ export default function FriendProfileScreen() {
   const { formatDistance, formatSpeed } = useSettings();
 
   const [selectedTab, setSelectedTab] = useState<
-    "overview" | "activities" | "places"
+    "overview" | "activities" | "places" | "trips"
   >("overview");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
@@ -228,23 +228,27 @@ export default function FriendProfileScreen() {
   // State for friend's data
   const [friendActivities, setFriendActivities] = useState<Activity[]>([]);
   const [friendLocations, setFriendLocations] = useState<SavedSpot[]>([]);
+  const [friendTrips, setFriendTrips] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [friendStats, setFriendStats] = useState({
     totalActivities: 0,
     totalLocations: 0,
+    totalTrips: 0,
   });
   const [mutualFriends, setMutualFriends] = useState<Friend[]>([]);
+  const [mutualTrips, setMutualTrips] = useState<any[]>([]);
+  const [mutualActivities, setMutualActivities] = useState<Activity[]>([]);
   const { user } = useAuth();
 
   const friend = friends.find((f) => f.id === id);
 
   useEffect(() => {
     if (friend && user && friends.length > 0) {
-      // Add user check
       loadFriendData();
       loadMutualFriends();
+      loadMutualData();
     }
-  }, [friend?.id, friends.length, user?.id]); // Add user?.id as dependency
+  }, [friend?.id, friends.length, user?.id]);
 
   const loadFriendData = async () => {
     if (!friend) return;
@@ -257,9 +261,27 @@ export default function FriendProfileScreen() {
         FriendDataService.loadFriendStats(friend.id),
       ]);
 
+      // Load friend's trips
+      const { data: trips, error: tripsError } = await supabase
+        .from('trips')
+        .select(`
+          *,
+          trip_items (
+            id,
+            type,
+            data
+          )
+        `)
+        .eq('created_by', friend.id)
+        .order('start_date', { ascending: false });
+
       setFriendActivities(activities);
       setFriendLocations(locations);
-      setFriendStats(stats);
+      setFriendTrips(trips || []);
+      setFriendStats({
+        ...stats,
+        totalTrips: trips?.length || 0,
+      });
     } catch (error) {
       console.error("Error loading friend data:", error);
       Alert.alert("Error", "Failed to load friend data");
@@ -269,42 +291,86 @@ export default function FriendProfileScreen() {
   };
 
   const loadMutualFriends = async () => {
-  if (!friend || !user) return;
-  
-  try {
-    // Get ALL friendships for the profile being viewed
-    const { data: friendsFriendships, error } = await supabase
-      .from('friendships')
-      .select('user_id, friend_id, status')
-      .or(`user_id.eq.${friend.id},friend_id.eq.${friend.id}`)
-      .eq('status', 'accepted');
-
-    if (!friendsFriendships) return;
-
-    // Build set of friend's friends
-    const profileFriendIds = new Set<string>();
-    friendsFriendships.forEach(f => {
-      if (f.user_id === friend.id) {
-        profileFriendIds.add(f.friend_id);
-      } else if (f.friend_id === friend.id) {
-        profileFriendIds.add(f.user_id);
-      }
-    });
-
-    // Remove yourself from the set
-    profileFriendIds.delete(user.id);
-
-    // Find mutual friends
-    const mutuals = friends.filter(f => 
-      f.id !== friend.id && // Not the profile being viewed
-      profileFriendIds.has(f.id) // Is in both friend lists
-    );
+    if (!friend || !user) return;
     
-    setMutualFriends(mutuals);
-  } catch (error) {
-    console.error('Error:', error);
-  }
-};
+    try {
+      const { data: friendsFriendships, error } = await supabase
+        .from('friendships')
+        .select('user_id, friend_id, status')
+        .or(`user_id.eq.${friend.id},friend_id.eq.${friend.id}`)
+        .eq('status', 'accepted');
+
+      if (!friendsFriendships) return;
+
+      const profileFriendIds = new Set<string>();
+      friendsFriendships.forEach(f => {
+        if (f.user_id === friend.id) {
+          profileFriendIds.add(f.friend_id);
+        } else if (f.friend_id === friend.id) {
+          profileFriendIds.add(f.user_id);
+        }
+      });
+
+      profileFriendIds.delete(user.id);
+
+      const mutuals = friends.filter(f => 
+        f.id !== friend.id &&
+        profileFriendIds.has(f.id)
+      );
+      
+      setMutualFriends(mutuals);
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const loadMutualData = async () => {
+    if (!friend || !user) return;
+    
+    try {
+      // Get all trips and their items
+      const { data: allTrips, error } = await supabase
+        .from('trips')
+        .select(`
+          *,
+          trip_items (
+            id,
+            type,
+            data,
+            added_by
+          )
+        `);
+
+      if (error || !allTrips) return;
+
+      // Find trips that have items from both users
+      const sharedTrips = allTrips.filter(trip => {
+        const addedByUsers = new Set(trip.trip_items.map((item: any) => item.added_by));
+        return addedByUsers.has(user.id) && addedByUsers.has(friend.id);
+      });
+
+      setMutualTrips(sharedTrips);
+
+      // Get activities from mutual trips
+      const mutualActivityIds = new Set();
+      sharedTrips.forEach(trip => {
+        trip.trip_items.forEach((item: any) => {
+          if (item.type === 'activity') {
+            mutualActivityIds.add(item.data.id);
+          }
+        });
+      });
+
+      // Filter friend's activities that are in mutual trips
+      const sharedActivities = friendActivities.filter(activity => 
+        mutualActivityIds.has(activity.id)
+      );
+
+      setMutualActivities(sharedActivities);
+    } catch (error) {
+      console.error('Error loading mutual data:', error);
+    }
+  };
 
   // Calculate mutual spots
   const mutualSpots = savedSpots.filter((mySpot) =>
@@ -317,24 +383,7 @@ export default function FriendProfileScreen() {
     )
   );
 
-  // Calculate friend stats from loaded data
-  const totalDistance = friendActivities.reduce(
-    (sum, act) => sum + act.distance,
-    0
-  );
   const totalActivities = friendActivities.length;
-  const favoriteActivity =
-    friendActivities.length > 0
-      ? friendActivities.reduce((acc, act) => {
-          acc[act.type] = (acc[act.type] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>)
-      : {};
-  const topActivity = Object.entries(favoriteActivity).sort((a, b) => {
-    const countA = a[1] as number;
-    const countB = b[1] as number;
-    return countB - countA;
-  })[0];
 
   const getLastActiveText = (lastActive?: Date) => {
     if (!lastActive) return "Offline";
@@ -536,20 +585,6 @@ export default function FriendProfileScreen() {
               <Ionicons name="chatbubble" size={20} color={theme.colors.navy} />
               <Text style={styles.actionButtonText}>Message</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() =>
-                Alert.alert("Coming Soon", "Challenge feature coming soon!")
-              }
-            >
-              <Ionicons
-                name="trophy"
-                size={20}
-                color={theme.colors.burntOrange}
-              />
-              <Text style={styles.actionButtonText}>Challenge</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -569,24 +604,82 @@ export default function FriendProfileScreen() {
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
-              {formatDistance(totalDistance, 0).split(" ")[0]}
+              {loadingData ? "..." : friendStats.totalTrips}
             </Text>
-            <Text style={styles.statLabel}>
-              {formatDistance(totalDistance, 0).split(" ")[1]}
-            </Text>
+            <Text style={styles.statLabel}>Trips</Text>
           </View>
-          {topActivity && (
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{topActivity[0]}</Text>
-              <Text style={styles.statLabel}>Favorite</Text>
-            </View>
-          )}
         </View>
 
-        {/* Mutual Content */}
-        {(mutualSpots.length > 0 || mutualFriends.length > 0) && (
+        {/* Mutual Friends Section */}
+        {mutualFriends.length > 0 && (
           <View style={styles.mutualSection}>
-            <Text style={styles.sectionTitle}>Mutual Connections</Text>
+            <Text style={styles.sectionTitle}>Mutual Friends</Text>
+            <View style={styles.mutualCard}>
+              <View style={styles.mutualHeader}>
+                <Ionicons
+                  name="people"
+                  size={20}
+                  color={theme.colors.forest}
+                />
+                <Text style={styles.mutualTitle}>
+                  {mutualFriends.length} Mutual{" "}
+                  {mutualFriends.length === 1 ? "Friend" : "Friends"}
+                </Text>
+              </View>
+              <View style={styles.mutualFriendsList}>
+                {mutualFriends.map((mFriend) => (
+                  <TouchableOpacity
+                    key={mFriend.id}
+                    style={styles.mutualFriendItem}
+                    onPress={() =>
+                      router.push(`/friend-profile/${mFriend.id}` as any)
+                    }
+                  >
+                    <View style={styles.mutualFriendAvatar}>
+                      {renderAvatar(mFriend, "small")}
+                    </View>
+                    <Text style={styles.mutualFriendName}>
+                      {mFriend.displayName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Shared Adventures Section */}
+        {(mutualTrips.length > 0 || mutualSpots.length > 0 || mutualActivities.length > 0) && (
+          <View style={styles.mutualSection}>
+            <Text style={styles.sectionTitle}>Shared Adventures</Text>
+
+            {mutualTrips.length > 0 && (
+              <View style={styles.mutualCard}>
+                <View style={styles.mutualHeader}>
+                  <Ionicons
+                    name="map"
+                    size={20}
+                    color={theme.colors.navy}
+                  />
+                  <Text style={styles.mutualTitle}>
+                    {mutualTrips.length} Mutual{" "}
+                    {mutualTrips.length === 1 ? "Trip" : "Trips"}
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {mutualTrips.map((trip) => (
+                    <View key={trip.id} style={styles.mutualTripItem}>
+                      <Ionicons
+                        name="map-outline"
+                        size={16}
+                        color={theme.colors.navy}
+                      />
+                      <Text style={styles.mutualItemName}>{trip.name}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {mutualSpots.length > 0 && (
               <View style={styles.mutualCard}>
@@ -616,37 +709,31 @@ export default function FriendProfileScreen() {
               </View>
             )}
 
-            {mutualFriends.length > 0 && (
+            {mutualActivities.length > 0 && (
               <View style={styles.mutualCard}>
                 <View style={styles.mutualHeader}>
                   <Ionicons
-                    name="people"
+                    name="bicycle"
                     size={20}
                     color={theme.colors.forest}
                   />
                   <Text style={styles.mutualTitle}>
-                    {mutualFriends.length} Mutual{" "}
-                    {mutualFriends.length === 1 ? "Friend" : "Friends"}
+                    {mutualActivities.length} Mutual{" "}
+                    {mutualActivities.length === 1 ? "Activity" : "Activities"}
                   </Text>
                 </View>
-                <View style={styles.mutualFriendsList}>
-                  {mutualFriends.map((mFriend) => (
-                    <TouchableOpacity
-                      key={mFriend.id}
-                      style={styles.mutualFriendItem}
-                      onPress={() =>
-                        router.push(`/friend-profile/${mFriend.id}` as any)
-                      }
-                    >
-                      <View style={styles.mutualFriendAvatar}>
-                        {renderAvatar(mFriend, "small")}
-                      </View>
-                      <Text style={styles.mutualFriendName}>
-                        {mFriend.displayName}
-                      </Text>
-                    </TouchableOpacity>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {mutualActivities.map((activity) => (
+                    <View key={activity.id} style={styles.mutualActivityItem}>
+                      <Ionicons
+                        name={activity.type === "bike" ? "bicycle" : "fitness"}
+                        size={16}
+                        color={theme.colors.forest}
+                      />
+                      <Text style={styles.mutualItemName}>{activity.name}</Text>
+                    </View>
                   ))}
-                </View>
+                </ScrollView>
               </View>
             )}
           </View>
@@ -680,7 +767,7 @@ export default function FriendProfileScreen() {
                 selectedTab === "activities" && styles.tabTextActive,
               ]}
             >
-              Activities ({friendActivities.length})
+              Activities
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -693,7 +780,20 @@ export default function FriendProfileScreen() {
                 selectedTab === "places" && styles.tabTextActive,
               ]}
             >
-              Places ({friendLocations.length})
+              Places
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === "trips" && styles.tabActive]}
+            onPress={() => setSelectedTab("trips")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                selectedTab === "trips" && styles.tabTextActive,
+              ]}
+            >
+              Trips
             </Text>
           </TouchableOpacity>
         </View>
@@ -880,6 +980,74 @@ export default function FriendProfileScreen() {
                             </View>
                           )}
                         </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              )}
+
+              {selectedTab === "trips" && (
+                <View>
+                  {friendTrips.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <Ionicons
+                        name="map-outline"
+                        size={60}
+                        color={theme.colors.lightGray}
+                      />
+                      <Text style={styles.emptyText}>No trips yet</Text>
+                    </View>
+                  ) : (
+                    friendTrips.map((trip) => (
+                      <View key={trip.id} style={styles.tripCard}>
+                        <View style={styles.tripHeader}>
+                          <Ionicons
+                            name="map"
+                            size={20}
+                            color={theme.colors.navy}
+                          />
+                          <Text style={styles.tripName}>{trip.name}</Text>
+                        </View>
+                        <View style={styles.tripDates}>
+                          <Ionicons
+                            name="calendar-outline"
+                            size={14}
+                            color={theme.colors.gray}
+                          />
+                          <Text style={styles.tripDateText}>
+                            {new Date(trip.start_date).toLocaleDateString()} -{" "}
+                            {new Date(trip.end_date).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <View style={styles.tripStats}>
+                          <View style={styles.tripStat}>
+                            <Ionicons
+                              name="bicycle"
+                              size={14}
+                              color={theme.colors.gray}
+                            />
+                            <Text style={styles.tripStatText}>
+                              {trip.trip_items.filter((item: any) => item.type === 'activity').length} activities
+                            </Text>
+                          </View>
+                          <View style={styles.tripStat}>
+                            <Ionicons
+                              name="location"
+                              size={14}
+                              color={theme.colors.gray}
+                            />
+                            <Text style={styles.tripStatText}>
+                              {trip.trip_items.filter((item: any) => item.type === 'spot').length} spots
+                            </Text>
+                          </View>
+                        </View>
+                        {mutualTrips.some(mt => mt.id === trip.id) && (
+                          <View style={styles.mutualBadge}>
+                            <Text style={styles.mutualBadgeText}>
+                              Mutual Trip
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     ))
                   )}
@@ -1131,6 +1299,29 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     marginLeft: 5,
   },
+  mutualTripItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginRight: 8,
+  },
+  mutualActivityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginRight: 8,
+  },
+  mutualItemName: {
+    fontSize: 12,
+    color: theme.colors.navy,
+    marginLeft: 5,
+  },
   mutualFriendsList: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1322,11 +1513,54 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     textTransform: "capitalize",
   },
+  tripCard: {
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+  },
+  tripHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  tripName: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: theme.colors.navy,
+    marginLeft: 8,
+    flex: 1,
+  },
+  tripDates: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  tripDateText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginLeft: 5,
+  },
+  tripStats: {
+    flexDirection: "row",
+    gap: 15,
+  },
+  tripStat: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tripStatText: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginLeft: 4,
+  },
   mutualBadge: {
     backgroundColor: theme.colors.burntOrange + "20",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    alignSelf: "flex-start",
+    marginTop: 8,
   },
   mutualBadgeText: {
     fontSize: 11,
