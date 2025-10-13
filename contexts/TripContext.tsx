@@ -234,7 +234,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           filter: `created_by=eq.${currentUserId}`,
         },
         (payload) => {
-          console.log("Trip change detected:", payload);
           loadTrips();
         }
       )
@@ -1074,10 +1073,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      console.log(`Found ${itemsNotInTrips.length} items not in any trip`);
-
       if (itemsNotInTrips.length === 0) {
-        console.log("All items already in trips or rejected");
         autoDetectionInProgress.current = false;
         return;
       }
@@ -1443,7 +1439,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       const { error } = await query;
 
       if (error) throw error;
-      console.log("Cleared trip rejections");
     } catch (error) {
       console.error("Error clearing rejections:", error);
     }

@@ -280,8 +280,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Failed to create user account");
       }
 
-      console.log("User created successfully:", data.user.id);
-
       // Create profile if it doesn't exist
       const { error: profileError } = await supabase.from("profiles").insert({
         id: data.user.id,
@@ -408,7 +406,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const syncLocalData = async () => {
     try {
       if (!user) {
-        console.log("No user logged in, skipping sync");
         return;
       }
 

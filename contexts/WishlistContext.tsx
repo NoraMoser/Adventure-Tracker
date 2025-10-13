@@ -247,7 +247,6 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({ children }
         prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
       );
 
-      console.log('Wishlist item updated successfully');
     } catch (err) {
       console.error('Error updating wishlist item:', err);
       setError('Failed to update wishlist item');

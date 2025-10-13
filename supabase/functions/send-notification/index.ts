@@ -58,7 +58,6 @@ serve(async (req) => {
 
     const preferenceKey = typeMapping[notification_type] || notification_type;
     if (preferences[preferenceKey] === false) {
-      console.log(`User has disabled ${notification_type} notifications`);
       return new Response(
         JSON.stringify({ success: false, message: 'Notification type disabled' }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -107,7 +106,6 @@ serve(async (req) => {
       }
     }
 
-    console.log('Push notification sent successfully:', { user_id, notification_type });
     return new Response(
       JSON.stringify({ success: true }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }

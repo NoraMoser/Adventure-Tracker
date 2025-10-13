@@ -43,7 +43,6 @@ export const useActivitySharing = () => {
             text: 'View Feed',
             onPress: () => {
               // Navigate to friends feed - you can implement this navigation
-              console.log('Navigate to friends feed');
             }
           },
           { text: 'OK', style: 'default' }

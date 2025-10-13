@@ -308,8 +308,6 @@ export default function EditTripScreen() {
   const handleSelectCoverPhoto = () => {
     const tripPhotos: string[] = [];
 
-    console.log("Total trip items:", trip.items.length);
-
     trip.items.forEach((item, index) => {
       if (item.data?.photos && Array.isArray(item.data.photos)) {
         tripPhotos.push(...item.data.photos);
@@ -494,13 +492,6 @@ export default function EditTripScreen() {
 
   const handleSaveCoverPhoto = async () => {
     if (selectedPhotoIndex === null) return;
-
-    console.log("Saving cover photo with position:", {
-      photo: availablePhotos[selectedPhotoIndex],
-      position: photoPosition,
-      tripId: trip.id,
-    });
-
     // Mark that we're updating
     setIsUpdatingPosition(true);
 

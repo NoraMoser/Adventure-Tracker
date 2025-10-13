@@ -9,8 +9,6 @@ export class FriendDataService {
    */
   static async loadFriendActivities(friendId: string): Promise<Activity[]> {
     try {
-      console.log("Loading activities for friend:", friendId);
-
       const { data, error } = await supabase
         .from("activities")
         .select("*")

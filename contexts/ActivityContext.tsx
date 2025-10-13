@@ -551,7 +551,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
   const startTracking = async (activityType: ActivityType) => {
     try {
-      console.log("Starting tracking for:", activityType);
       setLoading(true);
       setError(null);
 
@@ -852,7 +851,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
       // UPLOAD PHOTOS BEFORE SAVING
       let uploadedPhotoUrls = [];
       if (activity.photos && activity.photos.length > 0) {
-        console.log("Uploading activity photos...");
         // Import PhotoService at the top of your file
         const { PhotoService } = await import("../services/photoService");
         uploadedPhotoUrls = await PhotoService.uploadPhotos(
@@ -860,7 +858,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           "activity-photos", // Use a separate folder for activities
           user.id
         );
-        console.log("Photos uploaded:", uploadedPhotoUrls);
       }
 
       const { data, error } = await supabase

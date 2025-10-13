@@ -53,7 +53,6 @@ export function useAutoAddToTrip() {
           .eq('item_type', itemType);
         
         if (rejections && rejections.length > 0) {
-          console.log('Item was previously rejected for trips');
           return null;
         }
       } catch (error) {
@@ -207,7 +206,6 @@ export function useAutoAddToTrip() {
     });
 
     if (candidateTrips.length === 0) {
-      console.log("No matching trips found for item");
       return null;
     }
 

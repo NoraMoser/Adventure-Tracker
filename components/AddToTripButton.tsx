@@ -1,8 +1,9 @@
-// components/AddToTripButton.tsx - Updated with airplane icon
+// components/AddToTripButton.tsx - Updated with loading states
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -31,6 +32,8 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
 }) => {
   const { trips, addToTrip, createTrip, currentUserId } = useTrips();
   const [showTripSelector, setShowTripSelector] = useState(false);
+  const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
+  const [creatingNewTrip, setCreatingNewTrip] = useState(false);
   const router = useRouter();
 
   // Check if item is already in any trip
@@ -42,6 +45,7 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
   };
 
   const handleAddToTrip = async (tripId: string) => {
+    setLoadingTripId(tripId);
     try {
       await addToTrip(tripId, item, type);
       setShowTripSelector(false);
@@ -50,11 +54,14 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
       Alert.alert("Success!", `Added to "${trip?.name}"`);
     } catch (error) {
       console.error("Error adding to trip:", error);
+      Alert.alert("Error", "Failed to add to trip. Please try again.");
+    } finally {
+      setLoadingTripId(null);
     }
   };
 
   const handleCreateNewTrip = async () => {
-    setShowTripSelector(false);
+    setCreatingNewTrip(true);
 
     // Generate default trip dates based on the item
     const itemDate = new Date(
@@ -83,6 +90,8 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
       // Add the item to the newly created trip
       await addToTrip(newTrip.id, item, type);
 
+      setShowTripSelector(false);
+
       Alert.alert(
         "Trip Created!",
         `Created "${newTrip.name}" and added the ${type}`,
@@ -97,6 +106,8 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
     } catch (error) {
       console.error("Error creating trip:", error);
       Alert.alert("Error", "Failed to create trip");
+    } finally {
+      setCreatingNewTrip(false);
     }
   };
 
@@ -159,21 +170,38 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
               <TouchableOpacity
                 onPress={() => setShowTripSelector(false)}
                 style={styles.closeButton}
+                disabled={loadingTripId !== null || creatingNewTrip}
               >
                 <Ionicons name="close" size={24} color={theme.colors.gray} />
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity
-              style={styles.newTripOption}
+              style={[
+                styles.newTripOption,
+                creatingNewTrip && styles.newTripOptionLoading,
+              ]}
               onPress={handleCreateNewTrip}
+              disabled={creatingNewTrip || loadingTripId !== null}
             >
-              <Ionicons
-                name="add-circle"
-                size={24}
-                color={theme.colors.burntOrange}
-              />
-              <Text style={styles.newTripText}>Create New Trip</Text>
+              {creatingNewTrip ? (
+                <>
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.burntOrange}
+                  />
+                  <Text style={styles.newTripText}>Creating Trip...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons
+                    name="add-circle"
+                    size={24}
+                    color={theme.colors.burntOrange}
+                  />
+                  <Text style={styles.newTripText}>Create New Trip</Text>
+                </>
+              )}
             </TouchableOpacity>
 
             {trips.length > 0 && (
@@ -186,22 +214,29 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
                   style={styles.tripList}
                   renderItem={({ item: trip }) => {
                     const alreadyInTrip = isInTrip(trip.id);
+                    const isLoading = loadingTripId === trip.id;
+                    const isDisabled =
+                      alreadyInTrip ||
+                      isLoading ||
+                      loadingTripId !== null ||
+                      creatingNewTrip;
+
                     return (
                       <TouchableOpacity
                         style={[
                           styles.tripOption,
-                          alreadyInTrip && styles.tripOptionDisabled,
+                          (alreadyInTrip || isLoading) &&
+                            styles.tripOptionDisabled,
                         ]}
-                        onPress={() =>
-                          !alreadyInTrip && handleAddToTrip(trip.id)
-                        }
-                        disabled={alreadyInTrip}
+                        onPress={() => !isDisabled && handleAddToTrip(trip.id)}
+                        disabled={isDisabled}
                       >
                         <View style={styles.tripInfo}>
                           <Text
                             style={[
                               styles.tripName,
-                              alreadyInTrip && styles.tripNameDisabled,
+                              (alreadyInTrip || isLoading) &&
+                                styles.tripNameDisabled,
                             ]}
                           >
                             {trip.name}
@@ -209,7 +244,8 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
                           <Text
                             style={[
                               styles.tripDate,
-                              alreadyInTrip && styles.tripDateDisabled,
+                              (alreadyInTrip || isLoading) &&
+                                styles.tripDateDisabled,
                             ]}
                           >
                             {formatTripDates(trip.start_date, trip.end_date)}
@@ -220,7 +256,7 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
                                 name="fitness"
                                 size={12}
                                 color={
-                                  alreadyInTrip
+                                  alreadyInTrip || isLoading
                                     ? theme.colors.lightGray
                                     : theme.colors.forest
                                 }
@@ -238,7 +274,7 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
                                 name="location"
                                 size={12}
                                 color={
-                                  alreadyInTrip
+                                  alreadyInTrip || isLoading
                                     ? theme.colors.lightGray
                                     : theme.colors.burntOrange
                                 }
@@ -252,7 +288,12 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
                             </View>
                           </View>
                         </View>
-                        {alreadyInTrip ? (
+                        {isLoading ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={theme.colors.forest}
+                          />
+                        ) : alreadyInTrip ? (
                           <View style={styles.addedBadge}>
                             <Ionicons
                               name="checkmark-circle"
@@ -347,6 +388,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
     backgroundColor: theme.colors.offWhite,
+  },
+  newTripOptionLoading: {
+    opacity: 0.7,
   },
   newTripText: {
     fontSize: 16,

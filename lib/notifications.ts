@@ -72,7 +72,6 @@ static async registerForPushNotifications() {
       projectId: '0e548ecd-901d-40e5-a107-3a05329592e9' // Your actual project ID
     });
     
-    console.log('Push token obtained:', token.data);
     
     // Save token to database
     const { data: { user } } = await supabase.auth.getUser();

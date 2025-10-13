@@ -20,7 +20,6 @@ export class UpdateService {
     try {
       // Add safety check for app initialization
       if (!Application.nativeApplicationVersion) {
-        console.log("App not fully initialized, skipping update check");
         return false;
       }
 
