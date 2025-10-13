@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  AppState,
   Modal,
   PanResponder,
   ScrollView,
@@ -257,8 +258,7 @@ export default function DashboardScreen() {
     authContext.user,
   ]);
 
-  // Fetch notification count with real-time updates
-  useEffect(() => {
+useEffect(() => {
     const fetchNotificationCount = async () => {
       if (!user) return;
 
@@ -278,7 +278,11 @@ export default function DashboardScreen() {
     };
 
     if (user) {
+      // Initialize background tracking (for "always on" users)
       MemoryNotificationService.initialize(user.id);
+      
+      // Initialize foreground checks (for "when in use" users)
+      MemoryNotificationService.initializeForegroundChecks(user.id);
 
       fetchNotificationCount();
 
@@ -311,8 +315,21 @@ export default function DashboardScreen() {
         )
         .subscribe();
 
+      // Handle app state changes for foreground checks
+      const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+        if (nextAppState === 'active') {
+          // App came to foreground - restart foreground checks
+          MemoryNotificationService.initializeForegroundChecks(user.id);
+        } else if (nextAppState === 'background') {
+          // App went to background - stop foreground checks
+          MemoryNotificationService.stopForegroundChecks();
+        }
+      });
+
       return () => {
         subscription.unsubscribe();
+        appStateSubscription.remove();
+        MemoryNotificationService.stopForegroundChecks();
       };
     }
   }, [user]);

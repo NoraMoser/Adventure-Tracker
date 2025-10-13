@@ -16,6 +16,7 @@ const LOCATION_TASK = 'background-location-task';
 const PROXIMITY_THRESHOLD = 500; // Increased from 100m to 500m for better detection
 const HOME_RADIUS = 1000; // 1km home zone where we won't send notifications
 const CHECK_INTERVAL = 30 * 60; // 30 minutes instead of 15
+const FOREGROUND_CHECK_INTERVAL = 60 * 60; // 1 hour for foreground checks
 const MIN_TIME_BETWEEN_NOTIFICATIONS = 24 * 60 * 60 * 1000; // 24 hours between notifications for same place
 const MIN_DAYS_SINCE_VISIT = 7; // Only notify if haven't been there in at least a week
 
@@ -48,9 +49,11 @@ interface ProximityPlace {
 
 export class MemoryNotificationService {
   private static lastProximityCheck: Date | null = null;
+  private static lastForegroundCheck: Date | null = null;
   private static notifiedPlaces = new Set<string>(); // Track places we've already notified about today
   private static homeLocation: { latitude: number; longitude: number } | null = null;
   private static lastNotificationTime = new Map<string, Date>(); // Track per-place notification times
+  private static foregroundCheckInterval: NodeJS.Timeout | null = null;
 
   /**
    * Initialize memory and proximity services with home detection
@@ -63,11 +66,110 @@ export class MemoryNotificationService {
       // Register background fetch for daily memories
       await this.registerBackgroundFetch();
       
-      // Register location tracking for proximity alerts
+      // Try to register location tracking for proximity alerts (background)
       await this.registerLocationTracking(userId);
       
     } catch (error) {
       console.error('Error initializing memory services:', error);
+    }
+  }
+
+  /**
+   * Initialize foreground proximity checks for users with "when in use" permission
+   * Call this when the app starts or comes to foreground
+   */
+  static async initializeForegroundChecks(userId: string) {
+    try {
+      // Set home location if not already set
+      if (!this.homeLocation) {
+        await this.setHomeLocation(userId);
+      }
+
+      // Check immediately on app open
+      await this.checkForegroundProximity(userId);
+
+      // Set up periodic checks while app is in foreground
+      this.startForegroundCheckTimer(userId);
+      
+    } catch (error) {
+      console.error('Error initializing foreground checks:', error);
+    }
+  }
+
+  /**
+   * Start periodic foreground proximity checks
+   */
+  private static startForegroundCheckTimer(userId: string) {
+    // Clear existing timer if any
+    if (this.foregroundCheckInterval) {
+      clearInterval(this.foregroundCheckInterval);
+    }
+
+    // Check every hour while app is active
+    this.foregroundCheckInterval = setInterval(async () => {
+      await this.checkForegroundProximity(userId);
+    }, FOREGROUND_CHECK_INTERVAL * 1000);
+  }
+
+  /**
+   * Stop foreground proximity checks (call when app goes to background)
+   */
+  static stopForegroundChecks() {
+    if (this.foregroundCheckInterval) {
+      clearInterval(this.foregroundCheckInterval);
+      this.foregroundCheckInterval = null;
+    }
+  }
+
+  /**
+   * Check proximity using foreground location permission
+   */
+  static async checkForegroundProximity(userId: string) {
+    try {
+      // Check if enough time has passed since last foreground check
+      if (this.lastForegroundCheck) {
+        const timeSinceLastCheck = Date.now() - this.lastForegroundCheck.getTime();
+        if (timeSinceLastCheck < FOREGROUND_CHECK_INTERVAL * 1000) {
+          return;
+        }
+      }
+
+      // Request foreground location permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Foreground location permission not granted');
+        return;
+      }
+
+      // Get user preferences
+      const preferences = await this.getUserPreferences(userId);
+      if (!preferences.proximityEnabled) {
+        return;
+      }
+
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      this.lastForegroundCheck = new Date();
+
+      // Check for nearby places
+      const nearbyPlaces = await this.checkProximity(
+        {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        userId
+      );
+
+      // Send notifications if places found
+      if (nearbyPlaces.length > 0) {
+        await this.sendProximityNotifications(userId, nearbyPlaces);
+      }
+
+    } catch (error) {
+      console.error('Error checking foreground proximity:', error);
     }
   }
 
@@ -149,12 +251,13 @@ export class MemoryNotificationService {
   }
 
   /**
-   * Register location tracking for proximity alerts
+   * Register location tracking for proximity alerts (requires "always" permission)
    */
   private static async registerLocationTracking(userId: string) {
     try {
       const { status } = await Location.requestBackgroundPermissionsAsync();
       if (status !== 'granted') {
+        console.log('Background location permission not granted, using foreground checks only');
         return;
       }
 
@@ -168,7 +271,7 @@ export class MemoryNotificationService {
         },
       });
     } catch (error) {
-      console.log('Location tracking setup error:', error);
+      console.log('Location tracking setup error (will use foreground checks):', error);
     }
   }
 
