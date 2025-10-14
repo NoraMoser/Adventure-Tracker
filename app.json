@@ -2,7 +2,7 @@
   "expo": {
     "name": "explorAble",
     "slug": "explorable",
-    "version": "1.0.26",
+    "version": "1.0.27",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -47,7 +47,7 @@
         "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
-      "versionCode": 27,
+      "versionCode": 28,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",

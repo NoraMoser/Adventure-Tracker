@@ -17,6 +17,8 @@ serve(async (req) => {
     const payload: NotificationPayload = await req.json();
     const { user_id, notification_type, title, body, data } = payload;
 
+    console.log(`Processing notification for user ${user_id}, type: ${notification_type}`);
+
     // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -33,7 +35,7 @@ serve(async (req) => {
     if (error || !profile) {
       console.error('Failed to get user profile:', error);
       return new Response(
-        JSON.stringify({ error: 'User not found' }),
+        JSON.stringify({ success: false, error: 'User not found' }),
         { status: 404, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -58,6 +60,7 @@ serve(async (req) => {
 
     const preferenceKey = typeMapping[notification_type] || notification_type;
     if (preferences[preferenceKey] === false) {
+      console.log(`User has disabled ${preferenceKey} notifications`);
       return new Response(
         JSON.stringify({ success: false, message: 'Notification type disabled' }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -84,6 +87,8 @@ serve(async (req) => {
       channelId,
     };
 
+    console.log(`Sending push notification to token: ${profile.push_token.substring(0, 30)}...`);
+
     const response = await fetch(EXPO_PUSH_URL, {
       method: 'POST',
       headers: {
@@ -94,18 +99,40 @@ serve(async (req) => {
     });
 
     const result = await response.json();
+    console.log('Expo API response:', JSON.stringify(result));
     
+    // Handle error responses from Expo
+    // Check if data is an array with error status
     if (result.data && Array.isArray(result.data)) {
       const firstResult = result.data[0];
       if (firstResult && firstResult.status === 'error') {
-        console.error('Push notification error:', firstResult.message);
+        console.error('Push notification error (array):', firstResult.message, firstResult.details);
         return new Response(
-          JSON.stringify({ success: false, error: firstResult.message }),
+          JSON.stringify({ 
+            success: false, 
+            error: firstResult.message,
+            details: firstResult.details 
+          }),
           { status: 400, headers: { 'Content-Type': 'application/json' } }
         );
       }
     }
+    
+    // Check if data is an object with error status
+    if (result.data && !Array.isArray(result.data) && result.data.status === 'error') {
+      console.error('Push notification error (object):', result.data.message, result.data.details);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: result.data.message,
+          details: result.data.details 
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
+    console.log(`Push notification sent successfully to user ${user_id}`);
+    
     return new Response(
       JSON.stringify({ success: true }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -114,7 +141,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in send-notification function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
