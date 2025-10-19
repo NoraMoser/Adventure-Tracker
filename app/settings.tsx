@@ -27,7 +27,8 @@ import { useFriends } from "../contexts/FriendsContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
-import { supabase } from "../lib/supabase"; // ADD THIS IMPORT
+import { supabase } from "../lib/supabase";
+import { Linking } from "react-native";
 
 // Export Modal Component (keeping your existing modal)
 const ExportModal = ({
@@ -217,9 +218,12 @@ export default function SettingsScreen() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  
+
   // NEW STATE FOR HOME LOCATION
-  const [homeLocation, setHomeLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [homeLocation, setHomeLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [isSettingHome, setIsSettingHome] = useState(false);
   const [homeRadius, setHomeRadius] = useState(2); // Default 2km
 
@@ -230,13 +234,13 @@ export default function SettingsScreen() {
 
   const loadHomeLocation = async () => {
     if (!user) return;
-    
+
     const { data } = await supabase
-      .from('profiles')
-      .select('home_location, home_radius')
-      .eq('id', user.id)
+      .from("profiles")
+      .select("home_location, home_radius")
+      .eq("id", user.id)
       .single();
-      
+
     if (data) {
       setHomeLocation(data.home_location);
       setHomeRadius(data.home_radius || 2);
@@ -246,41 +250,41 @@ export default function SettingsScreen() {
   // HOME LOCATION HANDLERS
   const handleSetCurrentLocationAsHome = async () => {
     if (!user) return;
-    
+
     setIsSettingHome(true);
-    
+
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required');
+      if (status !== "granted") {
+        Alert.alert("Permission Denied", "Location permission is required");
         setIsSettingHome(false);
         return;
       }
-      
+
       const location = await Location.getCurrentPositionAsync({});
       const newHome = {
         latitude: location.coords.latitude,
-        longitude: location.coords.longitude
+        longitude: location.coords.longitude,
       };
-      
+
       const { error } = await supabase
-        .from('profiles')
-        .update({ 
+        .from("profiles")
+        .update({
           home_location: newHome,
-          home_radius: homeRadius 
+          home_radius: homeRadius,
         })
-        .eq('id', user.id);
-      
+        .eq("id", user.id);
+
       if (!error) {
         setHomeLocation(newHome);
         Alert.alert(
-          "Home Location Set", 
+          "Home Location Set",
           `Trip suggestions are now disabled within ${homeRadius}km of this location`
         );
       }
     } catch (error) {
-      console.error('Error setting home:', error);
-      Alert.alert('Error', 'Could not set home location');
+      console.error("Error setting home:", error);
+      Alert.alert("Error", "Could not set home location");
     } finally {
       setIsSettingHome(false);
     }
@@ -297,12 +301,12 @@ export default function SettingsScreen() {
           style: "destructive",
           onPress: async () => {
             await supabase
-              .from('profiles')
+              .from("profiles")
               .update({ home_location: null })
-              .eq('id', user.id);
+              .eq("id", user.id);
             setHomeLocation(null);
-          }
-        }
+          },
+        },
       ]
     );
   };
@@ -316,7 +320,7 @@ export default function SettingsScreen() {
         { text: "2km (Default)", onPress: () => updateHomeRadius(2) },
         { text: "5km", onPress: () => updateHomeRadius(5) },
         { text: "10km", onPress: () => updateHomeRadius(10) },
-        { text: "Cancel", style: "cancel" }
+        { text: "Cancel", style: "cancel" },
       ]
     );
   };
@@ -325,9 +329,9 @@ export default function SettingsScreen() {
     setHomeRadius(radius);
     if (homeLocation && user) {
       await supabase
-        .from('profiles')
+        .from("profiles")
         .update({ home_radius: radius })
-        .eq('id', user.id);
+        .eq("id", user.id);
     }
   };
 
@@ -502,9 +506,9 @@ export default function SettingsScreen() {
             console.error("Sign out error:", error);
 
             setTimeout(() => {
-            router.dismissAll();
-            router.replace("/auth/login");
-          }, 100);
+              router.dismissAll();
+              router.replace("/auth/login");
+            }, 100);
           }
         },
       },
@@ -731,15 +735,11 @@ export default function SettingsScreen() {
 
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Ionicons
-                name="home"
-                size={22}
-                color={theme.colors.forest}
-              />
+              <Ionicons name="home" size={22} color={theme.colors.forest} />
               <View style={styles.settingTextContainer}>
                 <Text style={styles.settingLabel}>Home Area</Text>
                 <Text style={styles.settingDescription}>
-                  {homeLocation 
+                  {homeLocation
                     ? `Trip suggestions disabled within ${homeRadius}km`
                     : "Not set - trips suggested everywhere"}
                 </Text>
@@ -747,7 +747,11 @@ export default function SettingsScreen() {
             </View>
             {homeLocation && (
               <TouchableOpacity onPress={handleClearHomeLocation}>
-                <Ionicons name="close-circle" size={22} color={theme.colors.burntOrange} />
+                <Ionicons
+                  name="close-circle"
+                  size={22}
+                  color={theme.colors.burntOrange}
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -758,11 +762,7 @@ export default function SettingsScreen() {
             disabled={isSettingHome}
           >
             <View style={styles.settingLeft}>
-              <Ionicons
-                name="location"
-                size={22}
-                color={theme.colors.gray}
-              />
+              <Ionicons name="location" size={22} color={theme.colors.gray} />
               <Text style={styles.settingLabel}>
                 {homeLocation ? "Update Home Location" : "Set Home Location"}
               </Text>
@@ -792,9 +792,7 @@ export default function SettingsScreen() {
                 <Text style={styles.settingLabel}>Home Area Radius</Text>
               </View>
               <View style={styles.settingRight}>
-                <Text style={styles.settingValue}>
-                  {homeRadius}km
-                </Text>
+                <Text style={styles.settingValue}>{homeRadius}km</Text>
                 <Ionicons
                   name="chevron-forward"
                   size={20}
@@ -806,9 +804,14 @@ export default function SettingsScreen() {
 
           {homeLocation && (
             <View style={styles.infoBox}>
-              <Ionicons name="information-circle" size={16} color={theme.colors.forest} />
+              <Ionicons
+                name="information-circle"
+                size={16}
+                color={theme.colors.forest}
+              />
               <Text style={styles.infoText}>
-                Activities and spots saved near your home won't trigger trip suggestions
+                Activities and spots saved near your home won't trigger trip
+                suggestions
               </Text>
             </View>
           )}
@@ -864,7 +867,9 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={settings.proximityEnabled !== false}
-              onValueChange={(value) => updateSetting("proximityEnabled", value)}
+              onValueChange={(value) =>
+                updateSetting("proximityEnabled", value)
+              }
               trackColor={{
                 false: theme.colors.borderGray,
                 true: theme.colors.forest,
@@ -884,11 +889,23 @@ export default function SettingsScreen() {
                 "Proximity Distance",
                 "Choose how close you need to be to receive notifications",
                 [
-                  { text: "50m", onPress: () => updateSetting("proximityDistance", 50) },
-                  { text: "100m (Default)", onPress: () => updateSetting("proximityDistance", 100) },
-                  { text: "200m", onPress: () => updateSetting("proximityDistance", 200) },
-                  { text: "500m", onPress: () => updateSetting("proximityDistance", 500) },
-                  { text: "Cancel", style: "cancel" }
+                  {
+                    text: "50m",
+                    onPress: () => updateSetting("proximityDistance", 50),
+                  },
+                  {
+                    text: "100m (Default)",
+                    onPress: () => updateSetting("proximityDistance", 100),
+                  },
+                  {
+                    text: "200m",
+                    onPress: () => updateSetting("proximityDistance", 200),
+                  },
+                  {
+                    text: "500m",
+                    onPress: () => updateSetting("proximityDistance", 500),
+                  },
+                  { text: "Cancel", style: "cancel" },
                 ]
               );
             }}
@@ -913,7 +930,6 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
         </View>
-
 
         {/* Privacy Section */}
         <View style={styles.section}>
@@ -1107,7 +1123,14 @@ export default function SettingsScreen() {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Linking.openURL(
+                "mailto:explorable.contact@gmail.com?subject=explorAble Support Request"
+              );
+            }}
+          >
             <View style={styles.settingLeft}>
               <Ionicons
                 name="mail-outline"
@@ -1332,9 +1355,9 @@ const styles = StyleSheet.create({
     color: theme.colors.burntOrange,
   },
   infoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.forest + '10',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "10",
     marginHorizontal: 20,
     marginTop: 10,
     padding: 12,
