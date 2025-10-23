@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.moser.explorable",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSUserNotificationUsageDescription": "Allow ExplorAble to send you notifications about friend requests, comments, and activity updates.",
         "NSLocationWhenInUseUsageDescription": "explorAble needs access to your location to track your activities and save your favorite spots.",
@@ -31,11 +31,6 @@
         "UIBackgroundModes": [
           "location",
           "fetch",
-          "processing",
-          "remote-notification",
-          "location",
-          "fetch",
-          "processing",
           "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
