@@ -858,7 +858,6 @@ export default function FriendsFeedScreen() {
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [selectedFriendFeed, setSelectedFriendFeed] = useState<FeedPost[]>([]);
   const [loadingFriendFeed, setLoadingFriendFeed] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const webViewRef = useRef<WebView>(null);
 
   useEffect(() => {
@@ -1254,284 +1253,194 @@ export default function FriendsFeedScreen() {
         }}
       />
 
-      {/* View Mode Toggle */}
-      <View style={styles.viewToggle}>
+      {/* Online Friends Bar - UPDATED with click handlers */}
+      {friends.length > 0 && (
+        <View style={styles.onlineBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {friends
+              .filter((f) => f.status === "accepted")
+              .map((friend) => {
+                const isOnline =
+                  friend.lastActive &&
+                  new Date().getTime() - new Date(friend.lastActive).getTime() <
+                    300000;
+                const isSelected = selectedFriendId === friend.id;
+
+                return (
+                  <TouchableOpacity
+                    key={friend.id}
+                    style={[
+                      styles.onlineFriend,
+                      isSelected && styles.selectedFriend,
+                    ]}
+                    onPress={() => handleFriendClick(friend.id)}
+                  >
+                    <View
+                      style={[
+                        styles.onlineAvatar,
+                        isSelected && styles.selectedAvatar,
+                      ]}
+                    >
+                      <UserAvatar user={friend} size={46} />
+                      {isOnline && <View style={styles.onlineIndicator} />}
+                      {isSelected && (
+                        <View style={styles.selectedCheckmark}>
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color={theme.colors.forest}
+                          />
+                        </View>
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.onlineName,
+                        isSelected && styles.selectedName,
+                      ]}
+                    >
+                      {(friend.displayName || friend.username).split(" ")[0]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* NEW: Active Filter Indicator */}
+      {selectedFriendId && (
+        <View style={styles.activeFilterBar}>
+          <View style={styles.activeFilterContent}>
+            <Ionicons name="filter" size={16} color={theme.colors.forest} />
+            <Text style={styles.activeFilterText}>
+              Showing posts from {selectedFriendName}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setSelectedFriendId(null)}>
+            <Ionicons
+              name="close-circle"
+              size={20}
+              color={theme.colors.burntOrange}
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Filter Tabs */}
+      <View style={styles.filterTabs}>
         <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            viewMode === "list" && styles.toggleActive,
-          ]}
-          onPress={() => setViewMode("list")}
+          style={[styles.filterTab, filter === "all" && styles.filterTabActive]}
+          onPress={() => setFilter("all")}
         >
-          <Ionicons
-            name="list"
-            size={20}
-            color={viewMode === "list" ? "white" : theme.colors.gray}
-          />
           <Text
             style={[
-              styles.toggleText,
-              viewMode === "list" && styles.toggleTextActive,
+              styles.filterTabText,
+              filter === "all" && styles.filterTabTextActive,
             ]}
           >
-            Feed
+            All
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[
-            styles.toggleButton,
-            viewMode === "map" && styles.toggleActive,
+            styles.filterTab,
+            filter === "activities" && styles.filterTabActive,
           ]}
-          onPress={() => setViewMode("map")}
+          onPress={() => setFilter("activities")}
         >
-          <Ionicons
-            name="map"
-            size={20}
-            color={viewMode === "map" ? "white" : theme.colors.gray}
-          />
           <Text
             style={[
-              styles.toggleText,
-              viewMode === "map" && styles.toggleTextActive,
+              styles.filterTabText,
+              filter === "activities" && styles.filterTabTextActive,
             ]}
           >
-            Map
+            Activities
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterTab,
+            filter === "locations" && styles.filterTabActive,
+          ]}
+          onPress={() => setFilter("locations")}
+        >
+          <Text
+            style={[
+              styles.filterTabText,
+              filter === "locations" && styles.filterTabTextActive,
+            ]}
+          >
+            Places
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.filterTab,
+            filter === "trips" && styles.filterTabActive,
+          ]}
+          onPress={() => setFilter("trips")}
+        >
+          <Text
+            style={[
+              styles.filterTabText,
+              filter === "trips" && styles.filterTabTextActive,
+            ]}
+          >
+            Trips
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Conditionally show either list or map view */}
-      {viewMode === "list" ? (
-        <>
-          {/* Online Friends Bar - UPDATED with click handlers */}
-          {friends.length > 0 && (
-            <View style={styles.onlineBar}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {friends
-                  .filter((f) => f.status === "accepted")
-                  .map((friend) => {
-                    const isOnline =
-                      friend.lastActive &&
-                      new Date().getTime() -
-                        new Date(friend.lastActive).getTime() <
-                        300000;
-                    const isSelected = selectedFriendId === friend.id;
-
-                    return (
-                      <TouchableOpacity
-                        key={friend.id}
-                        style={[
-                          styles.onlineFriend,
-                          isSelected && styles.selectedFriend,
-                        ]}
-                        onPress={() => handleFriendClick(friend.id)}
-                      >
-                        <View
-                          style={[
-                            styles.onlineAvatar,
-                            isSelected && styles.selectedAvatar,
-                          ]}
-                        >
-                          <UserAvatar user={friend} size={46} />
-                          {isOnline && <View style={styles.onlineIndicator} />}
-                          {isSelected && (
-                            <View style={styles.selectedCheckmark}>
-                              <Ionicons
-                                name="checkmark-circle"
-                                size={20}
-                                color={theme.colors.forest}
-                              />
-                            </View>
-                          )}
-                        </View>
-                        <Text
-                          style={[
-                            styles.onlineName,
-                            isSelected && styles.selectedName,
-                          ]}
-                        >
-                          {
-                            (friend.displayName || friend.username).split(
-                              " "
-                            )[0]
-                          }
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* NEW: Active Filter Indicator */}
-          {selectedFriendId && (
-            <View style={styles.activeFilterBar}>
-              <View style={styles.activeFilterContent}>
-                <Ionicons
-                  name="filter"
-                  size={16}
-                  color={theme.colors.forest}
-                />
-                <Text style={styles.activeFilterText}>
-                  Showing posts from {selectedFriendName}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setSelectedFriendId(null)}>
-                <Ionicons
-                  name="close-circle"
-                  size={20}
-                  color={theme.colors.burntOrange}
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Filter Tabs */}
-          <View style={styles.filterTabs}>
-            <TouchableOpacity
-              style={[
-                styles.filterTab,
-                filter === "all" && styles.filterTabActive,
-              ]}
-              onPress={() => setFilter("all")}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  filter === "all" && styles.filterTabTextActive,
-                ]}
-              >
-                All
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterTab,
-                filter === "activities" && styles.filterTabActive,
-              ]}
-              onPress={() => setFilter("activities")}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  filter === "activities" && styles.filterTabTextActive,
-                ]}
-              >
-                Activities
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterTab,
-                filter === "locations" && styles.filterTabActive,
-              ]}
-              onPress={() => setFilter("locations")}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  filter === "locations" && styles.filterTabTextActive,
-                ]}
-              >
-                Places
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.filterTab,
-                filter === "trips" && styles.filterTabActive,
-              ]}
-              onPress={() => setFilter("trips")}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  filter === "trips" && styles.filterTabTextActive,
-                ]}
-              >
-                Trips
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* List View */}
-          {loading && !refreshing ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={theme.colors.forest} />
-            </View>
-          ) : loadingFriendFeed ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={theme.colors.forest} />
-              <Text style={styles.loadingText}>
-                Loading {selectedFriendName}'s posts...
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredFeed}
-              renderItem={({ item }) => (
-                <FeedItemCard
-                  item={item}
-                  onLike={handleLike}
-                  onComment={handleComment}
-                  onShare={handleShare}
-                  onAddToWishlist={handleAddToWishlist}
-                  isInWishlist={
-                    item.type === "location" && isLocationInWishlist(item.data)
-                  }
-                  formatDistance={formatDistance}
-                  formatSpeed={formatSpeed}
-                  router={router}
-                />
-              )}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={
-                filteredFeed.length === 0
-                  ? styles.emptyContainer
-                  : styles.feedContainer
+      {/* List View */}
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.forest} />
+        </View>
+      ) : loadingFriendFeed ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.forest} />
+          <Text style={styles.loadingText}>
+            Loading {selectedFriendName}'s posts...
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFeed}
+          renderItem={({ item }) => (
+            <FeedItemCard
+              item={item}
+              onLike={handleLike}
+              onComment={handleComment}
+              onShare={handleShare}
+              onAddToWishlist={handleAddToWishlist}
+              isInWishlist={
+                item.type === "location" && isLocationInWishlist(item.data)
               }
-              ListEmptyComponent={renderEmptyState}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={handleRefresh}
-                  tintColor={theme.colors.forest}
-                  colors={[theme.colors.forest]}
-                />
-              }
+              formatDistance={formatDistance}
+              formatSpeed={formatSpeed}
+              router={router}
             />
           )}
-        </>
-      ) : (
-        // Map View
-        <View style={styles.mapContainer}>
-          <WebView
-            ref={webViewRef}
-            source={{ html: generateFriendsMapHTML(filteredFeed, settings) }}
-            style={styles.mapView}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            scalesPageToFit={false}
-          />
-          <View style={styles.mapLegend}>
-            <View style={styles.legendItem}>
-              <View
-                style={[styles.legendDot, { backgroundColor: "#d85430" }]}
-              />
-              <Text style={styles.legendText}>Places</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[styles.legendDot, { backgroundColor: "#2d5a3d" }]}
-              />
-              <Text style={styles.legendText}>Activities</Text>
-            </View>
-          </View>
-        </View>
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={
+            filteredFeed.length === 0
+              ? styles.emptyContainer
+              : styles.feedContainer
+          }
+          ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.forest}
+              colors={[theme.colors.forest]}
+            />
+          }
+        />
       )}
     </View>
   );

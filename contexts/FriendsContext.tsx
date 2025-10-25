@@ -217,6 +217,11 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
     try {
       setLoading(true);
 
+      // Declare these at the top so they're available throughout
+      let processedFriends: Friend[] = [];
+      let processedRequests: FriendRequest[] = [];
+      let processedSent: FriendRequest[] = [];
+
       // 1. Load accepted friendships from friendships table
       const { data: friendships, error: friendshipsError } = await supabase
         .from("friendships")
@@ -271,7 +276,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             });
           }
         });
-        const processedFriends = Array.from(friendsMap.values());
+        processedFriends = Array.from(friendsMap.values());
 
         setFriends(processedFriends);
       } else {
@@ -302,26 +307,24 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           profileMap[p.id] = p;
         });
 
-        const processedRequests: FriendRequest[] = incomingRequests.map(
-          (r) => ({
-            id: r.id,
-            from_user_id: r.from_user_id,
-            to_user_id: r.to_user_id,
-            message: r.message,
-            sent_at: r.sent_at,
-            from_user: profileMap[r.from_user_id] || {
-              id: r.from_user_id,
-              username: "Unknown",
-              displayName: "Unknown User",
-            },
-            from: profileMap[r.from_user_id] || {
-              id: r.from_user_id,
-              username: "Unknown",
-              displayName: "Unknown User",
-            },
-            sentAt: new Date(r.sent_at),
-          })
-        );
+        processedRequests = incomingRequests.map((r) => ({
+          id: r.id,
+          from_user_id: r.from_user_id,
+          to_user_id: r.to_user_id,
+          message: r.message,
+          sent_at: r.sent_at,
+          from_user: profileMap[r.from_user_id] || {
+            id: r.from_user_id,
+            username: "Unknown",
+            displayName: "Unknown User",
+          },
+          from: profileMap[r.from_user_id] || {
+            id: r.from_user_id,
+            username: "Unknown",
+            displayName: "Unknown User",
+          },
+          sentAt: new Date(r.sent_at),
+        }));
 
         setFriendRequests(processedRequests);
       } else {
@@ -352,7 +355,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           profileMap[p.id] = p;
         });
 
-        const processedSent: FriendRequest[] = sentRequests.map((r) => ({
+        processedSent = sentRequests.map((r) => ({
           id: r.id,
           from_user_id: r.from_user_id,
           to_user_id: r.to_user_id,
@@ -367,8 +370,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         setPendingRequests([]);
       }
 
-      // Load suggestions
-      await loadSuggestions();
+      // Load suggestions with fresh data
+      await loadSuggestions(processedFriends, processedRequests, processedSent);
     } catch (error) {
       console.error("Error in refreshFriends:", error);
       setError("Failed to load friends");
@@ -667,7 +670,11 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const loadSuggestions = async () => {
+  const loadSuggestions = async (
+    currentFriends?: Friend[],
+    currentIncoming?: FriendRequest[],
+    currentPending?: FriendRequest[]
+  ) => {
     if (!user) return;
 
     try {
@@ -679,10 +686,11 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .limit(10);
 
       if (activeUsers) {
-        const friendIds = friends.map((f) => f.id);
+        // Use provided arrays or fall back to state
+        const friendIds = (currentFriends || friends).map((f) => f.id);
         const requestUserIds = [
-          ...friendRequests.map((r) => r.from_user_id),
-          ...pendingRequests.map((r) => r.to_user_id),
+          ...(currentIncoming || friendRequests).map((r) => r.from_user_id),
+          ...(currentPending || pendingRequests).map((r) => r.to_user_id),
         ];
 
         const filtered = activeUsers.filter(
