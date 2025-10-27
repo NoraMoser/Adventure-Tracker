@@ -808,8 +808,7 @@ useEffect(() => {
     },
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
     { divider: true },
-    { icon: "settings", label: "Settings", route: "/settings" },
-    { icon: "information-circle", label: "About", route: "/" },
+    { icon: "settings", label: "Settings", route: "/settings" }
   ];
 
   const activityIcons: Record<string, string> = {
