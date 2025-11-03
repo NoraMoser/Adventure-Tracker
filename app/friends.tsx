@@ -510,6 +510,7 @@ export default function FriendsScreen() {
 
     const androidLink =
       "https://play.google.com/store/apps/details?id=com.moser.explorable";
+    const iosLink = "https://apps.apple.com/app/id6754299925";
 
     if (Platform.OS === "android") {
       // Android: Include link in the message
@@ -518,10 +519,10 @@ export default function FriendsScreen() {
         title: "Join me on explorAble!",
       });
     } else {
-      // iOS: Use url parameter when you have an iOS link
+      // iOS: Use url parameter
       Share.share({
         message: inviteMessage,
-        // url: iosLink, // Add this when you have an iOS link
+        url: iosLink,
         title: "Join me on explorAble!",
       });
     }

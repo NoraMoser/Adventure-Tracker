@@ -117,7 +117,7 @@ export class UpdateService {
 
   static openStore() {
     const storeUrl = Platform.select({
-      ios: "https://apps.apple.com/app/explorable/id[YOUR_APP_STORE_ID]",
+      ios: "https://apps.apple.com/app/explorable/id6754299925",
       android:
         "https://play.google.com/store/apps/details?id=com.moser.explorable",
     });
