@@ -377,24 +377,6 @@ export default function ProfileScreen() {
           
           <TouchableOpacity 
             style={styles.actionItem}
-            onPress={() => router.push('/achievements')}
-          >
-            <Ionicons name="trophy" size={24} color={theme.colors.forest} />
-            <Text style={styles.actionText}>Achievements</Text>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.gray} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionItem}
-            onPress={() => router.push('/privacy')}
-          >
-            <Ionicons name="shield-checkmark" size={24} color={theme.colors.forest} />
-            <Text style={styles.actionText}>Privacy Settings</Text>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.gray} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionItem}
             onPress={() => router.push('/settings')}
           >
             <Ionicons name="settings" size={24} color={theme.colors.forest} />

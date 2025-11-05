@@ -19,6 +19,8 @@ import { theme } from "../constants/theme";
 import { useAuth } from "../contexts/AuthContext";
 import { useFriends } from "../contexts/FriendsContext";
 import { Trip, useTrips } from "../contexts/TripContext";
+import { useActivity } from "../contexts/ActivityContext";
+import { useLocation } from "../contexts/LocationContext";
 
 // Merge Suggestions Component
 const MergeSuggestions = ({
@@ -92,6 +94,9 @@ const MergeSuggestions = ({
 export default function TripsScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { activities } = useActivity();
+  const { savedSpots } = useLocation();
+
   const {
     trips,
     getMyTrips,
@@ -110,6 +115,14 @@ export default function TripsScreen() {
   const userId = user?.id || "default-user";
   const myTrips = getMyTrips();
   const sharedTrips = getSharedTrips();
+
+  useEffect(() => {
+    const testClustering = async () => {
+      await triggerAutoDetection();
+    };
+
+    testClustering();
+  }, []);
 
   const getFilteredTrips = () => {
     let baseTrips =

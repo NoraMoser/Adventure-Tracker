@@ -578,16 +578,6 @@ export default function TrackActivityScreen() {
           >
             <Text style={styles.permissionButtonText}>Continue</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.permissionSkipButton}
-            onPress={() => {
-              setShowPermissionScreen(false);
-              router.back();
-            }}
-          >
-            <Text style={styles.permissionSkipText}>Not Now</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );

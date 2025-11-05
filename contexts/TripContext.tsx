@@ -569,7 +569,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateTrip = async (tripId: string, updates: Partial<Trip>) => {
-
     try {
       const updateData: any = {};
 
@@ -1099,7 +1098,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           const daysBetween =
             Math.abs(clusterEnd.getTime() - clusterStart.getTime()) /
             (1000 * 60 * 60 * 24);
-          const maxDaysForClustering = daysBetween <= 2 ? 2 : 7;
+          const maxDaysForClustering = daysBetween <= 7 ? 7 : 14; // Changed from 2:7
 
           const expandedStart = new Date(clusterStart);
           expandedStart.setDate(expandedStart.getDate() - maxDaysForClustering);
@@ -1163,7 +1162,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
             now.getTime() - 14 * 24 * 60 * 60 * 1000
           );
           if (latestDate < fourteenDaysAgo) {
-        
             return false;
           }
         }
@@ -1203,17 +1201,17 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       if (validClusters.length > 0) {
-      
         setPendingClusters((prev) => [...prev, ...validClusters]);
+      } else {
+        console.log("❌ No valid clusters to add");
       }
 
       autoDetectionInProgress.current = false;
     } catch (error) {
-      console.error("Error in detailed auto-detection:", error);
+      console.error("💥 Error in detailed auto-detection:", error);
       autoDetectionInProgress.current = false;
     }
   };
-
   // Add this function to manually show pending clusters
   const showPendingClusters = async () => {
     if (pendingClusters.length > 0) {

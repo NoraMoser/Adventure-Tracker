@@ -1305,18 +1305,6 @@ useEffect(() => {
               {reviewingTrips ? "Checking..." : "Create Trips"}
             </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => router.push("/friends")}
-          >
-            <Ionicons
-              name="people"
-              size={24}
-              color={theme.colors.burntOrange}
-            />
-            <Text style={styles.quickActionText}>Friends</Text>
-          </TouchableOpacity>
         </View>
       </Animated.View>
 

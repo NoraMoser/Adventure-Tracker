@@ -29,6 +29,7 @@ import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
 import { supabase } from "../lib/supabase";
 import { Linking } from "react-native";
+import { Platform } from "react-native";
 
 // Export Modal Component (keeping your existing modal)
 const ExportModal = ({
@@ -245,6 +246,73 @@ export default function SettingsScreen() {
       setHomeLocation(data.home_location);
       setHomeRadius(data.home_radius || 2);
     }
+  };
+
+  const handleRateApp = () => {
+    const storeUrl = Platform.select({
+      ios: "https://apps.apple.com/app/id6754299925?action=write-review",
+      android:
+        "https://play.google.com/store/apps/details?id=com.moser.explorable",
+    });
+    if (storeUrl) {
+      Linking.openURL(storeUrl);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "This will permanently delete your account and all your data. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete Account",
+          style: "destructive",
+          onPress: () => {
+            // Confirm again
+            Alert.alert("Are you absolutely sure?", "Type DELETE to confirm", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "I understand, delete everything",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    if (!user) return;
+
+                    // Delete all user data
+                    await supabase
+                      .from("activities")
+                      .delete()
+                      .eq("user_id", user.id);
+                    await supabase
+                      .from("locations")
+                      .delete()
+                      .eq("user_id", user.id);
+                    await supabase
+                      .from("trip_items")
+                      .delete()
+                      .eq("added_by", user.id);
+                    await supabase
+                      .from("trips")
+                      .delete()
+                      .eq("created_by", user.id);
+                    await supabase.from("profiles").delete().eq("id", user.id);
+
+                    // Delete auth account
+                    await supabase.auth.admin.deleteUser(user.id);
+
+                    await signOut();
+                    router.replace("/auth/login");
+                  } catch (error) {
+                    Alert.alert("Error", "Failed to delete account");
+                  }
+                },
+              },
+            ]);
+          },
+        },
+      ]
+    );
   };
 
   // HOME LOCATION HANDLERS
@@ -535,6 +603,12 @@ export default function SettingsScreen() {
           },
         },
       ]
+    );
+  };
+
+  const handleHelpCenter = () => {
+    Linking.openURL(
+      "mailto:explorable.contact@gmail.com?subject=explorAble Help Request&body=Please describe your issue:"
     );
   };
 
@@ -1101,13 +1175,37 @@ export default function SettingsScreen() {
               color={theme.colors.burntOrange}
             />
           </TouchableOpacity>
+
+           <TouchableOpacity
+            style={[styles.settingItem, styles.dangerItem]}
+            onPress={handleDeleteAccount}
+          >
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="trash-outline"
+                size={22}
+                color={theme.colors.burntOrange}
+              />
+              <Text style={[styles.settingLabel, styles.dangerText]}>
+                Delete Account
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.burntOrange}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* Support Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support & About</Text>
 
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={handleHelpCenter}
+          >
             <View style={styles.settingLeft}>
               <Ionicons
                 name="help-circle-outline"
@@ -1146,7 +1244,7 @@ export default function SettingsScreen() {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity style={styles.settingItem} onPress={handleRateApp}>
             <View style={styles.settingLeft}>
               <Ionicons
                 name="star-outline"
