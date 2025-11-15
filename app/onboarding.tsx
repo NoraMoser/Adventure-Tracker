@@ -426,57 +426,6 @@ export default function OnboardingScreen() {
       ),
     },
     {
-      id: "permissions",
-      title: "Enable Location",
-      subtitle:
-        "Location access lets you track activities and save spots accurately",
-      icon: "navigate",
-      backgroundColor: theme.colors.forest,
-      textColor: theme.colors.white,
-      action: requestLocationPermission,
-      actionLabel: locationPermissionGranted
-        ? "✓ Permission Granted"
-        : "Enable Location",
-      customContent: (
-        <View style={styles.permissionInfo}>
-          <View style={styles.permissionItem}>
-            <Ionicons
-              name="checkmark-circle"
-              size={24}
-              color={theme.colors.white}
-            />
-            <Text style={styles.permissionText}>
-              Track your routes with GPS
-            </Text>
-          </View>
-          <View style={styles.permissionItem}>
-            <Ionicons
-              name="checkmark-circle"
-              size={24}
-              color={theme.colors.white}
-            />
-            <Text style={styles.permissionText}>
-              Save spots at your location
-            </Text>
-          </View>
-          <View style={styles.permissionItem}>
-            <Ionicons
-              name="checkmark-circle"
-              size={24}
-              color={theme.colors.white}
-            />
-            <Text style={styles.permissionText}>
-              Get notified near saved places
-            </Text>
-          </View>
-          <View style={styles.permissionItem}>
-            <Ionicons name="lock-closed" size={24} color={theme.colors.white} />
-            <Text style={styles.permissionText}>Your data stays private</Text>
-          </View>
-        </View>
-      ),
-    },
-    {
       id: "ready",
       title: "You're All Set!",
       subtitle: `Welcome${

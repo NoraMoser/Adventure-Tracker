@@ -1,41 +1,73 @@
 // app/friend-requests.tsx
-import { Ionicons } from '@expo/vector-icons';
-import { Stack } from 'expo-router';
-import React from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { Stack } from "expo-router";
+import React, { useState } from "react";
 import {
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { theme } from '../constants/theme';
-import { useFriends } from '../contexts/FriendsContext';
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { theme } from "../constants/theme";
+import { useFriends } from "../contexts/FriendsContext";
 
 export default function FriendRequestsScreen() {
-  const { 
-    friendRequests, 
+  const {
+    friendRequests,
     pendingRequests,
-    acceptFriendRequest, 
-    declineFriendRequest 
+    acceptFriendRequest,
+    declineFriendRequest,
   } = useFriends();
-  
+
+  const [processingRequests, setProcessingRequests] = useState<Set<string>>(
+    new Set()
+  );
+
   const renderRequestItem = ({ item }: any) => {
     const timeAgo = (date: Date) => {
       const now = new Date();
       const diff = now.getTime() - new Date(date).getTime();
       const hours = Math.floor(diff / 3600000);
       const days = Math.floor(diff / 86400000);
-      
+
       if (hours < 24) return `${hours}h ago`;
       return `${days}d ago`;
     };
-    
+
+    const isProcessing = processingRequests.has(item.id);
+
+    const handleAccept = async () => {
+      setProcessingRequests((prev) => new Set(prev).add(item.id));
+      try {
+        await acceptFriendRequest(item.id);
+      } finally {
+        setProcessingRequests((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+    };
+
+    const handleDecline = async () => {
+      setProcessingRequests((prev) => new Set(prev).add(item.id));
+      try {
+        await declineFriendRequest(item.id);
+      } finally {
+        setProcessingRequests((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+    };
     return (
       <View style={styles.requestCard}>
         <View style={styles.requestHeader}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{item.from.avatar || '👤'}</Text>
+            <Text style={styles.avatarText}>{item.from.avatar || "👤"}</Text>
           </View>
           <View style={styles.requestInfo}>
             <Text style={styles.requestName}>{item.from.displayName}</Text>
@@ -43,32 +75,54 @@ export default function FriendRequestsScreen() {
             <Text style={styles.requestTime}>{timeAgo(item.sentAt)}</Text>
           </View>
         </View>
-        
+
         {item.message && (
           <Text style={styles.requestMessage}>{item.message}</Text>
         )}
-        
+
         <View style={styles.requestActions}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.acceptButton]}
-            onPress={() => acceptFriendRequest(item.id)}
+            style={[
+              styles.actionButton,
+              styles.acceptButton,
+              isProcessing && styles.buttonDisabled,
+            ]}
+            onPress={handleAccept}
+            disabled={isProcessing}
           >
-            <Ionicons name="checkmark" size={20} color="white" />
-            <Text style={styles.acceptText}>Accept</Text>
+            {isProcessing ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <>
+                <Ionicons name="checkmark" size={20} color="white" />
+                <Text style={styles.acceptText}>Accept</Text>
+              </>
+            )}
           </TouchableOpacity>
-          
+
           <TouchableOpacity
-            style={[styles.actionButton, styles.declineButton]}
-            onPress={() => declineFriendRequest(item.id)}
+            style={[
+              styles.actionButton,
+              styles.declineButton,
+              isProcessing && styles.buttonDisabled,
+            ]}
+            onPress={handleDecline}
+            disabled={isProcessing}
           >
-            <Ionicons name="close" size={20} color={theme.colors.gray} />
-            <Text style={styles.declineText}>Decline</Text>
+            {isProcessing ? (
+              <ActivityIndicator size="small" color={theme.colors.gray} />
+            ) : (
+              <>
+                <Ionicons name="close" size={20} color={theme.colors.gray} />
+                <Text style={styles.declineText}>Decline</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </View>
     );
   };
-  
+
   const renderPendingItem = ({ item }: any) => {
     return (
       <View style={styles.pendingCard}>
@@ -86,37 +140,35 @@ export default function FriendRequestsScreen() {
       </View>
     );
   };
-  
-  const renderEmptyState = (type: 'received' | 'sent') => (
+
+  const renderEmptyState = (type: "received" | "sent") => (
     <View style={styles.emptyState}>
-      <Ionicons 
-        name={type === 'received' ? 'mail-outline' : 'send-outline'} 
-        size={60} 
-        color={theme.colors.lightGray} 
+      <Ionicons
+        name={type === "received" ? "mail-outline" : "send-outline"}
+        size={60}
+        color={theme.colors.lightGray}
       />
       <Text style={styles.emptyText}>
-        {type === 'received' 
-          ? 'No friend requests' 
-          : 'No pending requests'}
+        {type === "received" ? "No friend requests" : "No pending requests"}
       </Text>
     </View>
   );
-  
+
   return (
     <View style={styles.container}>
-      <Stack.Screen 
-        options={{ 
-          title: 'Friend Requests',
+      <Stack.Screen
+        options={{
+          title: "Friend Requests",
           headerStyle: {
             backgroundColor: theme.colors.forest,
           },
-          headerTintColor: '#fff',
+          headerTintColor: "#fff",
           headerTitleStyle: {
-            fontWeight: 'bold',
+            fontWeight: "bold",
           },
-        }} 
+        }}
       />
-      
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>
           Received ({friendRequests.length})
@@ -124,22 +176,20 @@ export default function FriendRequestsScreen() {
         <FlatList
           data={friendRequests}
           renderItem={renderRequestItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
-          ListEmptyComponent={() => renderEmptyState('received')}
+          ListEmptyComponent={() => renderEmptyState("received")}
         />
       </View>
-      
+
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          Sent ({pendingRequests.length})
-        </Text>
+        <Text style={styles.sectionTitle}>Sent ({pendingRequests.length})</Text>
         <FlatList
           data={pendingRequests}
           renderItem={renderPendingItem}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
-          ListEmptyComponent={() => renderEmptyState('sent')}
+          ListEmptyComponent={() => renderEmptyState("sent")}
         />
       </View>
     </View>
@@ -157,7 +207,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 15,
   },
@@ -165,18 +215,18 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   requestCard: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     marginBottom: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   requestHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 10,
   },
   avatar: {
@@ -184,8 +234,8 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: theme.colors.offWhite,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   avatarText: {
@@ -196,7 +246,7 @@ const styles = StyleSheet.create({
   },
   requestName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
   },
   requestUsername: {
@@ -212,18 +262,18 @@ const styles = StyleSheet.create({
   requestMessage: {
     fontSize: 14,
     color: theme.colors.gray,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     marginBottom: 10,
   },
   requestActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
   },
   actionButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 10,
     borderRadius: 8,
   },
@@ -236,22 +286,22 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.borderGray,
   },
   acceptText: {
-    color: 'white',
+    color: "white",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 5,
   },
   declineText: {
     color: theme.colors.gray,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 5,
   },
   pendingCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     marginBottom: 10,
@@ -265,7 +315,7 @@ const styles = StyleSheet.create({
   },
   pendingUsername: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: theme.colors.navy,
     marginTop: 2,
   },
@@ -275,8 +325,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   pendingStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.offWhite,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -289,13 +339,16 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 40,
   },
   emptyText: {
     fontSize: 16,
     color: theme.colors.lightGray,
     marginTop: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
 });

@@ -307,11 +307,18 @@ const FeedItemCard = ({
           }}
           style={styles.wishlistButton}
         >
-          <Ionicons
-            name={isInWishlist ? "heart" : "heart-outline"}
-            size={24}
-            color={isInWishlist ? "#FF4757" : theme.colors.gray}
-          />
+          <View style={styles.wishlistIconContainer}>
+            <Ionicons
+              name={isInWishlist ? "heart-circle" : "heart-circle-outline"}
+              size={28}
+              color={isInWishlist ? "#9C27B0" : theme.colors.gray}
+            />
+            {!isInWishlist && (
+              <View style={styles.wishlistPlusSign}>
+                <Ionicons name="add" size={12} color="white" />
+              </View>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
       {location.description && (
@@ -2106,5 +2113,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.gray,
     marginVertical: 2,
+  },
+  wishlistIconContainer: {
+    position: "relative",
+  },
+  wishlistPlusSign: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#9C27B0",
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "white",
   },
 });

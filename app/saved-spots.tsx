@@ -1066,6 +1066,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 15,
+    paddingBottom: Platform.select({ ios: 100, android: 110 }),
   },
   emptyContainer: {
     flex: 1,
