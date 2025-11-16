@@ -8,7 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { theme } from "../constants/theme";
 import { ActivityProvider } from "../contexts/ActivityContext";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
-import { FriendsProvider } from "../contexts/FriendsContext";
+import { FriendsProvider, useFriends } from "../contexts/FriendsContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { SettingsProvider } from "../contexts/SettingsContext";
 import { TripProvider } from "../contexts/TripContext";
@@ -35,6 +35,7 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
+  const { refreshFeed } = useFriends(); // ADD THIS - import from FriendsContext
 
   useEffect(() => {
     // Skip if in Expo Go or notifications not available
@@ -49,35 +50,44 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
 
     // Listen for incoming notifications while app is foregrounded
     notificationListener.current =
-      Notifications.addNotificationReceivedListener((notification: any) => {
-      });
+      Notifications.addNotificationReceivedListener((notification: any) => {});
 
     // Listen for notification interactions (user taps on notification)
     responseListener.current =
-      Notifications.addNotificationResponseReceivedListener((response: any) => {
-        const { data } = response.notification.request.content;
+      Notifications.addNotificationResponseReceivedListener(
+        async (response: any) => {
+          const { data } = response.notification.request.content;
 
-        // Navigate based on notification type
-        if (data?.type === "friend_request") {
-          router.push("/friend-requests");
-        } else if (data?.type === "comment") {
-          if (data.activity_id) {
-            router.push(`/activity/${data.activity_id}` as any);
-          } else if (data.location_id) {
-            router.push(`/location/${data.location_id}` as any);
-          } else {
+          // Navigate based on notification type
+          if (data?.type === "friend_request") {
+            await refreshFeed(); // This will fetch the latest friend requests
+
+            // Small delay to ensure refresh completes
+            setTimeout(() => {
+              router.push("/friend-requests");
+            }, 300);
+          } else if (data?.type === "comment") {
+            if (data.activity_id) {
+              router.push(`/activity/${data.activity_id}` as any);
+            } else if (data.location_id) {
+              router.push(`/location/${data.location_id}` as any);
+            } else {
+              router.push("/friends-feed");
+            }
+          } else if (data?.type === "friend_accepted") {
+            if (data.friend_id) {
+              router.push(`/friend-profile/${data.friend_id}` as any);
+            } else {
+              router.push("/friends");
+            }
+          } else if (
+            data?.type === "like" ||
+            data?.type === "activity_shared"
+          ) {
             router.push("/friends-feed");
           }
-        } else if (data?.type === "friend_accepted") {
-          if (data.friend_id) {
-            router.push(`/friend-profile/${data.friend_id}` as any);
-          } else {
-            router.push("/friends");
-          }
-        } else if (data?.type === "like" || data?.type === "activity_shared") {
-          router.push("/friends-feed");
         }
-      });
+      );
 
     return () => {
       if (
@@ -122,7 +132,6 @@ export default function RootLayout() {
 
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState === "active" && isSubscribed) {
-
         try {
           const {
             data: { session },
@@ -169,13 +178,13 @@ export default function RootLayout() {
   return (
     <UpdateChecker>
       <AuthProvider>
-        <NotificationHandler>
-          <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-            <SettingsProvider>
-              <LocationProvider>
-                <ActivityProvider>
-                  <WishlistProvider>
-                    <FriendsProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <SettingsProvider>
+            <LocationProvider>
+              <ActivityProvider>
+                <WishlistProvider>
+                  <FriendsProvider>
+                    <NotificationHandler>
                       <TripProvider>
                         <SafeAreaProvider>
                           <StatusBar style="light" />
@@ -354,13 +363,13 @@ export default function RootLayout() {
                           </Stack>
                         </SafeAreaProvider>
                       </TripProvider>
-                    </FriendsProvider>
-                  </WishlistProvider>
-                </ActivityProvider>
-              </LocationProvider>
-            </SettingsProvider>
-          </View>
-        </NotificationHandler>
+                    </NotificationHandler>
+                  </FriendsProvider>
+                </WishlistProvider>
+              </ActivityProvider>
+            </LocationProvider>
+          </SettingsProvider>
+        </View>
       </AuthProvider>
     </UpdateChecker>
   );

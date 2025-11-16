@@ -19,6 +19,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Linking
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -34,6 +35,8 @@ import { supabase } from "../lib/supabase";
 import { MemoryNotificationService } from "../services/memoryNotificationService";
 import { useWishlist } from "../contexts/WishlistContext";
 import { useTrips } from "../contexts/TripContext";
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -257,6 +260,47 @@ export default function DashboardScreen() {
     authContext.session,
     authContext.user,
   ]);
+
+  // Request permissions on first launch (after initialization)
+useEffect(() => {
+  const requestInitialPermissions = async () => {
+    try {
+      // Only run if user is authenticated
+      if (!user?.id) return;
+      
+      // Check if already requested
+      const alreadyRequested = await AsyncStorage.getItem('permissionsRequested');
+      if (alreadyRequested) return;
+
+      // Request location
+      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+      
+      // Request notifications
+      const { status: notifStatus } = await Notifications.requestPermissionsAsync();
+      
+      // If denied, optionally tell them how to enable
+      if (locationStatus === 'denied') {
+        Alert.alert(
+          'Location Access',
+          'Location access is needed to track activities. You can enable it in Settings.',
+          [
+            { text: 'Not Now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+          ]
+        );
+      }
+      
+      await AsyncStorage.setItem('permissionsRequested', 'true');
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+    }
+  };
+  
+  // Only run after initialization is complete
+  if (!isInitializing && !authLoading) {
+    requestInitialPermissions();
+  }
+}, [user?.id, isInitializing, authLoading]);
 
 useEffect(() => {
     const fetchNotificationCount = async () => {
