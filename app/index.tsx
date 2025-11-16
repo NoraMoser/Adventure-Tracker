@@ -19,7 +19,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Linking
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -35,8 +35,8 @@ import { supabase } from "../lib/supabase";
 import { MemoryNotificationService } from "../services/memoryNotificationService";
 import { useWishlist } from "../contexts/WishlistContext";
 import { useTrips } from "../contexts/TripContext";
-import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
+import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
@@ -262,47 +262,51 @@ export default function DashboardScreen() {
   ]);
 
   // Request permissions on first launch (after initialization)
-useEffect(() => {
-  const requestInitialPermissions = async () => {
-    try {
-      // Only run if user is authenticated
-      if (!user?.id) return;
-      
-      // Check if already requested
-      const alreadyRequested = await AsyncStorage.getItem('permissionsRequested');
-      if (alreadyRequested) return;
+  useEffect(() => {
+    const requestInitialPermissions = async () => {
+      try {
+        // Only run if user is authenticated
+        if (!user?.id) return;
 
-      // Request location
-      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
-      
-      // Request notifications
-      const { status: notifStatus } = await Notifications.requestPermissionsAsync();
-      
-      // If denied, optionally tell them how to enable
-      if (locationStatus === 'denied') {
-        Alert.alert(
-          'Location Access',
-          'Location access is needed to track activities. You can enable it in Settings.',
-          [
-            { text: 'Not Now', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() }
-          ]
+        // Check if already requested
+        const alreadyRequested = await AsyncStorage.getItem(
+          "permissionsRequested"
         );
-      }
-      
-      await AsyncStorage.setItem('permissionsRequested', 'true');
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
-    }
-  };
-  
-  // Only run after initialization is complete
-  if (!isInitializing && !authLoading) {
-    requestInitialPermissions();
-  }
-}, [user?.id, isInitializing, authLoading]);
+        if (alreadyRequested) return;
 
-useEffect(() => {
+        // Request location
+        const { status: locationStatus } =
+          await Location.requestForegroundPermissionsAsync();
+
+        // Request notifications
+        const { status: notifStatus } =
+          await Notifications.requestPermissionsAsync();
+
+        // If denied, optionally tell them how to enable
+        if (locationStatus === "denied") {
+          Alert.alert(
+            "Location Access",
+            "Location access is needed to track activities. You can enable it in Settings.",
+            [
+              { text: "Not Now", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() },
+            ]
+          );
+        }
+
+        await AsyncStorage.setItem("permissionsRequested", "true");
+      } catch (error) {
+        console.error("Error requesting permissions:", error);
+      }
+    };
+
+    // Only run after initialization is complete
+    if (!isInitializing && !authLoading) {
+      requestInitialPermissions();
+    }
+  }, [user?.id, isInitializing, authLoading]);
+
+  useEffect(() => {
     const fetchNotificationCount = async () => {
       if (!user) return;
 
@@ -324,7 +328,7 @@ useEffect(() => {
     if (user) {
       // Initialize background tracking (for "always on" users)
       MemoryNotificationService.initialize(user.id);
-      
+
       // Initialize foreground checks (for "when in use" users)
       MemoryNotificationService.initializeForegroundChecks(user.id);
 
@@ -360,15 +364,18 @@ useEffect(() => {
         .subscribe();
 
       // Handle app state changes for foreground checks
-      const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
-        if (nextAppState === 'active') {
-          // App came to foreground - restart foreground checks
-          MemoryNotificationService.initializeForegroundChecks(user.id);
-        } else if (nextAppState === 'background') {
-          // App went to background - stop foreground checks
-          MemoryNotificationService.stopForegroundChecks();
+      const appStateSubscription = AppState.addEventListener(
+        "change",
+        (nextAppState) => {
+          if (nextAppState === "active") {
+            // App came to foreground - restart foreground checks
+            MemoryNotificationService.initializeForegroundChecks(user.id);
+          } else if (nextAppState === "background") {
+            // App went to background - stop foreground checks
+            MemoryNotificationService.stopForegroundChecks();
+          }
         }
-      });
+      );
 
       return () => {
         subscription.unsubscribe();
@@ -852,7 +859,7 @@ useEffect(() => {
     },
     { icon: "heart", label: "Wishlist", route: "/wishlist" },
     { divider: true },
-    { icon: "settings", label: "Settings", route: "/settings" }
+    { icon: "settings", label: "Settings", route: "/settings" },
   ];
 
   const activityIcons: Record<string, string> = {
@@ -941,7 +948,7 @@ useEffect(() => {
       >
         {/* Stats Section */}
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>This Week</Text>
+          <Text style={styles.sectionTitle}>Your Adventure Summary</Text>
 
           <View style={styles.statsGrid}>
             <TouchableOpacity
@@ -982,7 +989,7 @@ useEffect(() => {
                   color={theme.colors.burntOrange}
                 />
               </View>
-              <Text style={styles.statNumber}>{stats.totalActivities}</Text>
+              <Text style={styles.statNumber}>{activities.length}</Text>
               <Text style={styles.statLabel}>Activities</Text>
             </TouchableOpacity>
 
@@ -1023,14 +1030,8 @@ useEffect(() => {
             </TouchableOpacity>
           </View>
 
+          {/* Updated Quick Stats - travel focused */}
           <View style={styles.quickStats}>
-            <View style={styles.quickStatItem}>
-              <Text style={styles.quickStatValue}>
-                {formatDuration(stats.totalDuration)}
-              </Text>
-              <Text style={styles.quickStatLabel}>Total Time</Text>
-            </View>
-            <View style={styles.quickStatDivider} />
             <View style={styles.quickStatItem}>
               <Text style={styles.quickStatValue}>
                 {stats.uniqueCategories}
@@ -1040,63 +1041,20 @@ useEffect(() => {
             <View style={styles.quickStatDivider} />
             <View style={styles.quickStatItem}>
               <Text style={styles.quickStatValue}>
-                {stats.totalActivities > 0
-                  ? formatDistance(
-                      stats.totalDistance / stats.totalActivities,
-                      1
-                    )
-                  : "0 km"}
+                {
+                  savedSpots.filter((s) => s.photos && s.photos.length > 0)
+                    .length
+                }
               </Text>
-              <Text style={styles.quickStatLabel}>Avg Distance</Text>
+              <Text style={styles.quickStatLabel}>With Photos</Text>
             </View>
-          </View>
-        </View>
-
-        {/* Friends Section */}
-        <View style={styles.friendsSection}>
-          <Text style={styles.sectionTitle}>Friends & Social</Text>
-          <View style={styles.friendsButtons}>
-            <TouchableOpacity
-              style={styles.friendButton}
-              onPress={() => router.push("/friends-feed")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.friendIconContainer,
-                  { backgroundColor: theme.colors.forest + "20" },
-                ]}
-              >
-                <Ionicons name="people" size={24} color={theme.colors.forest} />
-              </View>
-              <Text style={styles.friendButtonTitle}>Friends Feed</Text>
-              <Text style={styles.friendButtonSubtitle}>
-                See what friends are up to
+            <View style={styles.quickStatDivider} />
+            <View style={styles.quickStatItem}>
+              <Text style={styles.quickStatValue}>
+                {savedSpots.filter((s) => s.rating && s.rating >= 4).length}
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.friendButton}
-              onPress={() => router.push("/friends")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.friendIconContainer,
-                  { backgroundColor: theme.colors.burntOrange + "20" },
-                ]}
-              >
-                <Ionicons
-                  name="person-add"
-                  size={24}
-                  color={theme.colors.burntOrange}
-                />
-              </View>
-              <Text style={styles.friendButtonTitle}>Manage Friends</Text>
-              <Text style={styles.friendButtonSubtitle}>
-                Add or find friends
-              </Text>
-            </TouchableOpacity>
+              <Text style={styles.quickStatLabel}>Favorites</Text>
+            </View>
           </View>
         </View>
 
@@ -1170,91 +1128,173 @@ useEffect(() => {
           </View>
         </View>
 
-        {/* Recent Activities */}
-        <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Recent Adventures</Text>
-          {activities.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>
-                No activities yet. Start tracking your adventures!
+        {/* Friends Section */}
+        <View style={styles.friendsSection}>
+          <Text style={styles.sectionTitle}>Friends & Social</Text>
+          <View style={styles.friendsButtons}>
+            <TouchableOpacity
+              style={styles.friendButton}
+              onPress={() => router.push("/friends-feed")}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.friendIconContainer,
+                  { backgroundColor: theme.colors.forest + "20" },
+                ]}
+              >
+                <Ionicons name="people" size={24} color={theme.colors.forest} />
+              </View>
+              <Text style={styles.friendButtonTitle}>Friends Feed</Text>
+              <Text style={styles.friendButtonSubtitle}>
+                See what friends are up to
               </Text>
-              <TouchableOpacity
-                style={styles.startButton}
-                onPress={() => router.push("/track-activity")}
-              >
-                <Ionicons name="fitness" size={20} color="white" />
-                <Text style={styles.startButtonText}>Track Activity</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              {[...activities]
-                .sort(
-                  (a, b) =>
-                    new Date(b.startTime).getTime() -
-                    new Date(a.startTime).getTime()
-                )
-                .slice(0, 3)
-                .map((activity) => {
-                  const icon = activityIcons[activity.type] || "fitness";
-                  return (
-                    <TouchableOpacity
-                      key={activity.id}
-                      style={styles.recentCard}
-                      onPress={() => router.push("/past-activities")}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          styles.recentIcon,
-                          { backgroundColor: theme.colors.forest + "20" },
-                        ]}
-                      >
-                        <Ionicons
-                          name={icon as any}
-                          size={20}
-                          color={theme.colors.forest}
-                        />
-                      </View>
-                      <View style={styles.recentInfo}>
-                        <Text style={styles.recentName}>{activity.name}</Text>
-                        <Text style={styles.recentMeta}>
-                          {new Date(activity.startTime).toLocaleDateString()} •{" "}
-                          {formatDistance(activity.distance)} •{" "}
-                          {formatDuration(activity.duration)}
-                        </Text>
-                      </View>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={20}
-                        color={theme.colors.lightGray}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              <TouchableOpacity
-                style={styles.viewStatsButton}
-                onPress={() => router.push("/statistics")}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.friendButton}
+              onPress={() => router.push("/friends")}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.friendIconContainer,
+                  { backgroundColor: theme.colors.burntOrange + "20" },
+                ]}
               >
                 <Ionicons
-                  name="stats-chart"
-                  size={20}
-                  color={theme.colors.forest}
+                  name="person-add"
+                  size={24}
+                  color={theme.colors.burntOrange}
                 />
-                <Text style={styles.viewStatsText}>
-                  View Detailed Statistics
-                </Text>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={theme.colors.forest}
-                />
-              </TouchableOpacity>
-            </>
-          )}
+              </View>
+              <Text style={styles.friendButtonTitle}>Manage Friends</Text>
+              <Text style={styles.friendButtonSubtitle}>
+                Add or find friends
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Latest Additions - Show actual recent items */}
+        <View style={styles.recentSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Latest Additions</Text>
+          </View>
+
+          {(() => {
+            // Combine all items with timestamps
+            const allItems = [
+              ...savedSpots.map((spot) => ({
+                type: "spot" as const,
+                id: spot.id,
+                name: spot.name,
+                timestamp: spot.timestamp,
+                category: spot.category,
+              })),
+              ...trips.map((trip) => ({
+                type: "trip" as const,
+                id: trip.id,
+                name: trip.name,
+                timestamp: trip.created_at,
+              })),
+              ...activities.map((activity) => ({
+                type: "activity" as const,
+                id: activity.id,
+                name: activity.name,
+                timestamp: activity.startTime,
+                activityType: activity.type,
+              })),
+            ];
+
+            // Sort by timestamp (most recent first) and take top 5
+            const recentItems = allItems
+              .sort(
+                (a, b) =>
+                  new Date(b.timestamp).getTime() -
+                  new Date(a.timestamp).getTime()
+              )
+              .slice(0, 5);
+
+            if (recentItems.length === 0) {
+              return (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    Start exploring! Save your favorite spots and track your
+                    adventures.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.startButton}
+                    onPress={() => router.push("/save-location")}
+                  >
+                    <Ionicons name="add-circle" size={20} color="white" />
+                    <Text style={styles.startButtonText}>
+                      Add Your First Place
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            }
+
+            return recentItems.map((item) => {
+              let icon = "ellipse";
+              let color = theme.colors.gray;
+              let onPress = () => {};
+
+              if (item.type === "spot") {
+                const category = categories[item.category] || categories.other;
+                icon = "location";
+                color = category.color;
+                onPress = () => router.push(`/location/${item.id}` as any);
+              } else if (item.type === "trip") {
+                icon = "airplane";
+                color = theme.colors.navy;
+                onPress = () =>
+                  router.push({
+                    pathname: "/trip-detail",
+                    params: { tripId: item.id },
+                  } as any);
+              } else if (item.type === "activity") {
+                const activityIcon =
+                  activityIcons[item.activityType] || "fitness";
+                icon = activityIcon;
+                color = theme.colors.burntOrange;
+                onPress = () => router.push(`/activity/${item.id}` as any);
+              }
+
+              return (
+                <TouchableOpacity
+                  key={`${item.type}-${item.id}`}
+                  style={styles.recentCard}
+                  onPress={onPress}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.recentIcon,
+                      { backgroundColor: color + "20" },
+                    ]}
+                  >
+                    <Ionicons name={icon as any} size={20} color={color} />
+                  </View>
+                  <View style={styles.recentInfo}>
+                    <Text style={styles.recentName}>{item.name}</Text>
+                    <Text style={styles.recentMeta}>
+                      {item.type.charAt(0).toUpperCase() + item.type.slice(1)} •{" "}
+                      {new Date(item.timestamp).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={theme.colors.lightGray}
+                  />
+                </TouchableOpacity>
+              );
+            });
+          })()}
         </View>
       </ScrollView>
-
       {/* Bottom Sheet */}
       <Animated.View
         style={[
@@ -2181,6 +2221,30 @@ const styles = StyleSheet.create({
   },
   quickActionDisabled: {
     opacity: 0.6,
+  },
+  latestGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  latestCard: {
+    flex: 1,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: "center",
+  },
+  latestNumber: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: theme.colors.navy,
+    marginTop: 8,
+  },
+  latestLabel: {
+    fontSize: 13,
+    color: theme.colors.gray,
+    marginTop: 4,
+    textAlign: "center",
   },
 });
 
