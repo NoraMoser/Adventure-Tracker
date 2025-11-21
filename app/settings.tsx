@@ -756,6 +756,51 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => {
+              Alert.alert(
+                "Map Style",
+                "Choose your preferred map display style",
+                [
+                  {
+                    text: "Standard",
+                    onPress: () => updateSetting("mapStyle", "standard"),
+                  },
+                  {
+                    text: "Satellite",
+                    onPress: () => updateSetting("mapStyle", "satellite"),
+                  },
+                  {
+                    text: "Terrain",
+                    onPress: () => updateSetting("mapStyle", "terrain"),
+                  },
+                  { text: "Cancel", style: "cancel" },
+                ]
+              );
+            }}
+          >
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="map-outline"
+                size={22}
+                color={theme.colors.gray}
+              />
+              <Text style={styles.settingLabel}>Map Style</Text>
+            </View>
+            <View style={styles.settingRight}>
+              <Text style={styles.settingValue}>
+                {settings.mapStyle?.charAt(0).toUpperCase() +
+                  settings.mapStyle?.slice(1) || "Standard"}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={theme.colors.lightGray}
+              />
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <Ionicons
@@ -1176,7 +1221,7 @@ export default function SettingsScreen() {
             />
           </TouchableOpacity>
 
-           <TouchableOpacity
+          <TouchableOpacity
             style={[styles.settingItem, styles.dangerItem]}
             onPress={handleDeleteAccount}
           >

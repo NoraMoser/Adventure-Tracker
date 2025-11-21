@@ -2,7 +2,7 @@
   "expo": {
     "name": "explorAble",
     "slug": "explorable",
-    "version": "1.0.35",
+    "version": "1.0.36",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -18,9 +18,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.moser.explorable",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
-        "NSUserNotificationUsageDescription": "Allow ExplorAble to send you notifications about friend requests, comments, and activity updates.",
+        "NSUserNotificationsUsageDescription": "Allow ExplorAble to send you notifications about friend requests, comments, and activity updates.",
         "NSLocationWhenInUseUsageDescription": "explorAble needs access to your location to track your activities and save your favorite spots.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "explorAble needs access to your location to track your activities in the background.",
         "NSCameraUsageDescription": "explorAble needs access to your camera to take photos of your adventure spots.",
@@ -45,7 +45,7 @@
         "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
-      "versionCode": 36,
+      "versionCode": 37,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
