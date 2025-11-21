@@ -262,49 +262,69 @@ export default function DashboardScreen() {
   ]);
 
   // Request permissions on first launch (after initialization)
+  // FIXED: Works for all users (new and existing) without hanging in React 19
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
     const requestInitialPermissions = async () => {
       try {
-        // Only run if user is authenticated
-        if (!user?.id) return;
 
-        // Check if already requested
-        const alreadyRequested = await AsyncStorage.getItem(
-          "permissionsRequested"
-        );
-        if (alreadyRequested) return;
+        // Wait to ensure app UI is fully rendered (iOS needs this)
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Request location
-        const { status: locationStatus } =
-          await Location.requestForegroundPermissionsAsync();
+        // Request location - works for everyone:
+        // - Already granted? Returns immediately, no prompt
+        // - Never asked? Shows prompt
+        // - Previously denied? Returns immediately, no prompt
+        const locationResult = await Location.requestForegroundPermissionsAsync();
+        // Request notifications with explicit iOS options
+        const notificationResult = await Notifications.requestPermissionsAsync({
+          ios: {
+            allowAlert: true,
+            allowBadge: true,
+            allowSound: true,
+            allowDisplayInCarPlay: false,
+            allowCriticalAlerts: false,
+            provideAppNotificationSettings: false,
+            allowProvisional: false,
+          },
+        });
 
-        // Request notifications
-        const { status: notifStatus } =
-          await Notifications.requestPermissionsAsync();
-
-        // If denied, optionally tell them how to enable
-        if (locationStatus === "denied") {
-          Alert.alert(
-            "Location Access",
-            "Location access is needed to track activities. You can enable it in Settings.",
-            [
-              { text: "Not Now", style: "cancel" },
-              { text: "Open Settings", onPress: () => Linking.openSettings() },
-            ]
-          );
+        // Show alert if location was denied
+        if (locationResult.status === "denied") {
+          setTimeout(() => {
+            Alert.alert(
+              "Location Access",
+              "Location access is needed to track activities. You can enable it in Settings.",
+              [
+                { text: "Not Now", style: "cancel" },
+                { text: "Open Settings", onPress: () => Linking.openSettings() },
+              ]
+            );
+          }, 500);
         }
-
-        await AsyncStorage.setItem("permissionsRequested", "true");
       } catch (error) {
         console.error("Error requesting permissions:", error);
       }
     };
 
-    // Only run after initialization is complete
-    if (!isInitializing && !authLoading) {
-      requestInitialPermissions();
+    // Run for all users after initialization (authenticated or offline mode)
+    const shouldRequest = 
+      !isInitializing && 
+      !authLoading && 
+      (user?.id || isOfflineMode);
+
+    if (shouldRequest) {
+      // Additional delay to ensure UI is fully rendered
+      timeoutId = setTimeout(() => {
+        requestInitialPermissions();
+      }, 500);
     }
-  }, [user?.id, isInitializing, authLoading]);
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [user?.id, isInitializing, authLoading, isOfflineMode]);
 
   useEffect(() => {
     const fetchNotificationCount = async () => {
@@ -1648,19 +1668,19 @@ const styles = StyleSheet.create({
   },
   welcomeBar: {
     backgroundColor: theme.colors.forest + "10",
-    paddingVertical: 12, // Increased from 8
+    paddingVertical: 12,
     paddingHorizontal: 15,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.forest + "20",
-    minHeight: 44, // Add minimum height
+    minHeight: 44,
   },
   welcomeText: {
     fontSize: 14,
     color: theme.colors.forest,
     fontWeight: "500",
-    lineHeight: 20, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
-    textAlignVertical: "center", // Android-specific fix
+    lineHeight: 20,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   welcomeContent: {
     flexDirection: "row",
@@ -1681,8 +1701,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 15,
-    lineHeight: 28, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 28,
+    includeFontPadding: false,
   },
   statsGrid: {
     flexDirection: "row",
@@ -1697,23 +1717,23 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 10,
     alignItems: "center",
-    minHeight: 120, // Add minimum height
+    minHeight: 120,
   },
   statNumber: {
     fontSize: 24,
     fontWeight: "bold",
     color: theme.colors.navy,
-    lineHeight: 32, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
-    textAlignVertical: "center", // Android-specific fix
+    lineHeight: 32,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   statLabel: {
     fontSize: 12,
     color: theme.colors.gray,
     marginTop: 4,
-    lineHeight: 16, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
-    textAlign: "center", // Ensure center alignment
+    lineHeight: 16,
+    includeFontPadding: false,
+    textAlign: "center",
   },
   statIconContainer: {
     width: 40,
@@ -1737,15 +1757,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: theme.colors.navy,
-    lineHeight: 22, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 22,
+    includeFontPadding: false,
   },
   quickStatLabel: {
     fontSize: 11,
     color: theme.colors.gray,
     marginTop: 2,
-    lineHeight: 15, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 15,
+    includeFontPadding: false,
     textAlign: "center",
   },
   quickStatDivider: {
@@ -1783,16 +1803,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
     marginBottom: 4,
-    lineHeight: 20, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 20,
+    includeFontPadding: false,
     textAlign: "center",
   },
   friendButtonSubtitle: {
     fontSize: 11,
     color: theme.colors.gray,
     textAlign: "center",
-    lineHeight: 15, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 15,
+    includeFontPadding: false,
   },
   mapSection: {
     backgroundColor: theme.colors.white,
@@ -1904,15 +1924,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: theme.colors.navy,
-    lineHeight: 22, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 22,
+    includeFontPadding: false,
   },
   recentMeta: {
     fontSize: 12,
     color: theme.colors.gray,
     marginTop: 2,
-    lineHeight: 16, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 16,
+    includeFontPadding: false,
   },
   viewStatsButton: {
     flexDirection: "row",
@@ -1963,15 +1983,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
     textAlign: "center",
-    lineHeight: 22, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 22,
+    includeFontPadding: false,
   },
   quickActionText: {
     fontSize: 12,
     color: theme.colors.gray,
     marginTop: 4,
-    lineHeight: 16, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 16,
+    includeFontPadding: false,
     textAlign: "center",
   },
   quickActions: {
@@ -2040,24 +2060,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: theme.colors.navy,
-    lineHeight: 28, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 28,
+    includeFontPadding: false,
     textAlign: "center",
   },
   profileStats: {
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 5,
-    lineHeight: 20, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 20,
+    includeFontPadding: false,
     textAlign: "center",
   },
   profileEmail: {
     fontSize: 12,
     color: theme.colors.lightGray,
     marginTop: 3,
-    lineHeight: 16, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
+    lineHeight: 16,
+    includeFontPadding: false,
     textAlign: "center",
   },
   editIndicator: {
@@ -2097,9 +2117,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.gray,
     marginLeft: 15,
-    lineHeight: 22, // Add explicit line height
-    includeFontPadding: false, // Android-specific fix
-    flex: 1, // Allow text to expand
+    lineHeight: 22,
+    includeFontPadding: false,
+    flex: 1,
   },
   sidebarItemTextActive: {
     color: theme.colors.forest,
@@ -2144,7 +2164,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   memoryTestSection: {
-    backgroundColor: "#FFF3E0", // Light orange background for dev section
+    backgroundColor: "#FFF3E0",
     paddingVertical: 20,
     paddingHorizontal: 15,
     marginBottom: 10,
