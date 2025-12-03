@@ -268,15 +268,15 @@ export default function DashboardScreen() {
 
     const requestInitialPermissions = async () => {
       try {
-
         // Wait to ensure app UI is fully rendered (iOS needs this)
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
 
         // Request location - works for everyone:
         // - Already granted? Returns immediately, no prompt
         // - Never asked? Shows prompt
         // - Previously denied? Returns immediately, no prompt
-        const locationResult = await Location.requestForegroundPermissionsAsync();
+        const locationResult =
+          await Location.requestForegroundPermissionsAsync();
         // Request notifications with explicit iOS options
         const notificationResult = await Notifications.requestPermissionsAsync({
           ios: {
@@ -298,7 +298,10 @@ export default function DashboardScreen() {
               "Location access is needed to track activities. You can enable it in Settings.",
               [
                 { text: "Not Now", style: "cancel" },
-                { text: "Open Settings", onPress: () => Linking.openSettings() },
+                {
+                  text: "Open Settings",
+                  onPress: () => Linking.openSettings(),
+                },
               ]
             );
           }, 500);
@@ -309,10 +312,8 @@ export default function DashboardScreen() {
     };
 
     // Run for all users after initialization (authenticated or offline mode)
-    const shouldRequest = 
-      !isInitializing && 
-      !authLoading && 
-      (user?.id || isOfflineMode);
+    const shouldRequest =
+      !isInitializing && !authLoading && (user?.id || isOfflineMode);
 
     if (shouldRequest) {
       // Additional delay to ensure UI is fully rendered
@@ -965,6 +966,7 @@ export default function DashboardScreen() {
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
+        onScrollBeginDrag={() => setScrollEnabled(true)}
       >
         {/* Stats Section */}
         <View style={styles.statsSection}>
@@ -1050,7 +1052,7 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-        {/* Updated Quick Stats - travel focused */}
+          {/* Updated Quick Stats - travel focused */}
           <View style={styles.quickStats}>
             <TouchableOpacity
               style={styles.quickStatItem}
@@ -1103,7 +1105,7 @@ export default function DashboardScreen() {
               <Text style={styles.quickStatLabel}>Top Rated</Text>
             </TouchableOpacity>
           </View>
-          </View>
+        </View>
 
         {/* Map Section */}
         <View style={styles.mapSection}>
@@ -1127,11 +1129,18 @@ export default function DashboardScreen() {
               </Text>
             </View>
           </View>
-
           <View
             style={styles.mapContainer}
-            onTouchStart={() => setScrollEnabled(false)}
-            onTouchEnd={() => setScrollEnabled(true)}
+            onTouchStart={() => {
+              setScrollEnabled(false);
+            }}
+            onTouchEnd={() => {
+              // Small delay to let map finish processing touch
+              setTimeout(() => setScrollEnabled(true), 100);
+            }}
+            onTouchCancel={() => {
+              setTimeout(() => setScrollEnabled(true), 100);
+            }}
           >
             <WebView
               ref={webViewRef}
