@@ -323,13 +323,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     try {
       for (const photoUri of photos) {
         try {
-          const asset = await MediaLibrary.createAssetAsync(photoUri);
-          const album = await MediaLibrary.getAlbumAsync("explorAble");
-          if (album == null) {
-            await MediaLibrary.createAlbumAsync("explorAble", asset, false);
-          } else {
-            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-          }
+          await MediaLibrary.createAssetAsync(photoUri);
         } catch (err) {
           console.log("Photo might already be saved:", err);
         }
@@ -338,7 +332,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       console.log("Gallery save error:", error);
     }
   };
-
   const saveCurrentLocation = async (
     name: string,
     description: string,
@@ -409,7 +402,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         photos: photos || [],
         category,
       });
-
     } catch (err) {
       console.error("Error saving manual location:", err);
       setError("Failed to save location");
@@ -535,7 +527,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       if (deleteError) throw deleteError;
 
       setSavedSpots((prev) => prev.filter((spot) => spot.id !== spotId));
-
     } catch (err) {
       console.error("Error deleting spot:", err);
       setError("Failed to delete spot");
@@ -560,7 +551,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         );
 
         if (localPhotos.length > 0) {
-
           // Upload all photos (processPhotosForUpload handles both local and remote)
           const updatedPhotoUrls = await processPhotosForUpload(spot.photos);
 
