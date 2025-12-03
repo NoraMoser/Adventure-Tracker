@@ -1,7 +1,7 @@
 // app/saved-spots.tsx - Complete file with date display
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -508,10 +508,15 @@ const AnimatedListItem = ({
 
 export default function SavedSpotsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ filter?: string }>();
   const { savedSpots, deleteSpot, updateSpot, location } = useLocation();
   const { getMapTileUrl } = useSettings();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "withPhotos" | "topRated"
+  >("all");
+
   const [selectedCategories, setSelectedCategories] = useState<
     Set<CategoryType>
   >(new Set(Object.keys(categories) as CategoryType[]));
@@ -524,6 +529,18 @@ export default function SavedSpotsScreen() {
   const [selectedSpot, setSelectedSpot] = useState<SavedSpot | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Handle filter params from navigation
+  useEffect(() => {
+    if (params.filter === "withPhotos") {
+      setActiveFilter("withPhotos");
+    } else if (params.filter === "topRated") {
+      setActiveFilter("topRated");
+    } else if (params.filter === "categories") {
+      // Open the filter modal for categories view
+      setShowFilterModal(true);
+    }
+  }, [params.filter]);
+
   // Filter and sort spots
   const filteredSpots = useMemo(() => {
     let filtered = savedSpots.filter((spot) => {
@@ -532,7 +549,16 @@ export default function SavedSpotsScreen() {
         (spot.description &&
           spot.description.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesCategory = selectedCategories.has(spot.category);
-      return matchesSearch && matchesCategory;
+
+      // Apply special filters
+      let matchesActiveFilter = true;
+      if (activeFilter === "withPhotos") {
+        matchesActiveFilter = !!(spot.photos && spot.photos.length > 0);
+      } else if (activeFilter === "topRated") {
+        matchesActiveFilter = !!(spot.rating && spot.rating >= 4);
+      }
+
+      return matchesSearch && matchesCategory && matchesActiveFilter;
     });
 
     // Sort
@@ -557,7 +583,7 @@ export default function SavedSpotsScreen() {
     });
 
     return filtered;
-  }, [savedSpots, searchQuery, selectedCategories, sortBy]);
+  }, [savedSpots, searchQuery, selectedCategories, sortBy, activeFilter]);
 
   const handleToggleCategory = (category: CategoryType) => {
     const newCategories = new Set(selectedCategories);
@@ -809,10 +835,27 @@ export default function SavedSpotsScreen() {
 
       {/* Summary Stats */}
       <View style={styles.summary}>
-        <Text style={styles.summaryText}>
-          {filteredSpots.length}{" "}
-          {filteredSpots.length === 1 ? "location" : "locations"}
-        </Text>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryText}>
+            {filteredSpots.length}{" "}
+            {filteredSpots.length === 1 ? "location" : "locations"}
+          </Text>
+          {activeFilter !== "all" && (
+            <TouchableOpacity
+              style={styles.activeFilterBadge}
+              onPress={() => setActiveFilter("all")}
+            >
+              <Text style={styles.activeFilterText}>
+                {activeFilter === "withPhotos" ? "With Photos" : "Top Rated"}
+              </Text>
+              <Ionicons
+                name="close-circle"
+                size={16}
+                color={theme.colors.forest}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
         {searchQuery && (
           <Text style={styles.summarySubtext}>
             matching &quot;{searchQuery}&quot;
@@ -1063,6 +1106,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.gray,
     marginTop: 2,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  activeFilterBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "20",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  activeFilterText: {
+    fontSize: 12,
+    color: theme.colors.forest,
+    fontWeight: "600",
   },
   listContainer: {
     padding: 15,

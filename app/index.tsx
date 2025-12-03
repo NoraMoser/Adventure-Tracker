@@ -1050,16 +1050,34 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Updated Quick Stats - travel focused */}
+        {/* Updated Quick Stats - travel focused */}
           <View style={styles.quickStats}>
-            <View style={styles.quickStatItem}>
+            <TouchableOpacity
+              style={styles.quickStatItem}
+              onPress={() =>
+                router.push({
+                  pathname: "/saved-spots",
+                  params: { filter: "categories" },
+                } as any)
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.quickStatValue}>
                 {stats.uniqueCategories}
               </Text>
               <Text style={styles.quickStatLabel}>Categories</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.quickStatDivider} />
-            <View style={styles.quickStatItem}>
+            <TouchableOpacity
+              style={styles.quickStatItem}
+              onPress={() =>
+                router.push({
+                  pathname: "/saved-spots",
+                  params: { filter: "withPhotos" },
+                } as any)
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.quickStatValue}>
                 {
                   savedSpots.filter((s) => s.photos && s.photos.length > 0)
@@ -1067,16 +1085,25 @@ export default function DashboardScreen() {
                 }
               </Text>
               <Text style={styles.quickStatLabel}>With Photos</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.quickStatDivider} />
-            <View style={styles.quickStatItem}>
+            <TouchableOpacity
+              style={styles.quickStatItem}
+              onPress={() =>
+                router.push({
+                  pathname: "/saved-spots",
+                  params: { filter: "topRated" },
+                } as any)
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.quickStatValue}>
                 {savedSpots.filter((s) => s.rating && s.rating >= 4).length}
               </Text>
-              <Text style={styles.quickStatLabel}>Favorites</Text>
-            </View>
+              <Text style={styles.quickStatLabel}>Top Rated</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+          </View>
 
         {/* Map Section */}
         <View style={styles.mapSection}>
