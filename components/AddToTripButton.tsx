@@ -63,11 +63,11 @@ const AddToTripButton: React.FC<AddToTripButtonProps> = ({
   const handleCreateNewTrip = async () => {
     setCreatingNewTrip(true);
 
-    // Generate default trip dates based on the item
+    // Generate default trip dates based on the item's actual date (not when saved)
     const itemDate = new Date(
       type === "activity"
-        ? (item as Activity).startTime
-        : (item as SavedSpot).timestamp
+        ? (item as Activity).activityDate || (item as Activity).startTime
+        : (item as SavedSpot).locationDate || (item as SavedSpot).timestamp
     );
 
     const startDate = new Date(itemDate);

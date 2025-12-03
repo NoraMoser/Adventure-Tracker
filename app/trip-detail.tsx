@@ -219,7 +219,9 @@ export default function TripDetailScreen() {
           ...item.data,
           displayDate:
             item.data.activityDate ||
+            item.data.activity_date ||
             item.data.startTime ||
+            item.data.start_time ||
             item.data.date ||
             item.added_at,
         }))
@@ -232,7 +234,10 @@ export default function TripDetailScreen() {
           tripItemId: item.id,
           ...item.data,
           displayDate:
-            item.data.locationDate || item.data.timestamp || item.added_at,
+            item.data.locationDate ||
+            item.data.location_date ||
+            item.data.timestamp ||
+            item.added_at,
         }))
     : [];
 
@@ -288,7 +293,6 @@ export default function TripDetailScreen() {
 
           // For shared trips or spots with local photos, fetch from database
           if (hasLocalPhotos && spot.id) {
-
             const { data, error } = await supabase
               .from("locations")
               .select("photos")
@@ -450,7 +454,6 @@ export default function TripDetailScreen() {
   };
 
   const handleSpotPress = (spot: any) => {
-
     if (spot.photos && spot.photos.length > 0) {
       setCurrentSpotImages(spot.photos);
       setSelectedImageIndex(0);
@@ -1027,7 +1030,6 @@ export default function TripDetailScreen() {
                 Spots ({processedSpots.length})
               </Text>
               {processedSpots.map((spot: any, index: number) => {
-
                 return (
                   <TouchableOpacity
                     key={spot.tripItemId || `spot-${index}`}
