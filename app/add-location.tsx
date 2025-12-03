@@ -16,6 +16,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { CategoryType, categoryList } from "../constants/categories";
@@ -55,6 +56,8 @@ export default function AddLocationScreen() {
   const [cameraKey, setCameraKey] = useState(0);
   const [zoom, setZoom] = useState(0);
 
+  const [gettingLocation, setGettingLocation] = useState(false);
+
   // Use current location as default center, or fall back to a default
   const defaultCenter = currentLocation || {
     latitude: 47.6062,
@@ -69,32 +72,35 @@ export default function AddLocationScreen() {
   }, []);
 
   const getCurrentLocation = async () => {
+    setGettingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const location = await Location.getCurrentPositionAsync({});
         // Update map center to current location
         const js = `
-          if (typeof map !== 'undefined') {
-            map.setView([${location.coords.latitude}, ${location.coords.longitude}], 13);
-            
-            // Add a blue dot for current location
-            if (window.currentLocationMarker) {
-              map.removeLayer(window.currentLocationMarker);
-            }
-            window.currentLocationMarker = L.circleMarker([${location.coords.latitude}, ${location.coords.longitude}], {
-              color: '#007AFF',
-              fillColor: '#007AFF',
-              fillOpacity: 0.3,
-              radius: 8,
-              weight: 2
-            }).addTo(map);
+        if (typeof map !== 'undefined') {
+          map.setView([${location.coords.latitude}, ${location.coords.longitude}], 13);
+          
+          // Add a blue dot for current location
+          if (window.currentLocationMarker) {
+            map.removeLayer(window.currentLocationMarker);
           }
-        `;
+          window.currentLocationMarker = L.circleMarker([${location.coords.latitude}, ${location.coords.longitude}], {
+            color: '#007AFF',
+            fillColor: '#007AFF',
+            fillOpacity: 0.3,
+            radius: 8,
+            weight: 2
+          }).addTo(map);
+        }
+      `;
         webViewRef.current?.injectJavaScript(js);
       }
     } catch (error) {
       console.log("Error getting location:", error);
+    } finally {
+      setGettingLocation(false);
     }
   };
 
@@ -162,7 +168,6 @@ export default function AddLocationScreen() {
           base64: false,
           skipProcessing: true,
         });
-
 
         if (photo && photo.uri) {
           setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
@@ -543,8 +548,13 @@ export default function AddLocationScreen() {
         <TouchableOpacity
           style={styles.currentLocationButton}
           onPress={getCurrentLocation}
+          disabled={gettingLocation}
         >
-          <Ionicons name="locate" size={24} color={theme.colors.navy} />
+          {gettingLocation ? (
+            <ActivityIndicator size="small" color={theme.colors.navy} />
+          ) : (
+            <Ionicons name="locate" size={24} color={theme.colors.navy} />
+          )}
         </TouchableOpacity>
 
         {/* Selected Location Indicator */}

@@ -58,9 +58,9 @@ export default function QuickPhotoScreen() {
   const scale = useSharedValue(1);
   const baseScale = useSharedValue(1);
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
+  const [refreshingLocation, setRefreshingLocation] = useState(false);
 
   useEffect(() => {
-
     const attemptLocation = async () => {
       try {
         await getLocation();
@@ -184,120 +184,119 @@ export default function QuickPhotoScreen() {
   };
 
   const saveQuickLog = async () => {
-
-  if (photos.length === 0) {
-    Alert.alert("Error", "Please take at least one photo");
-    return;
-  }
-
-  setSaving(true);
-  try {
-    const spotName =
-      title || caption || `Quick log ${new Date().toLocaleDateString()}`;
-
-    // Check if we have location
-    if (!location) {
-      await getLocation();
-
-      // Wait for location to potentially update
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      if (!location) {
-        // Use fallback with saveManualLocation
-        await saveManualLocation(
-          spotName,
-          { latitude: 37.7749, longitude: -122.4194 },
-          caption,
-          photos,
-          selectedCategory,
-          new Date()
-        );
-        Alert.alert("Saved!", "Your moment has been logged.", [
-          { text: "Done", onPress: () => router.back() },
-        ]);
-        return;
-      }
+    if (photos.length === 0) {
+      Alert.alert("Error", "Please take at least one photo");
+      return;
     }
 
-    // Save to context and GET THE ACTUAL RETURNED SPOT
-    const savedSpot = await saveCurrentLocation(
-      spotName,
-      caption,
-      photos,
-      selectedCategory,
-      new Date()
-    );
+    setSaving(true);
+    try {
+      const spotName =
+        title || caption || `Quick log ${new Date().toLocaleDateString()}`;
 
-    // Only proceed with trip check if we have a valid saved spot
-    if (savedSpot) {
-      try {
-        const trip = await checkAndAddToTrip(
-          savedSpot,  // Use the REAL saved spot, not a fake one
-          "spot",
-          savedSpot.name,
-          {
-            latitude: savedSpot.location.latitude,
-            longitude: savedSpot.location.longitude,
-          },
-          true
-        ) as { name?: string; id?: string } | null;
+      // Check if we have location
+      if (!location) {
+        await getLocation();
 
-        if (trip?.name && trip?.id) {
-          Alert.alert(
-            "Saved to Trip!",
-            `Your moment has been logged and added to "${trip.name}".`,
-            [
-              {
-                text: "Take Another",
-                onPress: () => {
-                  setPhotos([]);
-                  setCaption("");
-                  setTitle("");
-                  setSelectedCategory("other");
-                  setShowCamera(true);
-                },
-              },
-              {
-                text: "View Trip",
-                onPress: () => router.push(`/trip-detail?tripId=${trip.id}`),
-              },
-              {
-                text: "Done",
-                onPress: () => router.back(),
-              },
-            ]
+        // Wait for location to potentially update
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        if (!location) {
+          // Use fallback with saveManualLocation
+          await saveManualLocation(
+            spotName,
+            { latitude: 37.7749, longitude: -122.4194 },
+            caption,
+            photos,
+            selectedCategory,
+            new Date()
           );
+          Alert.alert("Saved!", "Your moment has been logged.", [
+            { text: "Done", onPress: () => router.back() },
+          ]);
           return;
         }
-      } catch (tripError) {
-        console.log("Trip add failed:", tripError);
       }
-    }
 
-    // Default success message if no trip match or savedSpot was null
-    Alert.alert("Saved!", "Your moment has been logged.", [
-      {
-        text: "Take Another",
-        onPress: () => {
-          setPhotos([]);
-          setCaption("");
-          setTitle("");
-          setSelectedCategory("other");
-          setShowCamera(true);
+      // Save to context and GET THE ACTUAL RETURNED SPOT
+      const savedSpot = await saveCurrentLocation(
+        spotName,
+        caption,
+        photos,
+        selectedCategory,
+        new Date()
+      );
+
+      // Only proceed with trip check if we have a valid saved spot
+      if (savedSpot) {
+        try {
+          const trip = (await checkAndAddToTrip(
+            savedSpot, // Use the REAL saved spot, not a fake one
+            "spot",
+            savedSpot.name,
+            {
+              latitude: savedSpot.location.latitude,
+              longitude: savedSpot.location.longitude,
+            },
+            true
+          )) as { name?: string; id?: string } | null;
+
+          if (trip?.name && trip?.id) {
+            Alert.alert(
+              "Saved to Trip!",
+              `Your moment has been logged and added to "${trip.name}".`,
+              [
+                {
+                  text: "Take Another",
+                  onPress: () => {
+                    setPhotos([]);
+                    setCaption("");
+                    setTitle("");
+                    setSelectedCategory("other");
+                    setShowCamera(true);
+                  },
+                },
+                {
+                  text: "View Trip",
+                  onPress: () => router.push(`/trip-detail?tripId=${trip.id}`),
+                },
+                {
+                  text: "Done",
+                  onPress: () => router.back(),
+                },
+              ]
+            );
+            return;
+          }
+        } catch (tripError) {
+          console.log("Trip add failed:", tripError);
+        }
+      }
+
+      // Default success message if no trip match or savedSpot was null
+      Alert.alert("Saved!", "Your moment has been logged.", [
+        {
+          text: "Take Another",
+          onPress: () => {
+            setPhotos([]);
+            setCaption("");
+            setTitle("");
+            setSelectedCategory("other");
+            setShowCamera(true);
+          },
         },
-      },
-      {
-        text: "Done",
-        onPress: () => router.back(),
-      },
-    ]);
-  } catch (error) {
-    console.error("Error in saveQuickLog:", error);
-    Alert.alert("Error", `Failed to save: ${error.message || error}`);
-  } finally {
-    setSaving(false);
-  }
-};
+        {
+          text: "Done",
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error) {
+      console.error("Error in saveQuickLog:", error);
+      Alert.alert("Error", `Failed to save: ${error.message || error}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const CategorySelector = () => {
     const categoryList = Object.entries(categories).filter(
@@ -664,16 +663,31 @@ export default function QuickPhotoScreen() {
                   <TouchableOpacity
                     style={styles.refreshLocationButton}
                     onPress={async () => {
-                      await getLocation();
-                      fetchLocationSuggestions();
+                      setRefreshingLocation(true);
+                      try {
+                        await getLocation();
+                        await fetchLocationSuggestions();
+                      } finally {
+                        setRefreshingLocation(false);
+                      }
                     }}
+                    disabled={refreshingLocation}
                   >
-                    <Ionicons
-                      name="refresh"
-                      size={18}
-                      color={theme.colors.forest}
-                    />
-                    <Text style={styles.refreshText}>Refresh</Text>
+                    {refreshingLocation ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={theme.colors.forest}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="refresh"
+                        size={18}
+                        color={theme.colors.forest}
+                      />
+                    )}
+                    <Text style={styles.refreshText}>
+                      {refreshingLocation ? "Refreshing..." : "Refresh"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               )}
