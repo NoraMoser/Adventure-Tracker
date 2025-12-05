@@ -80,12 +80,18 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
             } else {
               router.push("/friends");
             }
-       } else if (
+          } else if (
             data?.type === "like" ||
             data?.type === "activity_shared"
           ) {
             router.push("/friends-feed");
           } else if (data?.type === "trip_shared") {
+            if (data.trip_id) {
+              router.push(`/trip-detail?tripId=${data.trip_id}` as any);
+            } else {
+              router.push("/trips");
+            }
+          } else if (data?.type === "trip_message") {
             if (data.trip_id) {
               router.push(`/trip-detail?tripId=${data.trip_id}` as any);
             } else {

@@ -27,7 +27,8 @@ interface Notification {
     | "like"
     | "trip_shared"
     | "memory"
-    | "proximity_alert";
+    | "proximity_alert"
+    | "trip_message";
 
   title: string;
   message: string;
@@ -282,6 +283,11 @@ export default function NotificationsScreen() {
       case "achievement":
         router.push("/achievements");
         break;
+      case "trip_message":
+        if (notification.data?.trip_id) {
+          router.push(`/trip-detail?tripId=${notification.data.trip_id}`);
+        }
+        break;
       default:
         // Default fallback
         router.push("/");
@@ -301,6 +307,7 @@ export default function NotificationsScreen() {
       trip_shared: "airplane",
       memory: "calendar",
       proximity_alert: "navigate-circle",
+      trip_message: "chatbubbles",
     };
     return icons[type] || "notifications";
   };
@@ -317,6 +324,7 @@ export default function NotificationsScreen() {
       trip_shared: theme.colors.navy,
       memory: "#9C27B0",
       proximity_alert: theme.colors.burntOrange,
+      trip_message: theme.colors.forest,
     };
     return colors[type] || theme.colors.gray;
   };

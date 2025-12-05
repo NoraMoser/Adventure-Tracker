@@ -4,10 +4,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState, useRef } from "react";
 import {
   Alert,
+  Dimensions,
+  FlatList,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -17,8 +22,7 @@ import { theme } from "../constants/theme";
 import { useSettings } from "../contexts/SettingsContext";
 import { useTrips } from "../contexts/TripContext";
 import { useFocusEffect } from "@react-navigation/native";
-import { Share, Modal, Platform, Linking } from "react-native";
-import * as Sharing from "expo-sharing";
+import { Modal, Linking } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import ViewShot from "react-native-view-shot";
 import { TripShareService } from "../services/shareService";
@@ -26,7 +30,20 @@ import ImageViewer from "../components/ImageViewer";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 
-// Weather API configuration
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+interface TripMessage {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  message: string;
+  created_at: string;
+  user?: {
+    username: string;
+    avatar_url: string;
+  };
+}
+
 const getWeatherForLocation = async (
   lat: number,
   lon: number,
@@ -35,17 +52,50 @@ const getWeatherForLocation = async (
   useImperial: boolean = false
 ) => {
   try {
-    const start = startDate.toISOString().split("T")[0];
-    const end = endDate.toISOString().split("T")[0];
+    const now = new Date();
+    const start = startDate instanceof Date ? startDate : new Date(startDate);
+    const end = endDate instanceof Date ? endDate : new Date(endDate);
+
+    const startStr = start.toISOString().split("T")[0];
+    const endStr = end.toISOString().split("T")[0];
     const tempUnit = useImperial ? "fahrenheit" : "celsius";
     const precipUnit = useImperial ? "inch" : "mm";
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${start}&end_date=${end}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
+
+    // Determine if we need historical or forecast API
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let url: string;
+
+    if (end < yesterday) {
+      // All dates in the past - use historical API
+      url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${startStr}&end_date=${endStr}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
+    } else if (start > now) {
+      // All dates in the future - use forecast API (max 16 days)
+      const maxEnd = new Date(now);
+      maxEnd.setDate(maxEnd.getDate() + 16);
+      const effectiveEndStr =
+        end > maxEnd ? maxEnd.toISOString().split("T")[0] : endStr;
+      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${startStr}&end_date=${effectiveEndStr}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
+    } else {
+      // Trip spans past and future - just use forecast from today
+      const todayStr = now.toISOString().split("T")[0];
+      const maxEnd = new Date(now);
+      maxEnd.setDate(maxEnd.getDate() + 16);
+      const effectiveEndStr =
+        end > maxEnd ? maxEnd.toISOString().split("T")[0] : endStr;
+      url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${todayStr}&end_date=${effectiveEndStr}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
+    }
 
     const response = await fetch(url);
+    if (!response.ok) {
+      console.log("Weather API returned status:", response.status);
+      return null;
+    }
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Error fetching weather:", error);
+    console.log("Weather not available for this trip");
     return null;
   }
 };
@@ -196,7 +246,10 @@ export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const { trips, removeFromTrip, refreshTrips } = useTrips();
 
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [activeTab, setActiveTab] = useState<"spots" | "photos" | "chat">(
+    "spots"
+  );
+  const [showMap, setShowMap] = useState(false);
   const [weatherData, setWeatherData] = useState<any>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const { settings } = useSettings();
@@ -208,8 +261,24 @@ export default function TripDetailScreen() {
   const [currentSpotImages, setCurrentSpotImages] = useState<string[]>([]);
   const { user } = useAuth();
   const [processedSpots, setProcessedSpots] = useState<any[]>([]);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [showItemDetail, setShowItemDetail] = useState(false);
+
+  // Chat state
+  const [messages, setMessages] = useState<TripMessage[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const chatListRef = useRef<FlatList>(null);
+  const [userProfiles, setUserProfiles] = useState<Record<string, any>>({});
 
   const trip = trips.find((t) => t.id === tripId);
+
+  // Check if user can access chat (creator or tagged)
+  const canAccessChat =
+    trip &&
+    user &&
+    (trip.created_by === user.id || trip.tagged_friends?.includes(user.id));
 
   const tripActivities = trip
     ? trip.items
@@ -241,9 +310,139 @@ export default function TripDetailScreen() {
         }))
     : [];
 
+  // Collect all photos from spots and activities
+  const allPhotos = [
+    ...processedSpots.flatMap((spot) =>
+      (spot.photos || []).map((photo: string) => ({
+        uri: photo,
+        source: spot.name || "Spot",
+        type: "spot",
+      }))
+    ),
+    ...tripActivities.flatMap((activity) =>
+      (activity.photos || []).map((photo: string) => ({
+        uri: photo,
+        source: activity.name || "Activity",
+        type: "activity",
+      }))
+    ),
+  ];
+
   const [processedActivities, setProcessedActivities] = useState<any[]>([]);
 
-  // Add a useEffect to process activity photos
+  // Load chat messages
+  useEffect(() => {
+    if (trip && canAccessChat && activeTab === "chat") {
+      loadMessages();
+      subscribeToMessages();
+    }
+  }, [trip?.id, canAccessChat, activeTab]);
+
+  const loadMessages = async () => {
+    if (!tripId) return;
+
+    setLoadingMessages(true);
+    try {
+      const { data, error } = await supabase
+        .from("trip_messages")
+        .select("*")
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      setMessages(data || []);
+
+      // Load user profiles for messages
+      const userIds = [...new Set((data || []).map((m) => m.user_id))];
+      await loadUserProfiles(userIds);
+    } catch (error) {
+      console.error("Error loading messages:", error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const loadUserProfiles = async (userIds: string[]) => {
+    if (userIds.length === 0) return;
+
+    const missingIds = userIds.filter((id) => !userProfiles[id]);
+    if (missingIds.length === 0) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username")
+        .in("id", missingIds);
+
+      if (error) throw error;
+
+      const newProfiles: Record<string, any> = {};
+      (data || []).forEach((profile) => {
+        newProfiles[profile.id] = profile;
+      });
+
+      setUserProfiles((prev) => ({ ...prev, ...newProfiles }));
+    } catch (error) {
+      console.error("Error loading profiles:", error);
+    }
+  };
+
+  const subscribeToMessages = () => {
+    const subscription = supabase
+      .channel(`trip_messages_${tripId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "trip_messages",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        async (payload) => {
+          const newMsg = payload.new as TripMessage;
+          setMessages((prev) => [...prev, newMsg]);
+
+          // Load profile if needed
+          if (!userProfiles[newMsg.user_id]) {
+            await loadUserProfiles([newMsg.user_id]);
+          }
+
+          // Scroll to bottom
+          setTimeout(() => {
+            chatListRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !user || !tripId || sendingMessage) return;
+
+    setSendingMessage(true);
+    try {
+      const { error } = await supabase.from("trip_messages").insert({
+        trip_id: tripId,
+        user_id: user.id,
+        message: newMessage.trim(),
+      });
+
+      if (error) throw error;
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+      Alert.alert("Error", "Failed to send message");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // Process activity photos
   useEffect(() => {
     const processActivityPhotos = async () => {
       if (!trip || tripActivities.length === 0) {
@@ -256,9 +455,7 @@ export default function TripDetailScreen() {
       for (const activity of tripActivities) {
         let finalActivity = { ...activity };
 
-        // Check if photos need processing
         if (activity.photos && activity.photos.length > 0) {
-          // Filter out local URIs
           finalActivity.photos = activity.photos.filter(
             (p: string) => p.startsWith("http://") || p.startsWith("https://")
           );
@@ -272,6 +469,7 @@ export default function TripDetailScreen() {
 
     processActivityPhotos();
   }, [trip?.id, JSON.stringify(tripActivities)]);
+
   // Process spots to ensure photos are valid URLs
   useEffect(() => {
     const processSpotPhotos = async () => {
@@ -285,13 +483,11 @@ export default function TripDetailScreen() {
       for (const spot of tripSpots) {
         let finalSpot = { ...spot };
 
-        // Check if photos need processing
         if (spot.photos && spot.photos.length > 0) {
           const hasLocalPhotos = spot.photos.some((p: string) =>
             p.startsWith("file://")
           );
 
-          // For shared trips or spots with local photos, fetch from database
           if (hasLocalPhotos && spot.id) {
             const { data, error } = await supabase
               .from("locations")
@@ -302,14 +498,12 @@ export default function TripDetailScreen() {
             if (data?.photos) {
               finalSpot.photos = data.photos;
             } else {
-              // Filter out local URIs if we can't get DB photos
               finalSpot.photos = spot.photos.filter(
                 (p: string) =>
                   p.startsWith("http://") || p.startsWith("https://")
               );
             }
           } else {
-            // Already has valid URLs, just filter to be safe
             finalSpot.photos = spot.photos.filter(
               (p: string) => p.startsWith("http://") || p.startsWith("https://")
             );
@@ -418,57 +612,29 @@ export default function TripDetailScreen() {
   };
 
   const handleActivityPress = (activity: any) => {
-    // Check for photos first
-    if (activity.photos && activity.photos.length > 0) {
-      setCurrentSpotImages(activity.photos); // Reuse the same image viewer
-      setSelectedImageIndex(0);
-      setShowImageViewer(true);
-    } else if (trip.created_by !== user?.id) {
-      // For shared trips without photos, show details in alert
-      Alert.alert(
-        activity.name || "Activity Details",
-        `Type: ${activity.type || "Unknown"}\n` +
-          `Distance: ${(activity.distance / 1000).toFixed(2)} km\n` +
-          `Duration: ${formatDuration(activity.duration)}\n` +
-          `Date: ${new Date(
-            activity.displayDate || activity.startTime
-          ).toLocaleDateString()}\n` +
-          `${activity.notes ? `\nNotes: ${activity.notes}` : ""}`,
-        [{ text: "OK" }]
-      );
-    } else {
-      // For own trips, navigate to activity detail page
-      if (activity.id) {
-        // Check if it's a valid UUID
-        const uuidRegex =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (uuidRegex.test(activity.id)) {
-          router.push(`/activity/${activity.id}`);
-        } else {
-          Alert.alert("Error", "Activity details not available");
-        }
-      } else {
-        Alert.alert("Error", "Activity details not available");
+    if (trip.created_by === user?.id && activity.id) {
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(activity.id)) {
+        router.push(`/activity/${activity.id}`);
+        return;
       }
     }
+    setSelectedItem({ ...activity, itemType: "activity" });
+    setShowItemDetail(true);
   };
 
   const handleSpotPress = (spot: any) => {
-    if (spot.photos && spot.photos.length > 0) {
-      setCurrentSpotImages(spot.photos);
-      setSelectedImageIndex(0);
-      setShowImageViewer(true);
-    } else if (trip.created_by === user?.id && spot.id) {
-      // Only navigate to detail page for OWN trips with valid UUID
-      // Check if the ID looks like a valid UUID
+    if (trip.created_by === user?.id && spot.id) {
       const uuidRegex =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (uuidRegex.test(spot.id)) {
         router.push(`/location/${spot.id}`);
-      } else {
-        Alert.alert("Error", "Spot details not available");
+        return;
       }
     }
+    setSelectedItem({ ...spot, itemType: "spot" });
+    setShowItemDetail(true);
   };
 
   const getDaysCount = () => {
@@ -588,6 +754,533 @@ export default function TripDetailScreen() {
     }
   };
 
+  const formatMessageTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (diffDays === 0) {
+      return date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } else if (diffDays === 1) {
+      return "Yesterday";
+    } else if (diffDays < 7) {
+      return date.toLocaleDateString("en-US", { weekday: "short" });
+    } else {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+  };
+
+  // Tab content renderers
+  const renderSpotsTab = () => (
+    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      {trip.cover_photo ? (
+        <View style={styles.coverPhotoContainer}>
+          <View
+            style={{
+              position: "absolute",
+              width: 900,
+              height: 900,
+              left: -300,
+              top: -350,
+              transform: [
+                { translateX: trip.cover_photo_position?.x || 0 },
+                { translateY: trip.cover_photo_position?.y || 0 },
+              ],
+            }}
+          >
+            <Image
+              source={{ uri: trip.cover_photo }}
+              style={{
+                width: "100%",
+                height: "100%",
+                resizeMode: "contain",
+              }}
+            />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.coverPhotoPlaceholder}>
+          <Ionicons name="images-outline" size={48} color="#ccc" />
+          <Text style={styles.placeholderText}>No cover photo yet</Text>
+        </View>
+      )}
+
+      <View style={styles.tripInfo}>
+        <View style={styles.dateContainer}>
+          <Ionicons
+            name="calendar-outline"
+            size={20}
+            color={theme.colors.gray}
+          />
+          <Text style={styles.dateText}>
+            {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
+          </Text>
+        </View>
+
+        {trip.auto_generated && (
+          <View style={styles.autoBadge}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+            <Text style={styles.autoBadgeText}>Auto-generated trip</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{tripActivities.length}</Text>
+          <Text style={styles.statLabel}>Activities</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{processedSpots.length}</Text>
+          <Text style={styles.statLabel}>Spots</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{getDaysCount()}</Text>
+          <Text style={styles.statLabel}>Days</Text>
+        </View>
+      </View>
+
+      {/* Weather Card */}
+      {weatherData && weatherData.daily?.time && (
+        <View style={styles.weatherCard}>
+          <View style={styles.weatherHeader}>
+            <Ionicons
+              name="partly-sunny"
+              size={20}
+              color={theme.colors.forest}
+            />
+            <Text style={styles.weatherTitle}>
+              {new Date(trip.end_date) < new Date()
+                ? "Weather History"
+                : "Weather Forecast"}
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.weatherDays}>
+              {weatherData.daily.time.map((_: any, index: number) => {
+                const date = new Date(weatherData.daily.time[index]);
+                const maxTemp = Math.round(
+                  weatherData.daily.temperature_2m_max[index]
+                );
+                const minTemp = Math.round(
+                  weatherData.daily.temperature_2m_min[index]
+                );
+                const weatherCode = weatherData.daily.weathercode[index];
+                const precipitation =
+                  weatherData.daily.precipitation_sum[index];
+                const tempSymbol = useImperial ? "°F" : "°C";
+                const precipUnit = useImperial ? "in" : "mm";
+
+                return (
+                  <View key={index} style={styles.weatherDay}>
+                    <Text style={styles.weatherDate}>
+                      {date.toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
+                    <Ionicons
+                      name={getWeatherIcon(weatherCode) as any}
+                      size={28}
+                      color={theme.colors.forest}
+                    />
+                    <Text style={styles.weatherTemp}>
+                      {maxTemp}
+                      {tempSymbol}/{minTemp}
+                      {tempSymbol}
+                    </Text>
+                    {precipitation > 0 && (
+                      <Text style={styles.weatherPrecip}>
+                        {precipitation.toFixed(1)}
+                        {precipUnit}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Map Toggle */}
+
+      {/* Map Toggle */}
+      <TouchableOpacity
+        style={styles.mapToggleButton}
+        onPress={() => setShowMap(!showMap)}
+      >
+        <Ionicons
+          name={showMap ? "list" : "map"}
+          size={20}
+          color={theme.colors.forest}
+        />
+        <Text style={styles.mapToggleText}>
+          {showMap ? "Show List" : "Show Map"}
+        </Text>
+      </TouchableOpacity>
+
+      {showMap ? (
+        <View style={styles.inlineMapContainer}>
+          <WebView
+            source={{
+              html: generateTripMapHTML(tripActivities, processedSpots),
+            }}
+            style={styles.inlineMap}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+          />
+        </View>
+      ) : (
+        <>
+          {tripActivities.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Activities ({tripActivities.length})
+              </Text>
+              {tripActivities.map((activity: any) => (
+                <TouchableOpacity
+                  key={activity.tripItemId}
+                  style={styles.itemCard}
+                  onPress={() => handleActivityPress(activity)}
+                  activeOpacity={0.7}
+                >
+                  {activity.photos && activity.photos.length > 0 ? (
+                    <Image
+                      source={{ uri: activity.photos[0] }}
+                      style={styles.spotImage}
+                    />
+                  ) : (
+                    <View style={styles.itemIcon}>
+                      <Ionicons
+                        name="fitness"
+                        size={24}
+                        color={theme.colors.forest}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName}>
+                      {activity.name || "Unnamed Activity"}
+                    </Text>
+                    <Text style={styles.itemMeta}>
+                      {activity.displayDate
+                        ? new Date(activity.displayDate).toLocaleDateString()
+                        : "No date"}
+                      {activity.distance
+                        ? ` • ${(activity.distance / 1000).toFixed(1)} km`
+                        : ""}
+                      {activity.duration
+                        ? ` • ${formatDuration(activity.duration)}`
+                        : ""}
+                    </Text>
+                    {activity.photos && activity.photos.length > 1 && (
+                      <Text style={styles.photoCount}>
+                        📸 {activity.photos.length} photos
+                      </Text>
+                    )}
+                  </View>
+                  {trip.created_by === user?.id && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleRemoveItem(
+                          activity.tripItemId,
+                          activity.name || "this activity"
+                        );
+                      }}
+                      style={styles.removeButton}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {processedSpots.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Spots ({processedSpots.length})
+              </Text>
+              {processedSpots.map((spot: any, index: number) => (
+                <TouchableOpacity
+                  key={spot.tripItemId || `spot-${index}`}
+                  style={styles.itemCard}
+                  onPress={() => handleSpotPress(spot)}
+                  activeOpacity={0.7}
+                >
+                  {spot.photos && spot.photos.length > 0 ? (
+                    <Image
+                      source={{ uri: spot.photos[0] }}
+                      style={styles.spotImage}
+                    />
+                  ) : (
+                    <View style={styles.itemIcon}>
+                      <Ionicons
+                        name="location"
+                        size={24}
+                        color={theme.colors.burntOrange}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName}>
+                      {spot.name || "Unnamed Spot"}
+                    </Text>
+                    <Text style={styles.itemMeta}>
+                      {spot.category || "No category"}
+                      {spot.displayDate
+                        ? ` • ${new Date(
+                            spot.displayDate
+                          ).toLocaleDateString()}`
+                        : ""}
+                    </Text>
+                    {spot.description && (
+                      <Text style={styles.itemDescription} numberOfLines={1}>
+                        {spot.description}
+                      </Text>
+                    )}
+                    {spot.photos && spot.photos.length > 1 && (
+                      <Text style={styles.photoCount}>
+                        📸 {spot.photos.length} photos
+                      </Text>
+                    )}
+                  </View>
+                  {trip.created_by === user?.id && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleRemoveItem(
+                          spot.tripItemId,
+                          spot.name || "this spot"
+                        );
+                      }}
+                      style={styles.removeButton}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {tripActivities.length === 0 && processedSpots.length === 0 && (
+            <View style={styles.emptyState}>
+              <Ionicons name="trail-sign-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>
+                No activities or spots added yet
+              </Text>
+              <Text style={styles.emptySubtext}>
+                Add activities and spots to build your trip memories
+              </Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.addItemsButton}
+            onPress={() => {
+              Alert.alert(
+                "Add Items",
+                "You can add items to this trip from the saved spots or activities screens using the + button."
+              );
+            }}
+          >
+            <Ionicons name="add-circle-outline" size={24} color="#fff" />
+            <Text style={styles.addItemsText}>Add Activities & Spots</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </ScrollView>
+  );
+
+  const renderPhotosTab = () => (
+    <View style={styles.photosContainer}>
+      {allPhotos.length > 0 ? (
+        <FlatList
+          data={allPhotos}
+          numColumns={3}
+          keyExtractor={(item, index) => `photo-${index}`}
+          contentContainerStyle={styles.photosGrid}
+          renderItem={({ item, index }) => (
+            <TouchableOpacity
+              style={styles.photoThumbnailContainer}
+              onPress={() => {
+                setCurrentSpotImages(allPhotos.map((p) => p.uri));
+                setSelectedImageIndex(index);
+                setShowImageViewer(true);
+              }}
+            >
+              <Image
+                source={{ uri: item.uri }}
+                style={styles.photoThumbnail}
+                resizeMode="cover"
+              />
+              <View style={styles.photoSourceBadge}>
+                <Ionicons
+                  name={item.type === "spot" ? "location" : "fitness"}
+                  size={10}
+                  color="white"
+                />
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      ) : (
+        <View style={styles.emptyPhotos}>
+          <Ionicons name="images-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyPhotosText}>No photos yet</Text>
+          <Text style={styles.emptyPhotosSubtext}>
+            Photos from your spots and activities will appear here
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderChatTab = () => {
+    if (!canAccessChat) {
+      return (
+        <View style={styles.chatLocked}>
+          <Ionicons name="lock-closed" size={64} color="#ccc" />
+          <Text style={styles.chatLockedTitle}>Chat Unavailable</Text>
+          <Text style={styles.chatLockedText}>
+            Only the trip creator and tagged friends can access the chat.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <KeyboardAvoidingView
+        style={styles.chatContainer}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 120 : 0}
+      >
+        <FlatList
+          ref={chatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={() =>
+            chatListRef.current?.scrollToEnd({ animated: false })
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyChatContainer}>
+              <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyChatText}>No messages yet</Text>
+              <Text style={styles.emptyChatSubtext}>
+                Start planning your trip with friends!
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const isOwnMessage = item.user_id === user?.id;
+            const profile = userProfiles[item.user_id];
+
+            return (
+              <View
+                style={[
+                  styles.messageRow,
+                  isOwnMessage ? styles.messageRowOwn : styles.messageRowOther,
+                ]}
+              >
+                {!isOwnMessage && (
+                  <View style={styles.messageAvatar}>
+                    {profile?.avatar_url ? (
+                      <Image
+                        source={{ uri: profile.avatar_url }}
+                        style={styles.avatarImage}
+                      />
+                    ) : (
+                      <View style={styles.avatarPlaceholder}>
+                        <Text style={styles.avatarInitial}>
+                          {profile?.username?.[0]?.toUpperCase() || "?"}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                <View
+                  style={[
+                    styles.messageBubble,
+                    isOwnMessage
+                      ? styles.messageBubbleOwn
+                      : styles.messageBubbleOther,
+                  ]}
+                >
+                  {!isOwnMessage && (
+                    <Text style={styles.messageUsername}>
+                      {profile?.username || "Unknown"}
+                    </Text>
+                  )}
+                  <Text
+                    style={[
+                      styles.messageText,
+                      isOwnMessage
+                        ? styles.messageTextOwn
+                        : styles.messageTextOther,
+                    ]}
+                  >
+                    {item.message}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.messageTime,
+                      isOwnMessage
+                        ? styles.messageTimeOwn
+                        : styles.messageTimeOther,
+                    ]}
+                  >
+                    {formatMessageTime(item.created_at)}
+                  </Text>
+                </View>
+              </View>
+            );
+          }}
+        />
+
+        <View style={styles.chatInputContainer}>
+          <TextInput
+            style={styles.chatInput}
+            value={newMessage}
+            onChangeText={setNewMessage}
+            placeholder="Type a message..."
+            placeholderTextColor={theme.colors.gray}
+            multiline
+            maxLength={1000}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!newMessage.trim() || sendingMessage) &&
+                styles.sendButtonDisabled,
+            ]}
+            onPress={sendMessage}
+            disabled={!newMessage.trim() || sendingMessage}
+          >
+            <Ionicons
+              name="send"
+              size={20}
+              color={newMessage.trim() && !sendingMessage ? "white" : "#ccc"}
+            />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  };
+
   const ShareModal = () => (
     <Modal
       visible={showShareModal}
@@ -610,14 +1303,9 @@ export default function TripDetailScreen() {
               {tripActivities.length} activities • {processedSpots.length} spots
               • {getDaysCount()} days
             </Text>
-            {processedSpots.filter((s) => s.photos?.length > 0).length > 0 && (
+            {allPhotos.length > 0 && (
               <Text style={styles.sharePreviewPhotos}>
-                📸{" "}
-                {processedSpots.reduce(
-                  (sum, s) => sum + (s.photos?.length || 0),
-                  0
-                )}{" "}
-                photos
+                📸 {allPhotos.length} photos
               </Text>
             )}
           </View>
@@ -730,41 +1418,158 @@ export default function TripDetailScreen() {
     </Modal>
   );
 
-  const renderWeatherDay = (day: any, index: number) => {
-    const date = new Date(weatherData.daily.time[index]);
-    const maxTemp = Math.round(weatherData.daily.temperature_2m_max[index]);
-    const minTemp = Math.round(weatherData.daily.temperature_2m_min[index]);
-    const weatherCode = weatherData.daily.weathercode[index];
-    const precipitation = weatherData.daily.precipitation_sum[index];
-    const tempSymbol = useImperial ? "°F" : "°C";
-    const precipUnit = useImperial ? "in" : "mm";
+  const ItemDetailModal = () => {
+    if (!selectedItem) return null;
+
+    const isActivity = selectedItem.itemType === "activity";
+    const photos = selectedItem.photos || [];
 
     return (
-      <View key={index} style={styles.weatherDay}>
-        <Text style={styles.weatherDate}>
-          {date.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-          })}
-        </Text>
-        <Ionicons
-          name={getWeatherIcon(weatherCode) as any}
-          size={28}
-          color={theme.colors.forest}
-        />
-        <Text style={styles.weatherTemp}>
-          {maxTemp}
-          {tempSymbol}/{minTemp}
-          {tempSymbol}
-        </Text>
-        {precipitation > 0 && (
-          <Text style={styles.weatherPrecip}>
-            {precipitation.toFixed(1)}
-            {precipUnit}
-          </Text>
-        )}
-      </View>
+      <Modal
+        visible={showItemDetail}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowItemDetail(false)}
+      >
+        <View style={styles.detailModalOverlay}>
+          <View style={styles.detailModalContent}>
+            <View style={styles.detailModalHeader}>
+              <Text style={styles.detailModalTitle} numberOfLines={2}>
+                {selectedItem.name || (isActivity ? "Activity" : "Spot")}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowItemDetail(false)}
+                style={styles.detailModalClose}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.detailModalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {photos.length > 0 && (
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.detailPhotoScroll}
+                >
+                  {photos.map((photo: string, index: number) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => {
+                        setCurrentSpotImages(photos);
+                        setSelectedImageIndex(index);
+                        setShowImageViewer(true);
+                      }}
+                    >
+                      <Image
+                        source={{ uri: photo }}
+                        style={styles.detailPhoto}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              {photos.length > 1 && (
+                <Text style={styles.photoHint}>
+                  Swipe for more photos • Tap to enlarge
+                </Text>
+              )}
+
+              <View style={styles.detailSection}>
+                <View style={styles.detailRow}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={20}
+                    color={theme.colors.gray}
+                  />
+                  <Text style={styles.detailText}>
+                    {selectedItem.displayDate
+                      ? new Date(selectedItem.displayDate).toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          }
+                        )
+                      : "No date"}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Ionicons
+                    name={isActivity ? "fitness" : "pricetag-outline"}
+                    size={20}
+                    color={theme.colors.gray}
+                  />
+                  <Text style={styles.detailText}>
+                    {isActivity
+                      ? selectedItem.type || "Activity"
+                      : selectedItem.category || "Uncategorized"}
+                  </Text>
+                </View>
+
+                {isActivity && selectedItem.distance && (
+                  <View style={styles.detailRow}>
+                    <Ionicons
+                      name="speedometer-outline"
+                      size={20}
+                      color={theme.colors.gray}
+                    />
+                    <Text style={styles.detailText}>
+                      {(selectedItem.distance / 1000).toFixed(2)} km
+                      {selectedItem.duration &&
+                        ` • ${formatDuration(selectedItem.duration)}`}
+                    </Text>
+                  </View>
+                )}
+
+                {!isActivity && selectedItem.rating && (
+                  <View style={styles.detailRow}>
+                    <Ionicons
+                      name="star"
+                      size={20}
+                      color={theme.colors.burntOrange}
+                    />
+                    <Text style={styles.detailText}>
+                      {selectedItem.rating} / 5
+                    </Text>
+                  </View>
+                )}
+
+                {(selectedItem.description || selectedItem.notes) && (
+                  <View style={styles.detailDescriptionContainer}>
+                    <Text style={styles.detailLabel}>Notes</Text>
+                    <Text style={styles.detailDescription}>
+                      {selectedItem.description || selectedItem.notes}
+                    </Text>
+                  </View>
+                )}
+
+                {selectedItem.location && (
+                  <View style={styles.detailRow}>
+                    <Ionicons
+                      name="location-outline"
+                      size={20}
+                      color={theme.colors.gray}
+                    />
+                    <Text style={styles.detailText} numberOfLines={2}>
+                      {selectedItem.location.latitude.toFixed(5)},{" "}
+                      {selectedItem.location.longitude.toFixed(5)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     );
   };
 
@@ -804,360 +1609,91 @@ export default function TripDetailScreen() {
         </View>
       </View>
 
-      <View style={styles.viewToggle}>
+      {/* Tab Bar */}
+      <View style={styles.tabBar}>
         <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            viewMode === "list" && styles.toggleActive,
-          ]}
-          onPress={() => setViewMode("list")}
+          style={[styles.tab, activeTab === "spots" && styles.tabActive]}
+          onPress={() => setActiveTab("spots")}
         >
           <Ionicons
-            name="list"
+            name="location"
             size={20}
-            color={viewMode === "list" ? "white" : theme.colors.gray}
+            color={
+              activeTab === "spots" ? theme.colors.forest : theme.colors.gray
+            }
           />
           <Text
             style={[
-              styles.toggleText,
-              viewMode === "list" && styles.toggleTextActive,
+              styles.tabText,
+              activeTab === "spots" && styles.tabTextActive,
             ]}
           >
-            List
+            Spots
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            viewMode === "map" && styles.toggleActive,
-          ]}
-          onPress={() => setViewMode("map")}
+          style={[styles.tab, activeTab === "photos" && styles.tabActive]}
+          onPress={() => setActiveTab("photos")}
         >
           <Ionicons
-            name="map"
+            name="images"
             size={20}
-            color={viewMode === "map" ? "white" : theme.colors.gray}
+            color={
+              activeTab === "photos" ? theme.colors.forest : theme.colors.gray
+            }
           />
           <Text
             style={[
-              styles.toggleText,
-              viewMode === "map" && styles.toggleTextActive,
+              styles.tabText,
+              activeTab === "photos" && styles.tabTextActive,
             ]}
           >
-            Map
+            Photos
           </Text>
+          {allPhotos.length > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{allPhotos.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "chat" && styles.tabActive]}
+          onPress={() => setActiveTab("chat")}
+        >
+          <Ionicons
+            name="chatbubbles"
+            size={20}
+            color={
+              activeTab === "chat" ? theme.colors.forest : theme.colors.gray
+            }
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "chat" && styles.tabTextActive,
+            ]}
+          >
+            Chat
+          </Text>
+          {!canAccessChat && (
+            <Ionicons
+              name="lock-closed"
+              size={12}
+              color={theme.colors.gray}
+              style={{ marginLeft: 4 }}
+            />
+          )}
         </TouchableOpacity>
       </View>
 
-      {viewMode === "list" ? (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {trip.cover_photo ? (
-            <View style={styles.coverPhotoContainer}>
-              <View
-                style={{
-                  position: "absolute",
-                  width: 900,
-                  height: 900,
-                  left: -300,
-                  top: -350,
-                  transform: [
-                    { translateX: trip.cover_photo_position?.x || 0 },
-                    { translateY: trip.cover_photo_position?.y || 0 },
-                  ],
-                }}
-              >
-                <Image
-                  source={{ uri: trip.cover_photo }}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    resizeMode: "contain",
-                  }}
-                />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.coverPhotoPlaceholder}>
-              <Ionicons name="images-outline" size={48} color="#ccc" />
-              <Text style={styles.placeholderText}>No cover photo yet</Text>
-              {processedSpots.length > 0 &&
-                processedSpots[0].photos?.length > 0 && (
-                  <Text style={styles.placeholderHint}>
-                    (Using first spot photo as cover)
-                  </Text>
-                )}
-            </View>
-          )}
+      {/* Tab Content */}
+      {activeTab === "spots" && renderSpotsTab()}
+      {activeTab === "photos" && renderPhotosTab()}
+      {activeTab === "chat" && renderChatTab()}
 
-          <View style={styles.tripInfo}>
-            <View style={styles.dateContainer}>
-              <Ionicons
-                name="calendar-outline"
-                size={20}
-                color={theme.colors.gray}
-              />
-              <Text style={styles.dateText}>
-                {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
-              </Text>
-            </View>
-
-            {trip.auto_generated && (
-              <View style={styles.autoBadge}>
-                <Ionicons name="sparkles" size={16} color="#fff" />
-                <Text style={styles.autoBadgeText}>Auto-generated trip</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{tripActivities.length}</Text>
-              <Text style={styles.statLabel}>Activities</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{processedSpots.length}</Text>
-              <Text style={styles.statLabel}>Spots</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{getDaysCount()}</Text>
-              <Text style={styles.statLabel}>Days</Text>
-            </View>
-          </View>
-
-          {weatherData && (
-            <View style={styles.weatherCard}>
-              <View style={styles.weatherHeader}>
-                <Ionicons
-                  name="partly-sunny"
-                  size={20}
-                  color={theme.colors.forest}
-                />
-                <Text style={styles.weatherTitle}>Weather Forecast</Text>
-              </View>
-              {weatherData?.daily?.time ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.weatherDays}>
-                    {weatherData.daily.time.map((_: any, index: number) =>
-                      renderWeatherDay(weatherData.daily, index)
-                    )}
-                  </View>
-                </ScrollView>
-              ) : (
-                <Text style={styles.weatherError}>
-                  Weather data unavailable
-                </Text>
-              )}
-            </View>
-          )}
-          {tripActivities.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Activities ({tripActivities.length})
-              </Text>
-              {tripActivities.map((activity: any) => (
-                <TouchableOpacity
-                  key={activity.tripItemId}
-                  style={styles.itemCard}
-                  onPress={() => handleActivityPress(activity)}
-                  activeOpacity={0.7}
-                >
-                  {/* Show activity photo if available */}
-                  {activity.photos && activity.photos.length > 0 ? (
-                    <Image
-                      source={{ uri: activity.photos[0] }}
-                      style={styles.spotImage}
-                      onError={(e) => {
-                        console.error(
-                          "Activity image failed to load:",
-                          activity.photos[0]
-                        );
-                      }}
-                    />
-                  ) : (
-                    <View style={styles.itemIcon}>
-                      <Ionicons
-                        name="fitness"
-                        size={24}
-                        color={theme.colors.forest}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>
-                      {activity.name || "Unnamed Activity"}
-                    </Text>
-                    <Text style={styles.itemMeta}>
-                      {activity.displayDate
-                        ? new Date(activity.displayDate).toLocaleDateString()
-                        : "No date"}
-                      {activity.distance
-                        ? ` • ${(activity.distance / 1000).toFixed(1)} km`
-                        : ""}
-                      {activity.duration
-                        ? ` • ${formatDuration(activity.duration)}`
-                        : ""}
-                    </Text>
-                    {/* Show photo count for activities */}
-                    {activity.photos && activity.photos.length > 1 && (
-                      <Text style={styles.photoCount}>
-                        📸 {activity.photos.length} photos
-                      </Text>
-                    )}
-                  </View>
-                  {trip.created_by === user?.id && (
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleRemoveItem(
-                          activity.tripItemId,
-                          activity.name || "this activity"
-                        );
-                      }}
-                      style={styles.removeButton}
-                    >
-                      <Ionicons name="close-circle" size={20} color="#999" />
-                    </TouchableOpacity>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {processedSpots.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Spots ({processedSpots.length})
-              </Text>
-              {processedSpots.map((spot: any, index: number) => {
-                return (
-                  <TouchableOpacity
-                    key={spot.tripItemId || `spot-${index}`}
-                    style={styles.itemCard}
-                    onPress={() => handleSpotPress(spot)}
-                    activeOpacity={0.7}
-                  >
-                    {spot.photos && spot.photos.length > 0 ? (
-                      <Image
-                        source={{ uri: spot.photos[0] }}
-                        style={styles.spotImage}
-                        onError={(e) => {
-                          console.error(
-                            "Image failed to load:",
-                            spot.photos[0]
-                          );
-                        }}
-                      />
-                    ) : (
-                      <View style={styles.itemIcon}>
-                        <Ionicons
-                          name="location"
-                          size={24}
-                          color={theme.colors.burntOrange}
-                        />
-                      </View>
-                    )}
-                    <View style={styles.itemInfo}>
-                      <Text style={styles.itemName}>
-                        {spot.name || "Unnamed Spot"}
-                      </Text>
-                      <Text style={styles.itemMeta}>
-                        {spot.category || "No category"}
-                        {spot.displayDate
-                          ? ` • ${new Date(
-                              spot.displayDate
-                            ).toLocaleDateString()}`
-                          : ""}
-                      </Text>
-                      {spot.description && (
-                        <Text style={styles.itemDescription} numberOfLines={1}>
-                          {spot.description}
-                        </Text>
-                      )}
-                      {spot.photos && spot.photos.length > 1 && (
-                        <Text style={styles.photoCount}>
-                          📸 {spot.photos.length} photos
-                        </Text>
-                      )}
-                    </View>
-                    {trip.created_by === user?.id && (
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleRemoveItem(
-                            spot.tripItemId,
-                            spot.name || "this spot"
-                          );
-                        }}
-                        style={styles.removeButton}
-                      >
-                        <Ionicons name="close-circle" size={20} color="#999" />
-                      </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
-          {tripActivities.length === 0 && processedSpots.length === 0 && (
-            <View style={styles.emptyState}>
-              <Ionicons name="trail-sign-outline" size={48} color="#ccc" />
-              <Text style={styles.emptyText}>
-                No activities or spots added yet
-              </Text>
-              <Text style={styles.emptySubtext}>
-                Add activities and spots to build your trip memories
-              </Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={styles.addItemsButton}
-            onPress={() => {
-              Alert.alert(
-                "Add Items",
-                "You can add items to this trip from the saved spots or activities screens using the + button."
-              );
-            }}
-          >
-            <Ionicons name="add-circle-outline" size={24} color="#fff" />
-            <Text style={styles.addItemsText}>Add Activities & Spots</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      ) : (
-        <View style={styles.mapContainer}>
-          <WebView
-            source={{
-              html: generateTripMapHTML(tripActivities, processedSpots),
-            }}
-            style={styles.map}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-          />
-          <View style={styles.mapLegend}>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendDot,
-                  { backgroundColor: theme.colors.burntOrange },
-                ]}
-              />
-              <Text style={styles.legendText}>Spots</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendLine,
-                  { backgroundColor: theme.colors.forest },
-                ]}
-              />
-              <Text style={styles.legendText}>Activities</Text>
-            </View>
-          </View>
-        </View>
-      )}
-
+      <ItemDetailModal />
       <ShareModal />
 
       <ImageViewer
@@ -1223,50 +1759,65 @@ const styles = StyleSheet.create({
   editButton: {
     padding: 5,
   },
-  viewToggle: {
-    flexDirection: "row",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    gap: 10,
-    backgroundColor: "#fff",
+  headerButton: {
+    padding: 5,
+    marginLeft: 10,
   },
-  toggleButton: {
+
+  // Tab Bar
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  tab: {
     flex: 1,
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 8,
-    backgroundColor: "white",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 6,
   },
-  toggleActive: {
-    backgroundColor: theme.colors.forest,
-    borderColor: theme.colors.forest,
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.forest,
   },
-  toggleText: {
+  tabText: {
     fontSize: 14,
-    color: theme.colors.gray,
     fontWeight: "500",
-    marginLeft: 6,
+    color: theme.colors.gray,
   },
-  toggleTextActive: {
+  tabTextActive: {
+    color: theme.colors.forest,
+  },
+  tabBadge: {
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 4,
+  },
+  tabBadgeText: {
     color: "white",
+    fontSize: 10,
+    fontWeight: "600",
   },
+
+  // Spots Tab
   content: {
     flex: 1,
   },
   coverPhotoPlaceholder: {
     width: "100%",
-    height: 250,
+    height: 200,
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
   },
   coverPhotoContainer: {
     width: "100%",
-    height: 250,
+    height: 200,
     overflow: "hidden",
     backgroundColor: theme.colors.offWhite,
     position: "relative",
@@ -1275,12 +1826,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: "#999",
     fontSize: 14,
-  },
-  placeholderHint: {
-    marginTop: 5,
-    color: "#bbb",
-    fontSize: 12,
-    fontStyle: "italic",
   },
   tripInfo: {
     padding: 20,
@@ -1333,55 +1878,32 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     marginTop: 4,
   },
-  weatherCard: {
-    backgroundColor: "white",
-    marginHorizontal: 0,
-    marginVertical: 10,
-    padding: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  weatherHeader: {
+  mapToggleButton: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    margin: 15,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.forest,
+    gap: 8,
   },
-  weatherTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: theme.colors.navy,
-    marginLeft: 8,
-  },
-  weatherDays: {
-    flexDirection: "row",
-    gap: 15,
-  },
-  weatherDay: {
-    alignItems: "center",
-    padding: 10,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 8,
-    minWidth: 80,
-  },
-  weatherDate: {
-    fontSize: 11,
-    color: theme.colors.gray,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  weatherTemp: {
+  mapToggleText: {
     fontSize: 14,
     fontWeight: "600",
-    color: theme.colors.navy,
-    marginTop: 8,
+    color: theme.colors.forest,
   },
-  weatherPrecip: {
-    fontSize: 11,
-    color: theme.colors.burntOrange,
-    marginTop: 4,
+  inlineMapContainer: {
+    height: 300,
+    marginHorizontal: 15,
+    marginBottom: 15,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  inlineMap: {
+    flex: 1,
   },
   section: {
     marginTop: 10,
@@ -1401,11 +1923,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   itemIcon: {
     width: 40,
@@ -1444,6 +1961,11 @@ const styles = StyleSheet.create({
   removeButton: {
     padding: 5,
   },
+  photoCount: {
+    fontSize: 11,
+    color: theme.colors.forest,
+    fontStyle: "italic",
+  },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
@@ -1476,52 +1998,202 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 8,
   },
-  mapContainer: {
+
+  // Photos Tab
+  photosContainer: {
     flex: 1,
+    backgroundColor: "#fff",
+  },
+  photosGrid: {
+    padding: 2,
+  },
+  photoThumbnailContainer: {
+    width: (SCREEN_WIDTH - 8) / 3,
+    height: (SCREEN_WIDTH - 8) / 3,
+    padding: 2,
     position: "relative",
   },
-  map: {
-    flex: 1,
+  photoThumbnail: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 4,
   },
-  mapLegend: {
+  photoSourceBadge: {
     position: "absolute",
-    bottom: 20,
-    left: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: "row",
-    gap: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    bottom: 6,
+    right: 6,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 10,
+    padding: 4,
   },
-  legendItem: {
-    flexDirection: "row",
+  emptyPhotos: {
+    flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
   },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 6,
+  emptyPhotosText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#999",
+    marginTop: 20,
   },
-  legendLine: {
-    width: 20,
-    height: 3,
-    marginRight: 6,
+  emptyPhotosSubtext: {
+    fontSize: 14,
+    color: "#bbb",
+    marginTop: 10,
+    textAlign: "center",
   },
-  legendText: {
+
+  // Chat Tab
+  chatContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  messagesList: {
+    padding: 15,
+    flexGrow: 1,
+  },
+  messageRow: {
+    flexDirection: "row",
+    marginBottom: 12,
+    alignItems: "flex-end",
+  },
+  messageRowOwn: {
+    justifyContent: "flex-end",
+  },
+  messageRowOther: {
+    justifyContent: "flex-start",
+  },
+  messageAvatar: {
+    marginRight: 8,
+  },
+  avatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  avatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.forest,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitial: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  messageBubble: {
+    maxWidth: "75%",
+    padding: 12,
+    borderRadius: 18,
+  },
+  messageBubbleOwn: {
+    backgroundColor: theme.colors.forest,
+    borderBottomRightRadius: 4,
+  },
+  messageBubbleOther: {
+    backgroundColor: theme.colors.offWhite,
+    borderBottomLeftRadius: 4,
+  },
+  messageUsername: {
     fontSize: 12,
-    color: theme.colors.gray,
-    fontWeight: "500",
+    fontWeight: "600",
+    color: theme.colors.forest,
+    marginBottom: 4,
   },
-  headerButton: {
-    padding: 5,
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  messageTextOwn: {
+    color: "white",
+  },
+  messageTextOther: {
+    color: theme.colors.navy,
+  },
+  messageTime: {
+    fontSize: 10,
+    marginTop: 4,
+  },
+  messageTimeOwn: {
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "right",
+  },
+  messageTimeOther: {
+    color: theme.colors.gray,
+  },
+  emptyChatContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 100,
+  },
+  emptyChatText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#999",
+    marginTop: 20,
+  },
+  emptyChatSubtext: {
+    fontSize: 14,
+    color: "#bbb",
+    marginTop: 10,
+  },
+  chatInputContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    padding: 10,
+    paddingBottom: 20,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+  },
+  chatInput: {
+    flex: 1,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 15,
+    maxHeight: 100,
+    color: theme.colors.navy,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.forest,
+    alignItems: "center",
+    justifyContent: "center",
     marginLeft: 10,
   },
+  sendButtonDisabled: {
+    backgroundColor: theme.colors.borderGray,
+  },
+  chatLocked: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  chatLockedTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#999",
+    marginTop: 20,
+  },
+  chatLockedText: {
+    fontSize: 14,
+    color: "#bbb",
+    marginTop: 10,
+    textAlign: "center",
+  },
+
+  // Share Modal
   shareOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1628,16 +2300,134 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     fontWeight: "500",
   },
-  weatherError: {
-    fontSize: 14,
-    color: theme.colors.gray,
-    textAlign: "center",
-    padding: 20,
-    fontStyle: "italic",
+
+  // Item Detail Modal
+  detailModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
-  photoCount: {
+  detailModalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "85%",
+  },
+  detailModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  detailModalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    flex: 1,
+    marginRight: 10,
+  },
+  detailModalClose: {
+    padding: 5,
+  },
+  detailModalScroll: {
+    maxHeight: 500,
+  },
+  detailPhotoScroll: {
+    height: 250,
+  },
+  detailPhoto: {
+    width: SCREEN_WIDTH,
+    height: 250,
+  },
+  photoHint: {
+    textAlign: "center",
+    fontSize: 12,
+    color: theme.colors.gray,
+    paddingVertical: 8,
+  },
+  detailSection: {
+    padding: 20,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  detailText: {
+    fontSize: 16,
+    color: theme.colors.navy,
+    marginLeft: 12,
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.gray,
+    marginBottom: 8,
+  },
+  detailDescriptionContainer: {
+    marginTop: 10,
+    marginBottom: 15,
+    padding: 15,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 10,
+  },
+  detailDescription: {
+    fontSize: 15,
+    color: theme.colors.navy,
+    lineHeight: 22,
+  },
+  weatherCard: {
+    backgroundColor: "white",
+    marginHorizontal: 15,
+    marginVertical: 10,
+    padding: 15,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  weatherHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  weatherTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginLeft: 8,
+  },
+  weatherDays: {
+    flexDirection: "row",
+    gap: 15,
+  },
+  weatherDay: {
+    alignItems: "center",
+    padding: 10,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 8,
+    minWidth: 80,
+  },
+  weatherDate: {
     fontSize: 11,
-    color: theme.colors.forest,
-    fontStyle: "italic",
+    color: theme.colors.gray,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  weatherTemp: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.navy,
+    marginTop: 8,
+  },
+  weatherPrecip: {
+    fontSize: 11,
+    color: theme.colors.burntOrange,
+    marginTop: 4,
   },
 });
