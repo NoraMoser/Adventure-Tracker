@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
 import {
   Dimensions,
   Image,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,22 +18,38 @@ const { width, height } = Dimensions.get('window');
 interface ImageViewerProps {
   visible: boolean;
   images: string[];
-  imageIndex: number;
+  imageIndex?: number;
   onClose: () => void;
 }
 
 export default function ImageViewer({ 
   visible, 
   images, 
-  imageIndex, 
+  imageIndex = 0, 
   onClose 
 }: ImageViewerProps) {
+  const [currentIndex, setCurrentIndex] = useState(imageIndex);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const newIndex = Math.round(offsetX / width);
+    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < images.length) {
+      setCurrentIndex(newIndex);
+    }
+  };
+
+  // Reset currentIndex when imageIndex prop changes or modal opens
+  const handleModalShow = () => {
+    setCurrentIndex(imageIndex);
+  };
+
   return (
     <Modal 
       visible={visible} 
       transparent={false} 
       animationType="fade"
       onRequestClose={onClose}
+      onShow={handleModalShow}
     >
       <View style={styles.container}>
         <TouchableOpacity 
@@ -46,6 +65,7 @@ export default function ImageViewer({
           pagingEnabled 
           showsHorizontalScrollIndicator={false}
           contentOffset={{ x: imageIndex * width, y: 0 }}
+          onMomentumScrollEnd={handleScroll}
         >
           {images.map((uri, index) => (
             <View key={index} style={styles.imageContainer}>
@@ -58,11 +78,13 @@ export default function ImageViewer({
           ))}
         </ScrollView>
         
-        <View style={styles.counter}>
-          <Text style={styles.counterText}>
-            {imageIndex + 1} / {images.length}
-          </Text>
-        </View>
+        {images.length > 1 && (
+          <View style={styles.counter}>
+            <Text style={styles.counterText}>
+              {currentIndex + 1} / {images.length}
+            </Text>
+          </View>
+        )}
       </View>
     </Modal>
   );
