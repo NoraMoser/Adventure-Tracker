@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Alert,
   Image,
@@ -112,7 +113,6 @@ export default function EditActivityScreen() {
       const data = JSON.parse(event.nativeEvent.data);
 
       if (data.type === "routeUpdated") {
-   
         // Update both route and distance
         setRoute(data.route || []);
         setDistance(data.distance || 0);
@@ -362,11 +362,11 @@ export default function EditActivityScreen() {
         <span id="instructionText">📍 Click on the map to add points to your route</span>
       </div>
       <div class="control-panel">
-        <span id="continueBtn" class="control-button" onclick="continueRoute()">Continue Route</span>
-        <span id="redrawBtn" class="control-button danger-button" onclick="toggleRedraw()">Redraw Entire Route</span>
-        <span class="control-button" onclick="undoLastPoint()">Undo Last</span>
-        <span class="control-button" onclick="clearChanges()">Clear Changes</span>
-      </div>
+  <span id="continueBtn" class="control-button" onclick="continueRoute()">Extend Route</span>
+  <span id="redrawBtn" class="control-button danger-button" onclick="toggleRedraw()">Redraw All</span>
+  <span id="undoBtn" class="control-button" onclick="undoLastPoint()">Undo</span>
+  <span id="clearBtn" class="control-button" onclick="clearChanges()">Reset</span>
+</div>
       
       <div id="redrawNotice" class="redraw-notice">
         ⚠️ Drawing new route - Click "Save New Route" when done!
@@ -462,30 +462,54 @@ export default function EditActivityScreen() {
         // Initialize with existing route
         drawExistingRoute();
 
-        // Continue route function
-        function continueRoute() {
-          if (isRedrawing) {
-            alert('Please finish or cancel the route redraw first');
-            return;
-          }
-          
-          isDrawing = !isDrawing;
-          var btn = document.getElementById('continueBtn');
-          var instructions = document.getElementById('instructions');
-          
-          if (isDrawing) {
-            btn.innerText = 'Stop Drawing';
-            btn.classList.add('drawing-mode');
-            instructions.classList.add('active');
-            document.getElementById('instructionText').innerText = '📍 Click on the map to add points to your route';
-            map.getContainer().style.cursor = 'crosshair';
-          } else {
-            btn.innerText = 'Continue Route';
-            btn.classList.remove('drawing-mode');
-            instructions.classList.remove('active');
-            map.getContainer().style.cursor = '';
-          }
-        }
+       // Continue route function
+function continueRoute() {
+  if (isRedrawing) {
+    alert('Please finish or cancel the route redraw first');
+    return;
+  }
+  
+  var btn = document.getElementById('continueBtn');
+  var instructions = document.getElementById('instructions');
+  
+  if (isDrawing) {
+    // Stop drawing mode
+    isDrawing = false;
+    btn.innerText = 'Continue Route';
+    btn.classList.remove('drawing-mode');
+    instructions.classList.remove('active');
+    map.getContainer().style.cursor = '';
+    
+    // Merge extension points into existing route if any
+    if (extensionPoints.length > 0) {
+      existingRoute = existingRoute.concat(extensionPoints);
+      extensionPoints = [];
+      
+      // Clear extension visuals
+      extensionMarkers.forEach(function(marker) {
+        map.removeLayer(marker);
+      });
+      extensionMarkers = [];
+      
+      if (extensionLine) {
+        map.removeLayer(extensionLine);
+        extensionLine = null;
+      }
+      
+      // Redraw and update
+      drawExistingRoute();
+      updateRoute();
+    }
+  } else {
+    // Start drawing mode - stays on until clicked again
+    isDrawing = true;
+    btn.innerText = 'Done Extending';
+    btn.classList.add('drawing-mode');
+    instructions.classList.add('active');
+    document.getElementById('instructionText').innerText = '📍 Click to add points. Click "Done Extending" when finished.';
+    map.getContainer().style.cursor = 'crosshair';
+  }
+}
         
         // Start redraw function
         function startRedraw() {
@@ -632,62 +656,68 @@ export default function EditActivityScreen() {
   document.body.appendChild(successDiv);
 }
 
-        // Undo last point function
-        function undoLastPoint() {
-          if (isRedrawing && newRoutePoints.length > 0) {
-            newRoutePoints.pop();
-            
-            if (newRouteMarkers.length > 0) {
-              var lastMarker = newRouteMarkers.pop();
-              map.removeLayer(lastMarker);
-            }
-            
-            if (newRouteLine) {
-              map.removeLayer(newRouteLine);
-              newRouteLine = null;
-            }
-            
-            if (newRoutePoints.length > 0) {
-              newRouteLine = L.polyline(newRoutePoints, {
-                color: '#dc3545',
-                weight: 4,
-                opacity: 0.8,
-                dashArray: '10, 5'
-              }).addTo(map);
-            }
-            
-            updateRouteForRedraw();
-            
-          } else if (extensionPoints.length > 0) {
-            extensionPoints.pop();
-            
-            if (extensionMarkers.length > 0) {
-              var lastMarker = extensionMarkers.pop();
-              map.removeLayer(lastMarker);
-            }
-            
-            if (extensionLine) {
-              map.removeLayer(extensionLine);
-              extensionLine = null;
-            }
-            
-            if (extensionPoints.length > 0) {
-              var lineToDraw = extensionPoints;
-              if (existingRoute.length > 0) {
-                lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
-              }
-              
-              extensionLine = L.polyline(lineToDraw, {
-                color: '#cc5500',
-                weight: 4,
-                opacity: 0.8,
-                dashArray: '10, 5'
-              }).addTo(map);
-            }
-            
-            updateRoute();
-          }
-        }
+       // Undo last point function
+function undoLastPoint() {
+  if (isRedrawing) {
+    if (newRoutePoints.length > 0) {
+      newRoutePoints.pop();
+      
+      if (newRouteMarkers.length > 0) {
+        var lastMarker = newRouteMarkers.pop();
+        if (lastMarker) map.removeLayer(lastMarker);
+      }
+      
+      if (newRouteLine) {
+        map.removeLayer(newRouteLine);
+        newRouteLine = null;
+      }
+      
+      if (newRoutePoints.length > 0) {
+        newRouteLine = L.polyline(newRoutePoints, {
+          color: '#dc3545',
+          weight: 4,
+          opacity: 0.8,
+          dashArray: '10, 5'
+        }).addTo(map);
+      }
+      
+      updateRouteForRedraw();
+    }
+  } else if (isDrawing) {
+    if (extensionPoints.length > 0) {
+      extensionPoints.pop();
+      
+      if (extensionMarkers.length > 0) {
+        var lastMarker = extensionMarkers.pop();
+        if (lastMarker) map.removeLayer(lastMarker);
+      }
+      
+      if (extensionLine) {
+        map.removeLayer(extensionLine);
+        extensionLine = null;
+      }
+      
+      if (extensionPoints.length > 0) {
+        var lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
+        extensionLine = L.polyline(lineToDraw, {
+          color: '#cc5500',
+          weight: 4,
+          opacity: 0.8,
+          dashArray: '10, 5'
+        }).addTo(map);
+      }
+      
+      updateRoute();
+    }
+  } else {
+    // Not in any drawing mode - undo from existing route
+    if (existingRoute.length > 1) {
+      existingRoute.pop();
+      drawExistingRoute();
+      updateRoute();
+    }
+  }
+}
         
         // Clear extension points function
         function clearExtensionPoints() {
@@ -703,44 +733,71 @@ export default function EditActivityScreen() {
           }
         }
 
-        // Clear changes function
-        function clearChanges() {
-          if (isRedrawing) {
-            isRedrawing = false;
-            
-            var btn = document.getElementById('redrawBtn');
-            btn.innerText = 'Redraw Entire Route';
-            btn.classList.remove('drawing-mode');
-            
-            var instructions = document.getElementById('instructions');
-            instructions.classList.remove('active');
-            document.getElementById('redrawNotice').classList.remove('active');
-            map.getContainer().style.cursor = '';
-            
-            newRoutePoints = [];
-            newRouteMarkers.forEach(function(marker) {
-              map.removeLayer(marker);
-            });
-            newRouteMarkers = [];
-            
-            if (newRouteLine) {
-              map.removeLayer(newRouteLine);
-              newRouteLine = null;
-            }
-            
-            existingRoute = [...originalRoute];
-            drawExistingRoute();
-            
-          } else {
-            clearExtensionPoints();
-          }
-          
-          updateRoute();
-          
-          if (isDrawing) {
-            continueRoute();
-          }
-        }
+       // Clear changes function
+function clearChanges() {
+  if (isRedrawing) {
+    // Cancel redraw mode
+    isRedrawing = false;
+    
+    var btn = document.getElementById('redrawBtn');
+    btn.innerText = 'Redraw Entire Route';
+    btn.classList.remove('drawing-mode');
+    
+    var instructions = document.getElementById('instructions');
+    instructions.classList.remove('active');
+    document.getElementById('redrawNotice').classList.remove('active');
+    map.getContainer().style.cursor = '';
+    
+    // Clear new route points and markers
+    newRoutePoints = [];
+    newRouteMarkers.forEach(function(marker) {
+      if (marker) map.removeLayer(marker);
+    });
+    newRouteMarkers = [];
+    
+    if (newRouteLine) {
+      map.removeLayer(newRouteLine);
+      newRouteLine = null;
+    }
+    
+    // Restore original route
+    existingRoute = JSON.parse(JSON.stringify(originalRoute));
+    drawExistingRoute();
+    updateRoute();
+    
+  } else if (isDrawing) {
+    // Clear extension points while in drawing mode
+    extensionPoints = [];
+    extensionMarkers.forEach(function(marker) {
+      if (marker) map.removeLayer(marker);
+    });
+    extensionMarkers = [];
+    
+    if (extensionLine) {
+      map.removeLayer(extensionLine);
+      extensionLine = null;
+    }
+    
+    updateRoute();
+    
+  } else {
+    // Not in any mode - restore to original
+    existingRoute = JSON.parse(JSON.stringify(originalRoute));
+    extensionPoints = [];
+    extensionMarkers.forEach(function(marker) {
+      if (marker) map.removeLayer(marker);
+    });
+    extensionMarkers = [];
+    
+    if (extensionLine) {
+      map.removeLayer(extensionLine);
+      extensionLine = null;
+    }
+    
+    drawExistingRoute();
+    updateRoute();
+  }
+}
 
         // Map click handler
         map.on('click', function(e) {
@@ -1070,7 +1127,7 @@ export default function EditActivityScreen() {
           transparent={false}
           onRequestClose={() => setShowMap(false)}
         >
-          <View style={styles.mapModal}>
+          <SafeAreaView style={styles.mapModal}>
             <View style={styles.mapHeader}>
               <TouchableOpacity
                 style={styles.backButton}
@@ -1086,22 +1143,19 @@ export default function EditActivityScreen() {
               <TouchableOpacity
                 style={styles.doneButton}
                 onPress={() => {
-                  // Check if route was redrawn by injecting JavaScript
                   webViewRef.current?.injectJavaScript(`
-      (function() {
-        if (window.routeWasRedrawn && window.savedRedrawRoute) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'routeUpdated',
-            route: window.savedRedrawRoute.route,
-            distance: window.savedRedrawRoute.distance
-          }));
-          return true;
-        }
-        return false;
-      })();
-    `);
-
-                  // Small delay to let message process, then close
+              (function() {
+                if (window.routeWasRedrawn && window.savedRedrawRoute) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'routeUpdated',
+                    route: window.savedRedrawRoute.route,
+                    distance: window.savedRedrawRoute.distance
+                  }));
+                  return true;
+                }
+                return false;
+              })();
+            `);
                   setTimeout(() => {
                     setShowMap(false);
                   }, 100);
@@ -1137,7 +1191,7 @@ export default function EditActivityScreen() {
                 console.log("WebView loaded successfully");
               }}
             />
-          </View>
+          </SafeAreaView>
         </Modal>
       )}
 
@@ -1349,16 +1403,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "ios" ? 50 : 20,
-    paddingBottom: 16,
+    paddingVertical: 12,
     backgroundColor: theme.colors.white,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
   },
   backButton: {
     padding: 8,

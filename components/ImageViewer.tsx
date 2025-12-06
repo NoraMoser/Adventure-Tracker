@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -18,17 +18,18 @@ const { width, height } = Dimensions.get('window');
 interface ImageViewerProps {
   visible: boolean;
   images: string[];
-  imageIndex?: number;
+  initialIndex?: number;
   onClose: () => void;
 }
 
 export default function ImageViewer({ 
   visible, 
   images, 
-  imageIndex = 0, 
+  initialIndex = 0, 
   onClose 
 }: ImageViewerProps) {
-  const [currentIndex, setCurrentIndex] = useState(imageIndex);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const scrollRef = useRef<ScrollView>(null);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -38,9 +39,16 @@ export default function ImageViewer({
     }
   };
 
-  // Reset currentIndex when imageIndex prop changes or modal opens
+  // Reset currentIndex and scroll to correct position when modal opens
   const handleModalShow = () => {
-    setCurrentIndex(imageIndex);
+    setCurrentIndex(initialIndex);
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        x: initialIndex * width,
+        y: 0,
+        animated: false,
+      });
+    }, 50);
   };
 
   return (
@@ -61,10 +69,10 @@ export default function ImageViewer({
         </TouchableOpacity>
         
         <ScrollView 
+          ref={scrollRef}
           horizontal 
           pagingEnabled 
           showsHorizontalScrollIndicator={false}
-          contentOffset={{ x: imageIndex * width, y: 0 }}
           onMomentumScrollEnd={handleScroll}
         >
           {images.map((uri, index) => (

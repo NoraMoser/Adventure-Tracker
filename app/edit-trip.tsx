@@ -173,6 +173,7 @@ export default function EditTripScreen() {
   const [hasInitializedPosition, setHasInitializedPosition] = useState(false);
   const [isUpdatingPosition, setIsUpdatingPosition] = useState(false);
 
+  const [datesLocked, setDatesLocked] = useState(false);
   // Store positions for each photo
   const [photoPositions, setPhotoPositions] = useState<{
     [key: number]: { x: number; y: number };
@@ -211,6 +212,7 @@ export default function EditTripScreen() {
     setStartDate(normalizedStart);
     setEndDate(normalizedEnd);
     setTaggedFriends(trip.tagged_friends || []);
+    setDatesLocked(trip.dates_locked || false);
 
     // Handle cover photo
     setCoverPhoto(trip.cover_photo || null);
@@ -352,6 +354,7 @@ export default function EditTripScreen() {
         tagged_friends: taggedFriends,
         cover_photo: coverPhoto,
         cover_photo_position: positionToSave,
+        dates_locked: datesLocked,
       });
 
       Alert.alert("Success", "Trip updated successfully!", [
@@ -419,6 +422,7 @@ export default function EditTripScreen() {
       if (normalized > endDate) {
         setEndDate(normalized);
       }
+      setDatesLocked(true);
     }
   };
 
@@ -432,6 +436,7 @@ export default function EditTripScreen() {
         Alert.alert("Invalid Date", "End date cannot be before start date");
       } else {
         setEndDate(normalized);
+        setDatesLocked(true);
       }
     }
   };
@@ -717,6 +722,35 @@ export default function EditTripScreen() {
             <Text style={styles.durationText}>
               Trip Duration: {getDurationInDays()} days
             </Text>
+          </View>
+
+          <View style={styles.lockToggleContainer}>
+            <View style={styles.lockToggleInfo}>
+              <Ionicons
+                name={datesLocked ? "lock-closed" : "lock-open"}
+                size={20}
+                color={datesLocked ? theme.colors.forest : theme.colors.gray}
+              />
+              <View style={styles.lockToggleText}>
+                <Text style={styles.lockToggleTitle}>Lock Trip Dates</Text>
+                <Text style={styles.lockToggleDescription}>
+                  {datesLocked
+                    ? "Dates won't auto-adjust when adding items"
+                    : "Dates will expand to fit new items"}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={datesLocked}
+              onValueChange={setDatesLocked}
+              trackColor={{
+                false: theme.colors.borderGray,
+                true: theme.colors.forest,
+              }}
+              thumbColor={
+                datesLocked ? theme.colors.white : theme.colors.lightGray
+              }
+            />
           </View>
         </View>
 
@@ -1310,6 +1344,34 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 8,
+  },
+  lockToggleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.colors.offWhite,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 15,
+  },
+  lockToggleInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  lockToggleText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  lockToggleTitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: theme.colors.navy,
+  },
+  lockToggleDescription: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
   },
 });
 

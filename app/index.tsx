@@ -1091,16 +1091,12 @@ export default function DashboardScreen() {
             <View style={styles.quickStatDivider} />
             <TouchableOpacity
               style={styles.quickStatItem}
-              onPress={() =>
-                router.push({
-                  pathname: "/saved-spots",
-                  params: { filter: "topRated" },
-                } as any)
-              }
+              onPress={() => router.push("/top-rated")}
               activeOpacity={0.7}
             >
               <Text style={styles.quickStatValue}>
-                {savedSpots.filter((s) => s.rating && s.rating >= 4).length}
+                {savedSpots.filter((s) => s.rating && s.rating >= 4).length +
+                  activities.filter((a) => a.rating && a.rating >= 4).length}
               </Text>
               <Text style={styles.quickStatLabel}>Top Rated</Text>
             </TouchableOpacity>

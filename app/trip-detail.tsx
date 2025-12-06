@@ -1088,18 +1088,13 @@ export default function TripDetailScreen() {
             </View>
           )}
 
-          <TouchableOpacity
-            style={styles.addItemsButton}
-            onPress={() => {
-              Alert.alert(
-                "Add Items",
-                "You can add items to this trip from the saved spots or activities screens using the + button."
-              );
-            }}
-          >
-            <Ionicons name="add-circle-outline" size={24} color="#fff" />
-            <Text style={styles.addItemsText}>Add Activities & Spots</Text>
-          </TouchableOpacity>
+          <View style={styles.addItemsHint}>
+            <Ionicons name="information-circle-outline" size={16} color={theme.colors.gray} />
+            <Text style={styles.addItemsHintText}>
+              To add items to this trip, go to your saved spots or activities and tap the{" "}
+              <Ionicons name="airplane" size={13} color={theme.colors.gray} /> button
+            </Text>
+          </View>
         </>
       )}
     </ScrollView>
@@ -1699,7 +1694,7 @@ export default function TripDetailScreen() {
       <ImageViewer
         visible={showImageViewer}
         images={currentSpotImages}
-        imageIndex={selectedImageIndex}
+        initialIndex={selectedImageIndex}
         onClose={() => {
           setShowImageViewer(false);
           setCurrentSpotImages([]);
@@ -2429,5 +2424,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.colors.burntOrange,
     marginTop: 4,
+  },
+  addItemsHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    paddingBottom: 30,
+    gap: 8,
+  },
+  addItemsHintText: {
+    color: theme.colors.gray,
+    textAlign: "center",
+    flex: 1,
   },
 });

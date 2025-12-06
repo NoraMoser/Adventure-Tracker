@@ -50,6 +50,7 @@ interface Activity {
   maxSpeed: number;
   notes?: string;
   photos?: string[];
+  rating?: number;
   isManualEntry?: boolean;
   createdAt: Date;
 }
@@ -68,11 +69,11 @@ interface ActivityContextType {
   startTracking: (activityType: ActivityType) => Promise<void>;
   pauseTracking: () => void;
   resumeTracking: () => void;
-stopTracking: (
-  name: string,
-  notes?: string,
-  photos?: string[]
-) => Promise<Activity | void>; 
+  stopTracking: (
+    name: string,
+    notes?: string,
+    photos?: string[]
+  ) => Promise<Activity | void>;
   deleteActivity: (activityId: string) => Promise<void>;
   addManualActivity: (activity: Partial<Activity>) => Promise<Activity>; // Change this line
   updateActivity: (
@@ -181,7 +182,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     null
   );
   const maxSpeedRef = useRef<number>(0);
-  const [lastGpsAlertTime, setLastGpsAlertTime] = useState<number>(0);
+  const lastGpsAlertTime = useRef<number>(0);
   const poorGpsStartTime = useRef<number | null>(null);
 
   useEffect(() => {
@@ -231,6 +232,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           maxSpeed: act.max_speed || 0,
           notes: act.notes,
           photos: act.photos,
+          rating: act.rating,
           isManualEntry: act.is_manual_entry || false,
           createdAt: new Date(act.created_at || act.start_time),
         }));
@@ -250,7 +252,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const cleanupTracking = async () => {
-
     if (locationSubscription.current) {
       locationSubscription.current.remove();
       locationSubscription.current = null;
@@ -284,7 +285,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setCurrentDuration(0);
     setCurrentSpeed(0);
     setCurrentLocation(null);
-    setLastGpsAlertTime(0);
     setGpsStatus("searching");
 
     poorGpsStartTime.current = null;
@@ -292,6 +292,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     pausedTimeRef.current = 0;
     pauseStartRef.current = null;
     maxSpeedRef.current = 0;
+    lastGpsAlertTime.current = 0;
   };
 
   // Helper functions for activity-based thresholds
@@ -370,16 +371,15 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     // If GPS accuracy is very poor (>3x threshold)
     if (accuracy > threshold * 3) {
       // Only alert every 5 minutes to avoid spam
-      if (now - lastGpsAlertTime > 300000) {
-        // 5 minutes
+      if (now - lastGpsAlertTime.current > 300000) {
+        lastGpsAlertTime.current = now; // Set BEFORE showing alert to prevent duplicates
         Alert.alert(
           "Poor GPS Signal",
-          `GPS accuracy has degraded to ±${Math.round(
+          `GPS accuracy is ±${Math.round(
             accuracy
-          )}m. Continue moving - the app will connect your route when signal improves.`,
-          [{ text: "OK", style: "default" }]
+          )}m. Keep moving - we'll connect your route when signal improves.`,
+          [{ text: "OK" }]
         );
-        setLastGpsAlertTime(now);
       }
 
       // Track how long GPS has been poor
@@ -387,17 +387,17 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         poorGpsStartTime.current = now;
       }
     } else {
-      // GPS improved
+      // GPS improved - only notify if it was poor for a while
       if (poorGpsStartTime.current) {
         const poorDuration = Math.round(
           (now - poorGpsStartTime.current) / 1000
         );
-        if (poorDuration > 60) {
-          // If it was poor for over a minute
+        // Only show "restored" message if poor for over 2 minutes AND we showed an alert
+        if (poorDuration > 120 && now - lastGpsAlertTime.current < 600000) {
           Alert.alert(
             "GPS Signal Restored",
-            `Good GPS signal restored after ${poorDuration} seconds. Route tracking resumed normally.`,
-            [{ text: "Great!", style: "default" }]
+            "Good signal restored. Route tracking back to normal.",
+            [{ text: "Great!" }]
           );
         }
         poorGpsStartTime.current = null;
@@ -499,7 +499,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         return newRoute;
       });
     } else {
-  
       setCurrentLocation(location);
 
       // For vehicles with poor GPS, still try to track
@@ -562,7 +561,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
       // If no last known location or it's too old, get current position
       if (!initialLocation || Date.now() - initialLocation.timestamp > 60000) {
-
         // Try with balanced accuracy first (faster)
         try {
           initialLocation = await Location.getCurrentPositionAsync({
@@ -682,7 +680,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           setGpsStatus("searching");
         }
       }, 10000);
-
     } catch (err: any) {
       console.error("Error starting tracking:", err);
       setError(err.message || "Failed to start tracking");
@@ -748,68 +745,66 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const stopTracking = async (
-  name: string,
-  notes?: string,
-  photos?: string[]
-) => {
-  try {
-    if (name === "" && notes === "DISCARD_ACTIVITY") {
+    name: string,
+    notes?: string,
+    photos?: string[]
+  ) => {
+    try {
+      if (name === "" && notes === "DISCARD_ACTIVITY") {
+        await cleanupTracking();
+        return;
+      }
+
+      if (!startTimeRef.current) {
+        throw new Error("No activity data to save");
+      }
+
+      const finalDuration = Math.floor(
+        (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
+      );
+
+      const avgSpeed =
+        currentDistance > 0
+          ? currentDistance / 1000 / (finalDuration / 3600)
+          : 0;
+
+      const activity: Activity = {
+        id: Date.now().toString(),
+        type: currentActivity,
+        name: name || `${currentActivity} activity`,
+        activityDate: new Date(),
+        startTime: new Date(startTimeRef.current),
+        endTime: new Date(),
+        duration: finalDuration,
+        distance: currentDistance,
+        route: Array.isArray(currentRoute) ? currentRoute : [],
+        averageSpeed: avgSpeed,
+        maxSpeed: maxSpeedRef.current,
+        notes: notes,
+        photos: photos,
+        isManualEntry: false,
+        createdAt: new Date(),
+      };
+
+      await saveActivity(activity);
+
+      // Get the saved activity with proper ID from database
+      const savedActivity = {
+        ...activity,
+        id: activities[0]?.id || activity.id, // Get the real ID from state after save
+      };
+
       await cleanupTracking();
-      return;
+
+      return savedActivity; // RETURN THE ACTIVITY HERE
+    } catch (err: any) {
+      console.error("Error stopping tracking:", err);
+      throw err;
     }
-
-    if (!startTimeRef.current) {
-      throw new Error("No activity data to save");
-    }
-
-    const finalDuration = Math.floor(
-      (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-    );
-
-    const avgSpeed =
-      currentDistance > 0
-        ? currentDistance / 1000 / (finalDuration / 3600)
-        : 0;
-
-    const activity: Activity = {
-      id: Date.now().toString(),
-      type: currentActivity,
-      name: name || `${currentActivity} activity`,
-      activityDate: new Date(),
-      startTime: new Date(startTimeRef.current),
-      endTime: new Date(),
-      duration: finalDuration,
-      distance: currentDistance,
-      route: Array.isArray(currentRoute) ? currentRoute : [],
-      averageSpeed: avgSpeed,
-      maxSpeed: maxSpeedRef.current,
-      notes: notes,
-      photos: photos,
-      isManualEntry: false,
-      createdAt: new Date(),
-    };
-
-    await saveActivity(activity);
-    
-    // Get the saved activity with proper ID from database
-    const savedActivity = {
-      ...activity,
-      id: activities[0]?.id || activity.id // Get the real ID from state after save
-    };
-    
-    await cleanupTracking();
-
-    return savedActivity; // RETURN THE ACTIVITY HERE
-  } catch (err: any) {
-    console.error("Error stopping tracking:", err);
-    throw err;
-  }
-
-};
+  };
 
   const savePhotosToGallery = async (photos: string[]) => {
     try {
-
       for (const photoUri of photos) {
         try {
           const asset = await MediaLibrary.createAssetAsync(photoUri);
@@ -938,6 +933,8 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         updateData.average_speed = updatedData.averageSpeed;
       if (updatedData.maxSpeed !== undefined)
         updateData.max_speed = updatedData.maxSpeed;
+      if (updatedData.rating !== undefined)
+        updateData.rating = updatedData.rating;
       if (updatedData.activityDate)
         updateData.activity_date = updatedData.activityDate.toISOString();
 
@@ -1014,8 +1011,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     };
 
     await saveActivity(newActivity);
-      return newActivity; // Add this line
-
+    return newActivity; // Add this line
   };
 
   const value: ActivityContextType = {

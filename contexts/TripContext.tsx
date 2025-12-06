@@ -36,6 +36,7 @@ export interface Trip {
   tagged_friends?: string[];
   auto_generated?: boolean;
   merged_from?: string[];
+  dates_locked?: boolean;
 }
 
 interface TripCluster {
@@ -347,6 +348,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         items: itemsByTrip[trip.id] || [],
         created_at: trip.created_at,
         merged_from: trip.merged_from || [],
+        dates_locked: trip.dates_locked || false,
       }));
 
       // Remove duplicates (in case user is both creator and tagged)
@@ -591,6 +593,9 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       if (updates.cover_photo_position !== undefined) {
         updateData.cover_photo_position = updates.cover_photo_position;
       }
+      if (updates.dates_locked !== undefined) {
+        updateData.dates_locked = updates.dates_locked;
+      }
 
       const { error } = await supabase
         .from("trips")
@@ -803,23 +808,32 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (error) throw error;
 
-      // Auto-adjust trip dates logic remains the same...
+      // Auto-adjust trip dates if not locked
       const trip = trips.find((t) => t.id === targetTripId);
-      if (trip) {
+      if (trip && !trip.dates_locked) {
         let itemDate: Date | null = null;
 
-        if (itemType === "activity" && processedItemData.activityDate) {
-          itemDate = new Date(processedItemData.activityDate);
-        } else if (
-          itemType === "spot" &&
-          (processedItemData.locationDate || processedItemData.timestamp)
-        ) {
-          itemDate = new Date(
-            processedItemData.locationDate || processedItemData.timestamp
-          );
+        if (itemType === "activity") {
+          itemDate = processedItemData.activityDate
+            ? new Date(processedItemData.activityDate)
+            : processedItemData.activity_date
+            ? new Date(processedItemData.activity_date)
+            : processedItemData.startTime
+            ? new Date(processedItemData.startTime)
+            : processedItemData.start_time
+            ? new Date(processedItemData.start_time)
+            : null;
+        } else if (itemType === "spot") {
+          itemDate = processedItemData.locationDate
+            ? new Date(processedItemData.locationDate)
+            : processedItemData.location_date
+            ? new Date(processedItemData.location_date)
+            : processedItemData.timestamp
+            ? new Date(processedItemData.timestamp)
+            : null;
         }
 
-        if (itemDate) {
+        if (itemDate && !isNaN(itemDate.getTime())) {
           const tripStart = new Date(trip.start_date);
           const tripEnd = new Date(trip.end_date);
           let needsUpdate = false;
@@ -836,9 +850,13 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           if (needsUpdate) {
+            // Normalize to avoid timezone shifts
+            const normalizeToLocal = (d: Date) =>
+              new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+
             await updateTrip(targetTripId, {
-              start_date: newStartDate,
-              end_date: newEndDate,
+              start_date: normalizeToLocal(newStartDate),
+              end_date: normalizeToLocal(newEndDate),
             });
           }
         }
@@ -860,6 +878,83 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         .eq("id", tripItemId);
 
       if (error) throw error;
+
+      // Recalculate trip dates if not locked
+      const trip = trips.find((t) => t.id === tripId);
+      if (trip && !trip.dates_locked) {
+        // Get remaining items (excluding the one we just deleted)
+        const remainingItems = (trip.items || []).filter(
+          (item) => item.id !== tripItemId
+        );
+
+        if (remainingItems.length > 0) {
+          const itemDates: Date[] = [];
+
+          for (const item of remainingItems) {
+            let itemDate: Date | null = null;
+
+            if (item.type === "activity") {
+              itemDate = item.data.activityDate
+                ? new Date(item.data.activityDate)
+                : item.data.activity_date
+                ? new Date(item.data.activity_date)
+                : item.data.startTime
+                ? new Date(item.data.startTime)
+                : item.data.start_time
+                ? new Date(item.data.start_time)
+                : null;
+            } else if (item.type === "spot") {
+              itemDate = item.data.locationDate
+                ? new Date(item.data.locationDate)
+                : item.data.location_date
+                ? new Date(item.data.location_date)
+                : item.data.timestamp
+                ? new Date(item.data.timestamp)
+                : null;
+            }
+
+            if (itemDate && !isNaN(itemDate.getTime())) {
+              itemDates.push(itemDate);
+            }
+          }
+
+          if (itemDates.length > 0) {
+            const earliestDate = new Date(
+              Math.min(...itemDates.map((d) => d.getTime()))
+            );
+            const latestDate = new Date(
+              Math.max(...itemDates.map((d) => d.getTime()))
+            );
+
+            const tripStart = new Date(trip.start_date);
+            const tripEnd = new Date(trip.end_date);
+
+            // Only update if dates would actually change
+            if (
+              earliestDate.getTime() !== tripStart.getTime() ||
+              latestDate.getTime() !== tripEnd.getTime()
+            ) {
+              // Normalize to avoid timezone shifts
+              const normalizeToLocal = (d: Date) =>
+                new Date(
+                  d.getFullYear(),
+                  d.getMonth(),
+                  d.getDate(),
+                  12,
+                  0,
+                  0,
+                  0
+                );
+
+              await updateTrip(tripId, {
+                start_date: normalizeToLocal(earliestDate),
+                end_date: normalizeToLocal(latestDate),
+              });
+            }
+          }
+        }
+      }
+
       await loadTrips();
     } catch (error) {
       console.error("Error removing from trip:", error);

@@ -261,8 +261,8 @@ export default function FriendProfileScreen() {
         FriendDataService.loadFriendStats(friend.id),
       ]);
 
-      // Load friend's trips
-      const { data: trips, error: tripsError } = await supabase
+     // Load friend's trips (created by them OR shared with them)
+      const { data: createdTrips } = await supabase
         .from('trips')
         .select(`
           *,
@@ -274,6 +274,42 @@ export default function FriendProfileScreen() {
         `)
         .eq('created_by', friend.id)
         .order('start_date', { ascending: false });
+
+      // Also get trips shared with them
+      const { data: sharedTripTags } = await supabase
+        .from('trip_tags')
+        .select('trip_id')
+        .eq('user_id', friend.id);
+
+      let trips = createdTrips || [];
+
+      if (sharedTripTags && sharedTripTags.length > 0) {
+        const sharedTripIds = sharedTripTags.map(t => t.trip_id);
+        const { data: sharedTrips } = await supabase
+          .from('trips')
+          .select(`
+            *,
+            trip_items (
+              id,
+              type,
+              data
+            )
+          `)
+          .in('id', sharedTripIds)
+          .order('start_date', { ascending: false });
+
+        if (sharedTrips) {
+          // Merge and deduplicate
+          const tripIds = new Set(trips.map(t => t.id));
+          sharedTrips.forEach(trip => {
+            if (!tripIds.has(trip.id)) {
+              trips.push(trip);
+            }
+          });
+          // Re-sort by start_date
+          trips.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+        }
+      }
 
       setFriendActivities(activities);
       setFriendLocations(locations);

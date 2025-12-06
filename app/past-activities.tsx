@@ -1,7 +1,7 @@
 // past-activities.tsx - Complete file with unit support
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -24,6 +24,7 @@ import { ActivityType, useActivity } from "../contexts/ActivityContext";
 import { useFriends } from "../contexts/FriendsContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { ShareService } from "../services/shareService";
+import * as Haptics from "expo-haptics";
 
 const activityIcons: Record<ActivityType, string> = {
   bike: "bicycle",
@@ -185,7 +186,7 @@ const ShareWithFriendsModal = ({
 };
 
 export default function PastActivitiesScreen() {
-  const { activities, deleteActivity } = useActivity();
+  const { activities, deleteActivity, updateActivity } = useActivity();
   const { shareActivity, friends, privacySettings } = useFriends();
   const { formatDistance, formatSpeed, settings } = useSettings();
   const router = useRouter();
@@ -209,6 +210,7 @@ export default function PastActivitiesScreen() {
     string[]
   >([]);
 
+  const photoScrollRef = useRef<ScrollView>(null);
   // Filter and sort activities
   const filteredActivities = useMemo(() => {
     let filtered = activities;
@@ -500,6 +502,16 @@ export default function PastActivitiesScreen() {
   const renderActivityItem = ({ item }: { item: any }) => {
     const iconName = (activityIcons as any)[item.type] || "fitness";
 
+    const handleUpdateRating = async (activity: any, rating: number) => {
+      try {
+        await updateActivity(activity.id, { rating });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (error) {
+        console.error("Error updating rating:", error);
+        Alert.alert("Error", "Failed to update rating");
+      }
+    };
+
     // Format activity date
     // Replace the formatActivityDate function inside renderActivityItem with this:
     const formatActivityDate = (date: Date | string) => {
@@ -586,6 +598,26 @@ export default function PastActivitiesScreen() {
             <Text style={styles.statValue}>
               {formatSpeed(item.averageSpeed)}
             </Text>
+          </View>
+        </View>
+
+        {/* Rating Row - ADD THIS */}
+        <View style={styles.ratingRow}>
+          <Text style={styles.ratingLabel}>Rating:</Text>
+          <View style={styles.ratingContainer}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <TouchableOpacity
+                key={star}
+                onPress={() => handleUpdateRating(item, star)}
+              >
+                <Ionicons
+                  name={star <= (item.rating || 0) ? "star" : "star-outline"}
+                  size={22}
+                  color="#FFB800"
+                  style={styles.star}
+                />
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -998,16 +1030,37 @@ export default function PastActivitiesScreen() {
         transparent={true}
         animationType="fade"
         onRequestClose={() => setSelectedPhoto(null)}
+        onShow={() => {
+          // Scroll to the selected photo after modal is visible
+          setTimeout(() => {
+            photoScrollRef.current?.scrollTo({
+              x: selectedPhotoIndex * Dimensions.get("window").width,
+              y: 0,
+              animated: false,
+            });
+          }, 50);
+        }}
       >
         <View style={styles.photoModal}>
           <ScrollView
+            ref={photoScrollRef}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            contentOffset={{
-              x: selectedPhotoIndex * Dimensions.get("window").width,
-              y: 0,
+            onScroll={(event) => {
+              const index = Math.round(
+                event.nativeEvent.contentOffset.x /
+                  Dimensions.get("window").width
+              );
+              if (
+                index !== selectedPhotoIndex &&
+                index >= 0 &&
+                index < selectedActivityPhotos.length
+              ) {
+                setSelectedPhotoIndex(index);
+              }
             }}
+            scrollEventThrottle={16}
           >
             {selectedActivityPhotos.map((photo: string, index: number) => (
               <View key={index} style={styles.fullPhotoContainer}>
@@ -1576,5 +1629,24 @@ const styles = StyleSheet.create({
   activityTime: {
     fontSize: 14,
     color: theme.colors.gray,
+  },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  ratingLabel: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    marginRight: 10,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+  },
+  star: {
+    marginRight: 4,
   },
 });
