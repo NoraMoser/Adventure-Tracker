@@ -1,445 +1,53 @@
-// app/friend-profile/[id].tsx - Complete file with profile picture support
+// app/friend-profile/[id].tsx
+
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   Image,
-  Modal,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
+import { FriendOptionsModal } from "../../components/FriendOptionsModal";
+import { PrivacySettingsModal } from "../../components/PrivacySettingsModal";
 import { theme } from "../../constants/theme";
-import { Activity } from "../../contexts/ActivityContext";
-import { useAuth } from "../../contexts/AuthContext";
-import { Friend, useFriends } from "../../contexts/FriendsContext";
-import { SavedSpot, useLocation } from "../../contexts/LocationContext";
+import { Friend } from "../../contexts/FriendsContext";
 import { useSettings } from "../../contexts/SettingsContext";
-import { supabase } from "../../lib/supabase";
-import { FriendDataService } from "../../services/friendDataService";
+import { useFriendProfile } from "../../hooks/useFriendProfile";
+import { getLastActiveText, isOnlineNow, formatFriendsSince } from "../../utils/date";
 
-const { width, height } = Dimensions.get("window");
-
-// Privacy Settings Modal
-const PrivacySettingsModal = ({
-  visible,
-  onClose,
-  friend,
-  settings,
-  onUpdateSettings,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  friend: Friend;
-  settings: any;
-  onUpdateSettings: (settings: any) => void;
-}) => {
-  const [privacySettings, setPrivacySettings] = useState({
-    shareMyActivities: settings?.shareMyActivities ?? true,
-    shareMyLocations: settings?.shareMyLocations ?? true,
-    shareMyRoute: settings?.shareMyRoute ?? false,
-    shareMyStats: settings?.shareMyStats ?? true,
-    allowViewMyFriends: settings?.allowViewMyFriends ?? true,
-  });
-
-  const handleSave = () => {
-    onUpdateSettings(privacySettings);
-    onClose();
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={privacyStyles.overlay}>
-        <View style={privacyStyles.content}>
-          <View style={privacyStyles.header}>
-            <Text style={privacyStyles.title}>Privacy Settings</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={theme.colors.gray} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={privacyStyles.subtitle}>
-            Control what {friend.displayName} can see
-          </Text>
-
-          <View style={privacyStyles.settingsList}>
-            <View style={privacyStyles.settingItem}>
-              <View style={privacyStyles.settingInfo}>
-                <Text style={privacyStyles.settingLabel}>
-                  Share My Activities
-                </Text>
-                <Text style={privacyStyles.settingDescription}>
-                  They can see your activity summaries
-                </Text>
-              </View>
-              <Switch
-                value={privacySettings.shareMyActivities}
-                onValueChange={(value) =>
-                  setPrivacySettings({
-                    ...privacySettings,
-                    shareMyActivities: value,
-                  })
-                }
-                trackColor={{
-                  false: theme.colors.borderGray,
-                  true: theme.colors.forest,
-                }}
-              />
-            </View>
-
-            <View style={privacyStyles.settingItem}>
-              <View style={privacyStyles.settingInfo}>
-                <Text style={privacyStyles.settingLabel}>
-                  Share My Locations
-                </Text>
-                <Text style={privacyStyles.settingDescription}>
-                  They can see places you have saved
-                </Text>
-              </View>
-              <Switch
-                value={privacySettings.shareMyLocations}
-                onValueChange={(value) =>
-                  setPrivacySettings({
-                    ...privacySettings,
-                    shareMyLocations: value,
-                  })
-                }
-                trackColor={{
-                  false: theme.colors.borderGray,
-                  true: theme.colors.forest,
-                }}
-              />
-            </View>
-
-            <View style={privacyStyles.settingItem}>
-              <View style={privacyStyles.settingInfo}>
-                <Text style={privacyStyles.settingLabel}>
-                  Share Exact Routes
-                </Text>
-                <Text style={privacyStyles.settingDescription}>
-                  Show detailed route paths on activities
-                </Text>
-              </View>
-              <Switch
-                value={privacySettings.shareMyRoute}
-                onValueChange={(value) =>
-                  setPrivacySettings({
-                    ...privacySettings,
-                    shareMyRoute: value,
-                  })
-                }
-                trackColor={{
-                  false: theme.colors.borderGray,
-                  true: theme.colors.forest,
-                }}
-              />
-            </View>
-
-            <View style={privacyStyles.settingItem}>
-              <View style={privacyStyles.settingInfo}>
-                <Text style={privacyStyles.settingLabel}>Share Statistics</Text>
-                <Text style={privacyStyles.settingDescription}>
-                  They can see your achievement stats
-                </Text>
-              </View>
-              <Switch
-                value={privacySettings.shareMyStats}
-                onValueChange={(value) =>
-                  setPrivacySettings({
-                    ...privacySettings,
-                    shareMyStats: value,
-                  })
-                }
-                trackColor={{
-                  false: theme.colors.borderGray,
-                  true: theme.colors.forest,
-                }}
-              />
-            </View>
-
-            <View style={privacyStyles.settingItem}>
-              <View style={privacyStyles.settingInfo}>
-                <Text style={privacyStyles.settingLabel}>
-                  Show My Friends List
-                </Text>
-                <Text style={privacyStyles.settingDescription}>
-                  They can see who else you are friends with
-                </Text>
-              </View>
-              <Switch
-                value={privacySettings.allowViewMyFriends}
-                onValueChange={(value) =>
-                  setPrivacySettings({
-                    ...privacySettings,
-                    allowViewMyFriends: value,
-                  })
-                }
-                trackColor={{
-                  false: theme.colors.borderGray,
-                  true: theme.colors.forest,
-                }}
-              />
-            </View>
-          </View>
-
-          <View style={privacyStyles.actions}>
-            <TouchableOpacity style={privacyStyles.cancelBtn} onPress={onClose}>
-              <Text style={privacyStyles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={privacyStyles.saveBtn}
-              onPress={handleSave}
-            >
-              <Text style={privacyStyles.saveText}>Save Settings</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
+type TabType = "overview" | "activities" | "places" | "trips";
 
 export default function FriendProfileScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { friends, removeFriend, blockUser } = useFriends();
-  const { savedSpots } = useLocation();
   const { formatDistance, formatSpeed } = useSettings();
 
-  const [selectedTab, setSelectedTab] = useState<
-    "overview" | "activities" | "places" | "trips"
-  >("overview");
+  const [selectedTab, setSelectedTab] = useState<TabType>("overview");
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [friendPrivacySettings, setFriendPrivacySettings] = useState({});
 
-  // State for friend's data
-  const [friendActivities, setFriendActivities] = useState<Activity[]>([]);
-  const [friendLocations, setFriendLocations] = useState<SavedSpot[]>([]);
-  const [friendTrips, setFriendTrips] = useState<any[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
-  const [friendStats, setFriendStats] = useState({
-    totalActivities: 0,
-    totalLocations: 0,
-    totalTrips: 0,
-  });
-  const [mutualFriends, setMutualFriends] = useState<Friend[]>([]);
-  const [mutualTrips, setMutualTrips] = useState<any[]>([]);
-  const [mutualActivities, setMutualActivities] = useState<Activity[]>([]);
-  const { user } = useAuth();
-
-  const friend = friends.find((f) => f.id === id);
-
-  useEffect(() => {
-    if (friend && user && friends.length > 0) {
-      loadFriendData();
-      loadMutualFriends();
-      loadMutualData();
-    }
-  }, [friend?.id, friends.length, user?.id]);
-
-  const loadFriendData = async () => {
-    if (!friend) return;
-
-    setLoadingData(true);
-    try {
-      const [activities, locations, stats] = await Promise.all([
-        FriendDataService.loadFriendActivities(friend.id),
-        FriendDataService.loadFriendLocations(friend.id),
-        FriendDataService.loadFriendStats(friend.id),
-      ]);
-
-     // Load friend's trips (created by them OR shared with them)
-      const { data: createdTrips } = await supabase
-        .from('trips')
-        .select(`
-          *,
-          trip_items (
-            id,
-            type,
-            data
-          )
-        `)
-        .eq('created_by', friend.id)
-        .order('start_date', { ascending: false });
-
-      // Also get trips shared with them
-      const { data: sharedTripTags } = await supabase
-        .from('trip_tags')
-        .select('trip_id')
-        .eq('user_id', friend.id);
-
-      let trips = createdTrips || [];
-
-      if (sharedTripTags && sharedTripTags.length > 0) {
-        const sharedTripIds = sharedTripTags.map(t => t.trip_id);
-        const { data: sharedTrips } = await supabase
-          .from('trips')
-          .select(`
-            *,
-            trip_items (
-              id,
-              type,
-              data
-            )
-          `)
-          .in('id', sharedTripIds)
-          .order('start_date', { ascending: false });
-
-        if (sharedTrips) {
-          // Merge and deduplicate
-          const tripIds = new Set(trips.map(t => t.id));
-          sharedTrips.forEach(trip => {
-            if (!tripIds.has(trip.id)) {
-              trips.push(trip);
-            }
-          });
-          // Re-sort by start_date
-          trips.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
-        }
-      }
-
-      setFriendActivities(activities);
-      setFriendLocations(locations);
-      setFriendTrips(trips || []);
-      setFriendStats({
-        ...stats,
-        totalTrips: trips?.length || 0,
-      });
-    } catch (error) {
-      console.error("Error loading friend data:", error);
-      Alert.alert("Error", "Failed to load friend data");
-    } finally {
-      setLoadingData(false);
-    }
-  };
-
-  const loadMutualFriends = async () => {
-    if (!friend || !user) return;
-    
-    try {
-      const { data: friendsFriendships, error } = await supabase
-        .from('friendships')
-        .select('user_id, friend_id, status')
-        .or(`user_id.eq.${friend.id},friend_id.eq.${friend.id}`)
-        .eq('status', 'accepted');
-
-      if (!friendsFriendships) return;
-
-      const profileFriendIds = new Set<string>();
-      friendsFriendships.forEach(f => {
-        if (f.user_id === friend.id) {
-          profileFriendIds.add(f.friend_id);
-        } else if (f.friend_id === friend.id) {
-          profileFriendIds.add(f.user_id);
-        }
-      });
-
-      profileFriendIds.delete(user.id);
-
-      const mutuals = friends.filter(f => 
-        f.id !== friend.id &&
-        profileFriendIds.has(f.id)
-      );
-      
-      setMutualFriends(mutuals);
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const loadMutualData = async () => {
-    if (!friend || !user) return;
-    
-    try {
-      // Get all trips and their items
-      const { data: allTrips, error } = await supabase
-        .from('trips')
-        .select(`
-          *,
-          trip_items (
-            id,
-            type,
-            data,
-            added_by
-          )
-        `);
-
-      if (error || !allTrips) return;
-
-      // Find trips that have items from both users
-      const sharedTrips = allTrips.filter(trip => {
-        const addedByUsers = new Set(trip.trip_items.map((item: any) => item.added_by));
-        return addedByUsers.has(user.id) && addedByUsers.has(friend.id);
-      });
-
-      setMutualTrips(sharedTrips);
-
-      // Get activities from mutual trips
-      const mutualActivityIds = new Set();
-      sharedTrips.forEach(trip => {
-        trip.trip_items.forEach((item: any) => {
-          if (item.type === 'activity') {
-            mutualActivityIds.add(item.data.id);
-          }
-        });
-      });
-
-      // Filter friend's activities that are in mutual trips
-      const sharedActivities = friendActivities.filter(activity => 
-        mutualActivityIds.has(activity.id)
-      );
-
-      setMutualActivities(sharedActivities);
-    } catch (error) {
-      console.error('Error loading mutual data:', error);
-    }
-  };
-
-  // Calculate mutual spots
-  const mutualSpots = savedSpots.filter((mySpot) =>
-    friendLocations.some(
-      (friendLoc) =>
-        Math.abs(friendLoc.location.latitude - mySpot.location.latitude) <
-          0.001 &&
-        Math.abs(friendLoc.location.longitude - mySpot.location.longitude) <
-          0.001
-    )
-  );
-
-  const totalActivities = friendActivities.length;
-
-  const getLastActiveText = (lastActive?: Date) => {
-    if (!lastActive) return "Offline";
-
-    const now = new Date();
-    const diff = now.getTime() - new Date(lastActive).getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 5) return "Online now";
-    if (hours < 1) return `Active ${minutes}m ago`;
-    if (days < 1) return `Active ${hours}h ago`;
-    if (days === 1) return "Active yesterday";
-    return `Active ${days} days ago`;
-  };
-
-  const isOnline =
-    friend?.lastActive &&
-    new Date().getTime() - new Date(friend.lastActive).getTime() < 300000;
+  const {
+    friend,
+    friendActivities,
+    friendLocations,
+    friendTrips,
+    friendStats,
+    mutualFriends,
+    mutualTrips,
+    mutualActivities,
+    mutualSpots,
+    loadingData,
+    handleRemoveFriend,
+    handleBlockUser,
+  } = useFriendProfile(id as string, () => router.back());
 
   if (!friend) {
     return (
@@ -449,40 +57,16 @@ export default function FriendProfileScreen() {
     );
   }
 
-  const handleRemoveFriend = () => {
-    Alert.alert(
-      "Remove Friend",
-      `Are you sure you want to remove ${friend.displayName} from your friends?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            await removeFriend(friend.id);
-            router.back();
-          },
-        },
-      ]
-    );
-  };
+  const isOnline = isOnlineNow(friend.lastActive);
 
-  const handleBlockUser = () => {
-    Alert.alert(
-      "Block User",
-      `Are you sure you want to block ${friend.displayName}? They won't be able to see your content or send you friend requests.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Block",
-          style: "destructive",
-          onPress: async () => {
-            await blockUser(friend.id);
-            router.back();
-          },
-        },
-      ]
-    );
+  const renderAvatar = (user: Friend, size: "small" | "large" = "small") => {
+    const imageStyle = size === "large" ? styles.profileAvatarImage : styles.smallAvatarImage;
+    const textStyle = size === "large" ? styles.profileAvatarText : styles.smallAvatarText;
+
+    if (user.profile_picture) {
+      return <Image source={{ uri: user.profile_picture }} style={imageStyle} />;
+    }
+    return <Text style={textStyle}>{user.avatar || "👤"}</Text>;
   };
 
   const generateMapHTML = () => {
@@ -547,33 +131,14 @@ export default function FriendProfileScreen() {
     `;
   };
 
-  // Helper function to render avatars with profile picture support
-  const renderAvatar = (user: Friend, size: "small" | "large" = "small") => {
-    const imageStyle =
-      size === "large" ? styles.profileAvatarImage : styles.smallAvatarImage;
-    const textStyle =
-      size === "large" ? styles.profileAvatarText : styles.smallAvatarText;
-
-    if (user.profile_picture) {
-      return (
-        <Image source={{ uri: user.profile_picture }} style={imageStyle} />
-      );
-    }
-    return <Text style={textStyle}>{user.avatar || "👤"}</Text>;
-  };
-
   return (
     <View style={styles.container}>
       <Stack.Screen
         options={{
           title: friend.displayName,
-          headerStyle: {
-            backgroundColor: theme.colors.forest,
-          },
+          headerStyle: { backgroundColor: theme.colors.forest },
           headerTintColor: "#fff",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
+          headerTitleStyle: { fontWeight: "bold" },
           headerRight: () => (
             <TouchableOpacity
               style={styles.headerButton}
@@ -604,19 +169,13 @@ export default function FriendProfileScreen() {
               style={styles.actionButton}
               onPress={() => setShowPrivacyModal(true)}
             >
-              <Ionicons
-                name="shield-checkmark"
-                size={20}
-                color={theme.colors.forest}
-              />
+              <Ionicons name="shield-checkmark" size={20} color={theme.colors.forest} />
               <Text style={styles.actionButtonText}>Privacy</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() =>
-                Alert.alert("Coming Soon", "Messaging feature coming soon!")
-              }
+              onPress={() => Alert.alert("Coming Soon", "Messaging feature coming soon!")}
             >
               <Ionicons name="chatbubble" size={20} color={theme.colors.navy} />
               <Text style={styles.actionButtonText}>Message</Text>
@@ -628,7 +187,7 @@ export default function FriendProfileScreen() {
         <View style={styles.statsSection}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>
-              {loadingData ? "..." : totalActivities}
+              {loadingData ? "..." : friendActivities.length}
             </Text>
             <Text style={styles.statLabel}>Activities</Text>
           </View>
@@ -652,11 +211,7 @@ export default function FriendProfileScreen() {
             <Text style={styles.sectionTitle}>Mutual Friends</Text>
             <View style={styles.mutualCard}>
               <View style={styles.mutualHeader}>
-                <Ionicons
-                  name="people"
-                  size={20}
-                  color={theme.colors.forest}
-                />
+                <Ionicons name="people" size={20} color={theme.colors.forest} />
                 <Text style={styles.mutualTitle}>
                   {mutualFriends.length} Mutual{" "}
                   {mutualFriends.length === 1 ? "Friend" : "Friends"}
@@ -667,16 +222,12 @@ export default function FriendProfileScreen() {
                   <TouchableOpacity
                     key={mFriend.id}
                     style={styles.mutualFriendItem}
-                    onPress={() =>
-                      router.push(`/friend-profile/${mFriend.id}` as any)
-                    }
+                    onPress={() => router.push(`/friend-profile/${mFriend.id}` as any)}
                   >
                     <View style={styles.mutualFriendAvatar}>
                       {renderAvatar(mFriend, "small")}
                     </View>
-                    <Text style={styles.mutualFriendName}>
-                      {mFriend.displayName}
-                    </Text>
+                    <Text style={styles.mutualFriendName}>{mFriend.displayName}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -692,24 +243,15 @@ export default function FriendProfileScreen() {
             {mutualTrips.length > 0 && (
               <View style={styles.mutualCard}>
                 <View style={styles.mutualHeader}>
-                  <Ionicons
-                    name="map"
-                    size={20}
-                    color={theme.colors.navy}
-                  />
+                  <Ionicons name="map" size={20} color={theme.colors.navy} />
                   <Text style={styles.mutualTitle}>
-                    {mutualTrips.length} Mutual{" "}
-                    {mutualTrips.length === 1 ? "Trip" : "Trips"}
+                    {mutualTrips.length} Mutual {mutualTrips.length === 1 ? "Trip" : "Trips"}
                   </Text>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {mutualTrips.map((trip) => (
-                    <View key={trip.id} style={styles.mutualTripItem}>
-                      <Ionicons
-                        name="map-outline"
-                        size={16}
-                        color={theme.colors.navy}
-                      />
+                    <View key={trip.id} style={styles.mutualItemChip}>
+                      <Ionicons name="map-outline" size={16} color={theme.colors.navy} />
                       <Text style={styles.mutualItemName}>{trip.name}</Text>
                     </View>
                   ))}
@@ -720,25 +262,16 @@ export default function FriendProfileScreen() {
             {mutualSpots.length > 0 && (
               <View style={styles.mutualCard}>
                 <View style={styles.mutualHeader}>
-                  <Ionicons
-                    name="location"
-                    size={20}
-                    color={theme.colors.burntOrange}
-                  />
+                  <Ionicons name="location" size={20} color={theme.colors.burntOrange} />
                   <Text style={styles.mutualTitle}>
-                    {mutualSpots.length} Mutual{" "}
-                    {mutualSpots.length === 1 ? "Spot" : "Spots"}
+                    {mutualSpots.length} Mutual {mutualSpots.length === 1 ? "Spot" : "Spots"}
                   </Text>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {mutualSpots.map((spot, index) => (
-                    <View key={index} style={styles.mutualSpotItem}>
-                      <Ionicons
-                        name="pin"
-                        size={16}
-                        color={theme.colors.burntOrange}
-                      />
-                      <Text style={styles.mutualSpotName}>{spot.name}</Text>
+                    <View key={index} style={styles.mutualItemChip}>
+                      <Ionicons name="pin" size={16} color={theme.colors.burntOrange} />
+                      <Text style={styles.mutualItemName}>{spot.name}</Text>
                     </View>
                   ))}
                 </ScrollView>
@@ -748,11 +281,7 @@ export default function FriendProfileScreen() {
             {mutualActivities.length > 0 && (
               <View style={styles.mutualCard}>
                 <View style={styles.mutualHeader}>
-                  <Ionicons
-                    name="bicycle"
-                    size={20}
-                    color={theme.colors.forest}
-                  />
+                  <Ionicons name="bicycle" size={20} color={theme.colors.forest} />
                   <Text style={styles.mutualTitle}>
                     {mutualActivities.length} Mutual{" "}
                     {mutualActivities.length === 1 ? "Activity" : "Activities"}
@@ -760,7 +289,7 @@ export default function FriendProfileScreen() {
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {mutualActivities.map((activity) => (
-                    <View key={activity.id} style={styles.mutualActivityItem}>
+                    <View key={activity.id} style={styles.mutualItemChip}>
                       <Ionicons
                         name={activity.type === "bike" ? "bicycle" : "fitness"}
                         size={16}
@@ -777,61 +306,17 @@ export default function FriendProfileScreen() {
 
         {/* Content Tabs */}
         <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === "overview" && styles.tabActive]}
-            onPress={() => setSelectedTab("overview")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                selectedTab === "overview" && styles.tabTextActive,
-              ]}
+          {(["overview", "activities", "places", "trips"] as TabType[]).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tab, selectedTab === tab && styles.tabActive]}
+              onPress={() => setSelectedTab(tab)}
             >
-              Overview
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              selectedTab === "activities" && styles.tabActive,
-            ]}
-            onPress={() => setSelectedTab("activities")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                selectedTab === "activities" && styles.tabTextActive,
-              ]}
-            >
-              Activities
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === "places" && styles.tabActive]}
-            onPress={() => setSelectedTab("places")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                selectedTab === "places" && styles.tabTextActive,
-              ]}
-            >
-              Places
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === "trips" && styles.tabActive]}
-            onPress={() => setSelectedTab("trips")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                selectedTab === "trips" && styles.tabTextActive,
-              ]}
-            >
-              Trips
-            </Text>
-          </TouchableOpacity>
+              <Text style={[styles.tabText, selectedTab === tab && styles.tabTextActive]}>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Tab Content */}
@@ -857,21 +342,11 @@ export default function FriendProfileScreen() {
                         />
                         <View style={styles.mapLegend}>
                           <View style={styles.legendItem}>
-                            <View
-                              style={[
-                                styles.legendDot,
-                                { backgroundColor: theme.colors.forest },
-                              ]}
-                            />
+                            <View style={[styles.legendDot, { backgroundColor: theme.colors.forest }]} />
                             <Text style={styles.legendText}>Their Spots</Text>
                           </View>
                           <View style={styles.legendItem}>
-                            <View
-                              style={[
-                                styles.legendDot,
-                                { backgroundColor: theme.colors.burntOrange },
-                              ]}
-                            />
+                            <View style={[styles.legendDot, { backgroundColor: theme.colors.burntOrange }]} />
                             <Text style={styles.legendText}>Mutual</Text>
                           </View>
                         </View>
@@ -880,20 +355,9 @@ export default function FriendProfileScreen() {
                   )}
 
                   <View style={styles.friendSince}>
-                    <Ionicons
-                      name="calendar"
-                      size={20}
-                      color={theme.colors.gray}
-                    />
+                    <Ionicons name="calendar" size={20} color={theme.colors.gray} />
                     <Text style={styles.friendSinceText}>
-                      Friends since{" "}
-                      {new Date(friend.friendsSince).toLocaleDateString(
-                        "en-US",
-                        {
-                          month: "long",
-                          year: "numeric",
-                        }
-                      )}
+                      Friends since {formatFriendsSince(friend.friendsSince)}
                     </Text>
                   </View>
                 </View>
@@ -902,29 +366,18 @@ export default function FriendProfileScreen() {
               {selectedTab === "activities" && (
                 <View>
                   {friendActivities.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <Ionicons
-                        name="bicycle-outline"
-                        size={60}
-                        color={theme.colors.lightGray}
-                      />
-                      <Text style={styles.emptyText}>No activities yet</Text>
-                    </View>
+                    <EmptyState icon="bicycle-outline" text="No activities yet" />
                   ) : (
                     friendActivities.map((activity) => (
                       <View key={activity.id} style={styles.activityCard}>
                         <View style={styles.activityHeader}>
                           <View style={styles.activityType}>
                             <Ionicons
-                              name={
-                                activity.type === "bike" ? "bicycle" : "fitness"
-                              }
+                              name={activity.type === "bike" ? "bicycle" : "fitness"}
                               size={20}
                               color={theme.colors.forest}
                             />
-                            <Text style={styles.activityTypeName}>
-                              {activity.type}
-                            </Text>
+                            <Text style={styles.activityTypeName}>{activity.type}</Text>
                           </View>
                           <Text style={styles.activityDate}>
                             {new Date(activity.startTime).toLocaleDateString()}
@@ -933,31 +386,19 @@ export default function FriendProfileScreen() {
                         <Text style={styles.activityName}>{activity.name}</Text>
                         <View style={styles.activityStats}>
                           <View style={styles.activityStat}>
-                            <Ionicons
-                              name="navigate"
-                              size={14}
-                              color={theme.colors.gray}
-                            />
+                            <Ionicons name="navigate" size={14} color={theme.colors.gray} />
                             <Text style={styles.activityStatText}>
                               {formatDistance(activity.distance)}
                             </Text>
                           </View>
                           <View style={styles.activityStat}>
-                            <Ionicons
-                              name="time"
-                              size={14}
-                              color={theme.colors.gray}
-                            />
+                            <Ionicons name="time" size={14} color={theme.colors.gray} />
                             <Text style={styles.activityStatText}>
                               {Math.round(activity.duration / 60)}min
                             </Text>
                           </View>
                           <View style={styles.activityStat}>
-                            <Ionicons
-                              name="speedometer"
-                              size={14}
-                              color={theme.colors.gray}
-                            />
+                            <Ionicons name="speedometer" size={14} color={theme.colors.gray} />
                             <Text style={styles.activityStatText}>
                               {formatSpeed(activity.averageSpeed)}
                             </Text>
@@ -972,47 +413,25 @@ export default function FriendProfileScreen() {
               {selectedTab === "places" && (
                 <View>
                   {friendLocations.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <Ionicons
-                        name="location-outline"
-                        size={60}
-                        color={theme.colors.lightGray}
-                      />
-                      <Text style={styles.emptyText}>No places yet</Text>
-                    </View>
+                    <EmptyState icon="location-outline" text="No places yet" />
                   ) : (
                     friendLocations.map((location) => (
                       <View key={location.id} style={styles.locationCard}>
                         <View style={styles.locationHeader}>
-                          <Ionicons
-                            name="location"
-                            size={20}
-                            color={theme.colors.burntOrange}
-                          />
-                          <Text style={styles.locationName}>
-                            {location.name}
-                          </Text>
+                          <Ionicons name="location" size={20} color={theme.colors.burntOrange} />
+                          <Text style={styles.locationName}>{location.name}</Text>
                         </View>
                         {location.description && (
-                          <Text style={styles.locationDescription}>
-                            {location.description}
-                          </Text>
+                          <Text style={styles.locationDescription}>{location.description}</Text>
                         )}
                         <View style={styles.locationMeta}>
-                          <Text style={styles.locationCategory}>
-                            {location.category}
-                          </Text>
+                          <Text style={styles.locationCategory}>{location.category}</Text>
                           {mutualSpots.some(
                             (spot) =>
-                              Math.abs(
-                                spot.location.latitude -
-                                  location.location.latitude
-                              ) < 0.001
+                              Math.abs(spot.location.latitude - location.location.latitude) < 0.001
                           ) && (
                             <View style={styles.mutualBadge}>
-                              <Text style={styles.mutualBadgeText}>
-                                Mutual Spot
-                              </Text>
+                              <Text style={styles.mutualBadgeText}>Mutual Spot</Text>
                             </View>
                           )}
                         </View>
@@ -1025,31 +444,16 @@ export default function FriendProfileScreen() {
               {selectedTab === "trips" && (
                 <View>
                   {friendTrips.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <Ionicons
-                        name="map-outline"
-                        size={60}
-                        color={theme.colors.lightGray}
-                      />
-                      <Text style={styles.emptyText}>No trips yet</Text>
-                    </View>
+                    <EmptyState icon="map-outline" text="No trips yet" />
                   ) : (
                     friendTrips.map((trip) => (
                       <View key={trip.id} style={styles.tripCard}>
                         <View style={styles.tripHeader}>
-                          <Ionicons
-                            name="map"
-                            size={20}
-                            color={theme.colors.navy}
-                          />
+                          <Ionicons name="map" size={20} color={theme.colors.navy} />
                           <Text style={styles.tripName}>{trip.name}</Text>
                         </View>
                         <View style={styles.tripDates}>
-                          <Ionicons
-                            name="calendar-outline"
-                            size={14}
-                            color={theme.colors.gray}
-                          />
+                          <Ionicons name="calendar-outline" size={14} color={theme.colors.gray} />
                           <Text style={styles.tripDateText}>
                             {new Date(trip.start_date).toLocaleDateString()} -{" "}
                             {new Date(trip.end_date).toLocaleDateString()}
@@ -1057,31 +461,22 @@ export default function FriendProfileScreen() {
                         </View>
                         <View style={styles.tripStats}>
                           <View style={styles.tripStat}>
-                            <Ionicons
-                              name="bicycle"
-                              size={14}
-                              color={theme.colors.gray}
-                            />
+                            <Ionicons name="bicycle" size={14} color={theme.colors.gray} />
                             <Text style={styles.tripStatText}>
-                              {trip.trip_items.filter((item: any) => item.type === 'activity').length} activities
+                              {trip.trip_items.filter((item: any) => item.type === "activity").length}{" "}
+                              activities
                             </Text>
                           </View>
                           <View style={styles.tripStat}>
-                            <Ionicons
-                              name="location"
-                              size={14}
-                              color={theme.colors.gray}
-                            />
+                            <Ionicons name="location" size={14} color={theme.colors.gray} />
                             <Text style={styles.tripStatText}>
-                              {trip.trip_items.filter((item: any) => item.type === 'spot').length} spots
+                              {trip.trip_items.filter((item: any) => item.type === "spot").length} spots
                             </Text>
                           </View>
                         </View>
-                        {mutualTrips.some(mt => mt.id === trip.id) && (
+                        {mutualTrips.some((mt) => mt.id === trip.id) && (
                           <View style={styles.mutualBadge}>
-                            <Text style={styles.mutualBadgeText}>
-                              Mutual Trip
-                            </Text>
+                            <Text style={styles.mutualBadgeText}>Mutual Trip</Text>
                           </View>
                         )}
                       </View>
@@ -1094,7 +489,7 @@ export default function FriendProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* Privacy Settings Modal */}
+      {/* Modals */}
       <PrivacySettingsModal
         visible={showPrivacyModal}
         onClose={() => setShowPrivacyModal(false)}
@@ -1106,71 +501,23 @@ export default function FriendProfileScreen() {
         }}
       />
 
-      {/* Options Modal */}
-      <Modal
+      <FriendOptionsModal
         visible={showOptionsModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowOptionsModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowOptionsModal(false)}
-        >
-          <View style={styles.optionsModal}>
-            <TouchableOpacity
-              style={styles.optionItem}
-              onPress={() => {
-                setShowOptionsModal(false);
-                setShowPrivacyModal(true);
-              }}
-            >
-              <Ionicons
-                name="shield-checkmark"
-                size={22}
-                color={theme.colors.forest}
-              />
-              <Text style={styles.optionText}>Privacy Settings</Text>
-            </TouchableOpacity>
+        onClose={() => setShowOptionsModal(false)}
+        onPrivacySettings={() => setShowPrivacyModal(true)}
+        onRemoveFriend={handleRemoveFriend}
+        onBlockUser={handleBlockUser}
+      />
+    </View>
+  );
+}
 
-            <TouchableOpacity
-              style={styles.optionItem}
-              onPress={() => {
-                setShowOptionsModal(false);
-                handleRemoveFriend();
-              }}
-            >
-              <Ionicons
-                name="person-remove"
-                size={22}
-                color={theme.colors.burntOrange}
-              />
-              <Text style={styles.optionText}>Remove Friend</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.optionItem, styles.optionDanger]}
-              onPress={() => {
-                setShowOptionsModal(false);
-                handleBlockUser();
-              }}
-            >
-              <Ionicons name="ban" size={22} color="#FF4757" />
-              <Text style={[styles.optionText, { color: "#FF4757" }]}>
-                Block User
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.optionItem, styles.optionCancel]}
-              onPress={() => setShowOptionsModal(false)}
-            >
-              <Text style={styles.optionCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+// Simple empty state component
+function EmptyState({ icon, text }: { icon: string; text: string }) {
+  return (
+    <View style={styles.emptyState}>
+      <Ionicons name={icon as any} size={60} color={theme.colors.lightGray} />
+      <Text style={styles.emptyText}>{text}</Text>
     </View>
   );
 }
@@ -1321,30 +668,7 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     marginLeft: 8,
   },
-  mutualSpotItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    marginRight: 8,
-  },
-  mutualSpotName: {
-    fontSize: 12,
-    color: theme.colors.navy,
-    marginLeft: 5,
-  },
-  mutualTripItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    marginRight: 8,
-  },
-  mutualActivityItem: {
+  mutualItemChip: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "white",
@@ -1601,133 +925,6 @@ const styles = StyleSheet.create({
   mutualBadgeText: {
     fontSize: 11,
     color: theme.colors.burntOrange,
-    fontWeight: "600",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  optionsModal: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 20,
-    paddingBottom: 30,
-  },
-  optionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  optionText: {
-    fontSize: 16,
-    color: theme.colors.navy,
-    marginLeft: 15,
-  },
-  optionDanger: {
-    borderBottomWidth: 0,
-  },
-  optionCancel: {
-    justifyContent: "center",
-    borderBottomWidth: 0,
-    marginTop: 10,
-  },
-  optionCancelText: {
-    fontSize: 16,
-    color: theme.colors.gray,
-    fontWeight: "600",
-  },
-});
-
-// Privacy Modal Styles
-const privacyStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  content: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    maxHeight: "80%",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: theme.colors.navy,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: theme.colors.gray,
-    textAlign: "center",
-    marginTop: 15,
-    marginHorizontal: 20,
-  },
-  settingsList: {
-    padding: 20,
-  },
-  settingItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  settingInfo: {
-    flex: 1,
-    marginRight: 15,
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: theme.colors.navy,
-    marginBottom: 4,
-  },
-  settingDescription: {
-    fontSize: 12,
-    color: theme.colors.gray,
-  },
-  actions: {
-    flexDirection: "row",
-    padding: 20,
-    gap: 10,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: theme.colors.offWhite,
-  },
-  cancelText: {
-    fontSize: 16,
-    color: theme.colors.gray,
-    fontWeight: "600",
-  },
-  saveBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: theme.colors.forest,
-  },
-  saveText: {
-    fontSize: 16,
-    color: "white",
     fontWeight: "600",
   },
 });
