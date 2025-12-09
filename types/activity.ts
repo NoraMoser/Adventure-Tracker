@@ -1,18 +1,13 @@
 // types/activity.ts
 
+// Re-export Comment from shared types for backwards compatibility
+export { Comment } from "./comment";
+
 export interface ActivityUser {
   id: string;
   username: string;
   display_name: string;
   avatar?: string;
-}
-
-export interface Comment {
-  id: string;
-  text: string;
-  created_at: string;
-  reply_to_id?: string;
-  user: ActivityUser;
 }
 
 export interface Activity {

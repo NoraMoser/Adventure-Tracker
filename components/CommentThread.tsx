@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { theme } from "../constants/theme";
-import { Comment } from "../types/activity";
+import { Comment } from "../types/comment";
 
 interface CommentThreadProps {
   comments: Comment[];

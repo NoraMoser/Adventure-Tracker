@@ -994,6 +994,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       const [type, ...idParts] = itemId.split("-");
       const actualId = idParts.join("-");
 
+          console.log("likeItem called with:", { itemId, type, actualId });
+
+
       if (type === "activity") {
         const insertResult = await supabase.from("likes").insert({
           activity_id: actualId,
@@ -1011,16 +1014,23 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       // Just update UI - let the database trigger handle notifications
-      setFeed((prev) =>
-        prev.map((post) =>
-          post.id === itemId
-            ? {
-                ...post,
-                data: { ...post.data, likes: [...post.data.likes, user.id] },
-              }
-            : post
-        )
-      );
+ setFeed((prev) => {
+  console.log("Updating feed for itemId:", itemId);
+  console.log("Current feed ids:", prev.map(p => p.id));
+  
+  return prev.map((post) => {
+    if (post.id === itemId) {
+      console.log("Current likes:", post.data.likes);
+      console.log("Adding user:", user.id);
+    }
+    return post.id === itemId
+      ? {
+          ...post,
+          data: { ...post.data, likes: [...post.data.likes, user.id] },
+        }
+      : post;
+  });
+});
     } catch (error) {
       console.error("Error in likeItem:", error);
       Alert.alert("Error", "Failed to like item");

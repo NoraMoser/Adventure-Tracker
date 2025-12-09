@@ -1,15 +1,15 @@
-// hooks/useActivityDetails.ts
+// hooks/useLocationDetails.ts
 
 import { useEffect, useRef, useState } from "react";
 import { Alert, TextInput } from "react-native";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
-import { Activity } from "../types/activity";
 import { Comment } from "../types/comment";
+import { Location } from "../types/location";
 
-interface UseActivityDetailsReturn {
+interface UseLocationDetailsReturn {
   // Data
-  activity: Activity | null;
+  location: Location | null;
   comments: Comment[];
   liked: boolean;
   likeCount: number;
@@ -35,11 +35,11 @@ interface UseActivityDetailsReturn {
   cancelReply: () => void;
 }
 
-export function useActivityDetails(activityId: string): UseActivityDetailsReturn {
+export function useLocationDetails(locationId: string): UseLocationDetailsReturn {
   const { user } = useAuth();
 
   // Data state
-  const [activity, setActivity] = useState<Activity | null>(null);
+  const [location, setLocation] = useState<Location | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -55,41 +55,41 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
   const commentInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    if (activityId) {
-      loadActivityDetails();
+    if (locationId) {
+      loadLocationDetails();
       checkIfLiked();
     }
-  }, [activityId]);
+  }, [locationId]);
 
-  const loadActivityDetails = async () => {
+  const loadLocationDetails = async () => {
     try {
-      // Load activity
-      const { data: activityData, error: activityError } = await supabase
-        .from("activities")
+      // Load location
+      const { data: locationData, error: locationError } = await supabase
+        .from("locations")
         .select("*")
-        .eq("id", activityId)
+        .eq("id", locationId)
         .single();
 
-      if (activityError) throw activityError;
+      if (locationError) throw locationError;
 
       // Load owner profile separately
-      if (activityData.user_id) {
+      if (locationData.user_id) {
         const { data: ownerProfile } = await supabase
           .from("profiles")
           .select("id, username, display_name, avatar")
-          .eq("id", activityData.user_id)
+          .eq("id", locationData.user_id)
           .single();
 
-        activityData.user = ownerProfile;
+        locationData.user = ownerProfile;
       }
 
-      setActivity(activityData);
+      setLocation(locationData);
 
       // Load comments
       const { data: commentsData, error: commentsError } = await supabase
         .from("comments")
         .select("*")
-        .eq("activity_id", activityId)
+        .eq("location_id", locationId)
         .order("created_at", { ascending: false });
 
       if (commentsError) throw commentsError;
@@ -126,12 +126,12 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
       const { count } = await supabase
         .from("likes")
         .select("*", { count: "exact", head: true })
-        .eq("activity_id", activityId);
+        .eq("location_id", locationId);
 
       setLikeCount(count || 0);
     } catch (error) {
-      console.error("Error loading activity details:", error);
-      Alert.alert("Error", "Failed to load activity details");
+      console.error("Error loading location details:", error);
+      Alert.alert("Error", "Failed to load location details");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -144,7 +144,7 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
     const { data } = await supabase
       .from("likes")
       .select("id")
-      .eq("activity_id", activityId)
+      .eq("location_id", locationId)
       .eq("user_id", user.id)
       .single();
 
@@ -153,7 +153,7 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
 
   const handleLike = async () => {
     if (!user) {
-      Alert.alert("Sign In Required", "Please sign in to like activities");
+      Alert.alert("Sign In Required", "Please sign in to like locations");
       return;
     }
 
@@ -162,14 +162,14 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
         await supabase
           .from("likes")
           .delete()
-          .eq("activity_id", activityId)
+          .eq("location_id", locationId)
           .eq("user_id", user.id);
 
         setLiked(false);
         setLikeCount((prev) => Math.max(0, prev - 1));
       } else {
         await supabase.from("likes").insert({
-          activity_id: activityId,
+          location_id: locationId,
           user_id: user.id,
         });
 
@@ -206,7 +206,7 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
     setSubmitting(true);
     try {
       const commentData: any = {
-        activity_id: activityId,
+        location_id: locationId,
         user_id: user.id,
         text: newComment.trim(),
       };
@@ -272,11 +272,11 @@ export function useActivityDetails(activityId: string): UseActivityDetailsReturn
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadActivityDetails();
+    loadLocationDetails();
   };
 
   return {
-    activity,
+    location,
     comments,
     liked,
     likeCount,
