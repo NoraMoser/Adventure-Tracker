@@ -315,3 +315,105 @@ export const generateRouteDrawerHTML = ({
     </html>
   `;
 };
+
+interface GenerateLocationPickerHTMLOptions {
+  centerLat: number;
+  centerLng: number;
+}
+
+export const generateLocationPickerHTML = ({
+  centerLat,
+  centerLng,
+}: GenerateLocationPickerHTMLOptions): string => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; }
+        .custom-popup { font-size: 14px; }
+        .info-box {
+          background: rgba(255,255,255,0.95);
+          padding: 12px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          border: 2px solid #2d5a3d;
+        }
+        .leaflet-container {
+          cursor: crosshair !important;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map', {
+          tap: true,
+          touchZoom: true,
+          doubleClickZoom: false
+        }).setView([${centerLat}, ${centerLng}], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19
+        }).addTo(map);
+
+        window.currentMarker = null;
+        window.currentLocationMarker = null;
+
+        var selectedIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+
+        map.on('click', function(e) {
+          if (window.currentMarker) {
+            map.removeLayer(window.currentMarker);
+          }
+          
+          window.currentMarker = L.marker([e.latlng.lat, e.latlng.lng], { icon: selectedIcon })
+            .addTo(map)
+            .bindPopup('Tap here to save this location')
+            .openPopup();
+          
+          window.currentMarker._icon.style.animation = 'bounce 0.5s';
+          
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'locationSelected',
+            latitude: e.latlng.lat,
+            longitude: e.latlng.lng
+          }));
+        });
+
+        var info = L.control({ position: 'topright' });
+        info.onAdd = function (map) {
+          this._div = L.DomUtil.create('div', 'info-box');
+          this._div.innerHTML = '📍 Tap anywhere on the map to select a location';
+          return this._div;
+        };
+        info.addTo(map);
+
+        var style = document.createElement('style');
+        style.innerHTML = '@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }';
+        document.head.appendChild(style);
+
+        setTimeout(function() {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'mapReady'
+          }));
+        }, 500);
+      </script>
+    </body>
+    </html>
+  `;
+};

@@ -1,6 +1,6 @@
 // components/RouteDrawerModal.tsx
 
-import React, { useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -8,20 +8,20 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
-import { RoutePoint } from "../types/activity";
 import { generateRouteDrawerHTML } from "../utils/mapHelpers";
 
 interface RouteDrawerModalProps {
   visible: boolean;
   onClose: () => void;
-  onRouteUpdate: (route: RoutePoint[], distance: number) => void;
+  onRouteUpdate: (route: any[], distance: number) => void;
   centerLat: number;
   centerLng: number;
   distanceUnit: "km" | "mi";
-  existingRoute?: RoutePoint[];
+  existingRoute?: any[];
 }
 
 export function RouteDrawerModal({
@@ -34,6 +34,22 @@ export function RouteDrawerModal({
   existingRoute = [],
 }: RouteDrawerModalProps) {
   const webViewRef = useRef<WebView>(null);
+  const [webViewReady, setWebViewReady] = useState(false);
+
+  // Delay WebView mount on Android to avoid Modal rendering issues
+  useEffect(() => {
+    if (visible && Platform.OS === "android") {
+      setWebViewReady(false);
+      const timer = setTimeout(() => {
+        setWebViewReady(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else if (visible) {
+      setWebViewReady(true);
+    } else {
+      setWebViewReady(false);
+    }
+  }, [visible]);
 
   const handleMapMessage = (event: any) => {
     try {
@@ -47,12 +63,23 @@ export function RouteDrawerModal({
     }
   };
 
-  const mapHTML = generateRouteDrawerHTML({
-    centerLat,
-    centerLng,
-    distanceUnit,
-    existingRoute,
-  });
+  const handleError = (syntheticEvent: any) => {
+    const { nativeEvent } = syntheticEvent;
+    console.error("WebView error:", nativeEvent);
+  };
+
+  // Only generate HTML once when modal becomes visible
+  // Don't regenerate on existingRoute changes (that happens every click)
+  const mapHTML = useMemo(() => {
+    if (!visible) return "";
+    return generateRouteDrawerHTML({
+      centerLat,
+      centerLng,
+      distanceUnit,
+      existingRoute,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, centerLat, centerLng, distanceUnit]); // Intentionally exclude existingRoute
 
   return (
     <Modal
@@ -67,14 +94,30 @@ export function RouteDrawerModal({
             <Text style={styles.closeButtonText}>Done</Text>
           </TouchableOpacity>
         </View>
-        <WebView
-          ref={webViewRef}
-          style={styles.webView}
-          source={{ html: mapHTML }}
-          onMessage={handleMapMessage}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-        />
+        {webViewReady ? (
+          <WebView
+            ref={webViewRef}
+            style={styles.webView}
+            source={{ html: mapHTML }}
+            onMessage={handleMapMessage}
+            onError={handleError}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            originWhitelist={["*"]}
+            mixedContentMode="always"
+            scrollEnabled={true}
+            androidLayerType="none"
+            setSupportMultipleWindows={false}
+            overScrollMode="never"
+            startInLoadingState={true}
+            cacheEnabled={true}
+          />
+        ) : (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.forest} />
+            <Text style={styles.loadingText}>Loading map...</Text>
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -113,5 +156,18 @@ const styles = StyleSheet.create({
   },
   webView: {
     flex: 1,
+    opacity: 0.99,
+    backgroundColor: "transparent",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: theme.colors.gray,
   },
 });
