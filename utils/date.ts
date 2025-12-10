@@ -1,5 +1,16 @@
 // utils/date.ts
 
+export const normalizeDate = (date: Date | string): Date => {
+  const d = date instanceof Date ? date : new Date(date);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+};
+
+export const setEndOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
 export const getLastActiveText = (lastActive?: Date): string => {
   if (!lastActive) return "Offline";
 

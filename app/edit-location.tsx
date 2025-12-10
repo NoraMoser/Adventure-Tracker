@@ -1,12 +1,13 @@
+// app/edit-location.tsx
+
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState, useRef } from "react";
+import * as Location from "expo-location";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Linking,
   Platform,
   ScrollView,
@@ -16,27 +17,15 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { categoryList, CategoryType } from "../constants/categories";
+import { CameraCapture } from "../components/CameraCapture";
+import { CategorySelector } from "../components/CategorySelector";
+import { LocationPickerModal } from "../components/LocationPickerModal";
+import { PhotoPicker } from "../components/PhotoPicker";
+import { theme } from "../constants/theme";
+import { CategoryType } from "../constants/categories";
 import { useAuth } from "../contexts/AuthContext";
 import { useLocation } from "../contexts/LocationContext";
 import { PhotoService } from "../services/photoService";
-import { Camera, CameraView } from "expo-camera";
-import * as Location from "expo-location";
-import { WebView } from "react-native-webview";
-
-// Theme colors
-const theme = {
-  colors: {
-    navy: "#1e3a5f",
-    forest: "#2d5a3d",
-    offWhite: "#faf8f5",
-    burntOrange: "#cc5500",
-    white: "#ffffff",
-    gray: "#666666",
-    lightGray: "#999999",
-    borderGray: "#e0e0e0",
-  },
-};
 
 export default function EditLocationScreen() {
   const { spotId } = useLocalSearchParams();
@@ -53,22 +42,16 @@ export default function EditLocationScreen() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // NEW: Date states
   const [locationDate, setLocationDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // Camera states
   const [showCamera, setShowCamera] = useState(false);
-  const cameraRef = useRef<CameraView>(null);
-  const [cameraKey, setCameraKey] = useState(0);
-
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
-  const [editedLocation, setEditedLocation] = useState(spot?.location || null);
-  const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [editedLocation, setEditedLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   useEffect(() => {
-    // Load the spot data
     const currentSpot = savedSpots.find((s) => s.id === spotId);
     if (currentSpot) {
       setSpot(currentSpot);
@@ -76,7 +59,6 @@ export default function EditLocationScreen() {
       setDescription(currentSpot.description || "");
       setPhotos(currentSpot.photos || []);
       setCategory(currentSpot.category || "other");
-      // NEW: Set the location date
       setLocationDate(
         currentSpot.locationDate
           ? new Date(currentSpot.locationDate)
@@ -94,7 +76,6 @@ export default function EditLocationScreen() {
   }, [spotId, savedSpots]);
 
   useEffect(() => {
-    // Check if any changes were made (including date)
     if (spot) {
       const originalDate = spot.locationDate
         ? new Date(spot.locationDate)
@@ -136,7 +117,6 @@ export default function EditLocationScreen() {
 
   const handleLocationUpdate = async () => {
     try {
-      // Get current location
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permission Denied", "Location permission is required");
@@ -158,75 +138,11 @@ export default function EditLocationScreen() {
     }
   };
 
-  const handleTakePhoto = async () => {
-    setShowCamera(true);
-  };
-
-  const takePicture = async () => {
-    if (cameraRef.current) {
-      try {
-
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
-          base64: false,
-          skipProcessing: true,
-        });
-
-        if (photo && photo.uri) {
-          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
-
-          // Force camera to unmount and remount
-          setCameraKey((prev) => prev + 1);
-
-          // Close camera
-          setTimeout(() => {
-            setShowCamera(false);
-          }, 200);
-        }
-      } catch (error) {
-        console.error("Camera error:", error);
-        Alert.alert("Error", "Failed to take picture");
-        setShowCamera(false);
-      }
-    }
-  };
-
-  const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Denied", "Media library permission is required");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const newPhotos = result.assets.map((asset) => asset.uri);
-      setPhotos([...photos, ...newPhotos]);
-    }
-  };
-
-  const handleRemovePhoto = (index: number) => {
-    Alert.alert("Remove Photo", "Are you sure you want to remove this photo?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () => {
-          const newPhotos = photos.filter((_, i) => i !== index);
-          setPhotos(newPhotos);
-        },
-      },
-    ]);
+  const handleCameraCapture = (uri: string) => {
+    setPhotos((prev) => [...prev, uri]);
   };
 
   const handleSave = async () => {
-    // Check location permission first
     const { status } = await Location.getForegroundPermissionsAsync();
     if (status !== "granted") {
       const { status: newStatus } =
@@ -240,6 +156,7 @@ export default function EditLocationScreen() {
         return;
       }
     }
+
     if (!name.trim()) {
       Alert.alert("Error", "Location name is required");
       return;
@@ -253,21 +170,17 @@ export default function EditLocationScreen() {
     setIsSaving(true);
 
     try {
-      // Process photos - separate new local photos from existing URLs
       const existingUrls: string[] = [];
       const newLocalPhotos: string[] = [];
 
       for (const photo of photos) {
         if (photo.startsWith("http")) {
-          // This is an existing URL from storage
           existingUrls.push(photo);
         } else if (photo.startsWith("file://") || photo.startsWith("data:")) {
-          // This is a new local photo that needs to be uploaded
           newLocalPhotos.push(photo);
         }
       }
 
-      // Upload new photos if any
       let newUploadedUrls: string[] = [];
       if (newLocalPhotos.length > 0) {
         newUploadedUrls = await PhotoService.uploadPhotos(
@@ -277,7 +190,6 @@ export default function EditLocationScreen() {
         );
       }
 
-      // Combine existing URLs with newly uploaded URLs
       const finalPhotoUrls = [...existingUrls, ...newUploadedUrls];
 
       const updatedSpot = {
@@ -287,7 +199,7 @@ export default function EditLocationScreen() {
         photos: finalPhotoUrls,
         category,
         locationDate,
-        location: editedLocation, // ADD THIS: Include the edited location
+        location: editedLocation,
       };
 
       await updateSpot(spotId as string, updatedSpot);
@@ -350,7 +262,6 @@ export default function EditLocationScreen() {
     const webUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 
     let url = webUrl;
-
     if (Platform.OS === "ios") {
       url = appleMapsUrl;
     } else if (Platform.OS === "android") {
@@ -365,7 +276,7 @@ export default function EditLocationScreen() {
           Linking.openURL(webUrl);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         Alert.alert("Error", "Unable to open maps");
       });
   };
@@ -378,31 +289,12 @@ export default function EditLocationScreen() {
     );
   }
 
-  // Camera view
   if (showCamera) {
     return (
-      <View style={styles.cameraContainer}>
-        <CameraView
-          key={cameraKey}
-          ref={cameraRef}
-          style={styles.camera}
-          facing="back"
-        />
-        <View style={styles.cameraOverlay}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => {
-              setCameraKey((prev) => prev + 1);
-              setShowCamera(false);
-            }}
-          >
-            <Ionicons name="close" size={30} color="white" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <CameraCapture
+        onCapture={handleCameraCapture}
+        onClose={() => setShowCamera(false)}
+      />
     );
   }
 
@@ -422,7 +314,6 @@ export default function EditLocationScreen() {
           {new Date(spot?.timestamp).toLocaleDateString()}
         </Text>
 
-        {/* Get Directions Button */}
         <TouchableOpacity
           style={styles.directionsButton}
           onPress={handleGetDirections}
@@ -435,36 +326,10 @@ export default function EditLocationScreen() {
       {/* Form */}
       <View style={styles.form}>
         <Text style={styles.label}>Category</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoryScroll}
-        >
-          {categoryList.map((cat) => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.categoryChip,
-                category === cat.id && { backgroundColor: cat.color },
-              ]}
-              onPress={() => setCategory(cat.id)}
-            >
-              <Ionicons
-                name={cat.icon}
-                size={16}
-                color={category === cat.id ? "white" : cat.color}
-              />
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  category === cat.id && { color: "white" },
-                ]}
-              >
-                {cat.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <CategorySelector
+          selected={category}
+          onSelect={setCategory}
+        />
 
         <Text style={styles.label}>Location Name *</Text>
         <TextInput
@@ -510,7 +375,6 @@ export default function EditLocationScreen() {
           </View>
         </View>
 
-        {/* NEW: Date Visited Section */}
         <Text style={styles.label}>Date Visited</Text>
         <TouchableOpacity
           style={styles.dateButton}
@@ -537,7 +401,7 @@ export default function EditLocationScreen() {
                 setLocationDate(selectedDate);
               }
             }}
-            maximumDate={new Date()} // Can't select future dates
+            maximumDate={new Date()}
           />
         )}
 
@@ -553,92 +417,12 @@ export default function EditLocationScreen() {
           textAlignVertical="top"
         />
 
-        {/* Photos Section */}
         <Text style={styles.label}>Photos ({photos.length})</Text>
-
-        <View style={styles.photoActions}>
-          <TouchableOpacity
-            style={styles.photoButton}
-            onPress={handleTakePhoto}
-          >
-            <Ionicons name="camera" size={20} color={theme.colors.forest} />
-            <Text style={styles.photoButtonText}>Take Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.photoButton}
-            onPress={handlePickImage}
-          >
-            <Ionicons name="images" size={20} color={theme.colors.forest} />
-            <Text style={styles.photoButtonText}>Add from Gallery</Text>
-          </TouchableOpacity>
-        </View>
-
-        {photos.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.photoList}
-          >
-            {photos.map((photo, index) => (
-              <View key={index} style={styles.photoContainer}>
-                <Image source={{ uri: photo }} style={styles.photo} />
-                <TouchableOpacity
-                  style={styles.removePhotoButton}
-                  onPress={() => handleRemovePhoto(index)}
-                >
-                  <Ionicons
-                    name="close-circle"
-                    size={24}
-                    color={theme.colors.burntOrange}
-                  />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-        {isEditingLocation && (
-          <View style={styles.manualInput}>
-            <Text style={styles.label}>Edit Coordinates</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Latitude"
-              value={editedLocation?.latitude.toString()}
-              onChangeText={(text) => {
-                const lat = parseFloat(text);
-                if (!isNaN(lat)) {
-                  setEditedLocation((prev) =>
-                    prev
-                      ? { ...prev, latitude: lat }
-                      : { latitude: lat, longitude: 0 }
-                  );
-                }
-              }}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Longitude"
-              value={editedLocation?.longitude.toString()}
-              onChangeText={(text) => {
-                const lng = parseFloat(text);
-                if (!isNaN(lng)) {
-                  setEditedLocation((prev) =>
-                    prev
-                      ? { ...prev, longitude: lng }
-                      : { latitude: 0, longitude: lng }
-                  );
-                }
-              }}
-              keyboardType="numeric"
-            />
-            <TouchableOpacity
-              style={styles.doneButton}
-              onPress={() => setIsEditingLocation(false)}
-            >
-              <Text style={styles.doneButtonText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <PhotoPicker
+          photos={photos}
+          onPhotosChange={setPhotos}
+          onOpenCamera={() => setShowCamera(true)}
+        />
 
         {/* Action Buttons */}
         <TouchableOpacity
@@ -668,7 +452,6 @@ export default function EditLocationScreen() {
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
 
-        {/* Delete Button */}
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
           <Ionicons
             name="trash-outline"
@@ -677,73 +460,17 @@ export default function EditLocationScreen() {
           />
           <Text style={styles.deleteButtonText}>Delete Location</Text>
         </TouchableOpacity>
-        {showMapPicker && (
-          <View style={styles.mapModal}>
-            <View style={styles.mapHeader}>
-              <Text style={styles.mapTitle}>Tap to select new location</Text>
-              <TouchableOpacity onPress={() => setShowMapPicker(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.navy} />
-              </TouchableOpacity>
-            </View>
-
-            <WebView
-              source={{
-                html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <style>
-              body { margin: 0; padding: 0; }
-              #map { height: 100vh; width: 100vw; }
-            </style>
-          </head>
-          <body>
-            <div id="map"></div>
-            <script>
-              var map = L.map('map').setView([${
-                editedLocation?.latitude || 47.6062
-              }, ${editedLocation?.longitude || -122.3321}], 13);
-              
-              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-              
-              var marker = L.marker([${editedLocation?.latitude || 47.6062}, ${
-                  editedLocation?.longitude || -122.3321
-                }]).addTo(map);
-              
-              map.on('click', function(e) {
-                marker.setLatLng(e.latlng);
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                  latitude: e.latlng.lat,
-                  longitude: e.latlng.lng
-                }));
-              });
-            </script>
-          </body>
-          </html>
-        `,
-              }}
-              style={styles.mapPicker}
-              onMessage={(event) => {
-                const data = JSON.parse(event.nativeEvent.data);
-                setEditedLocation({
-                  latitude: data.latitude,
-                  longitude: data.longitude,
-                });
-              }}
-            />
-
-            <TouchableOpacity
-              style={styles.mapDoneButton}
-              onPress={() => setShowMapPicker(false)}
-            >
-              <Text style={styles.mapDoneButtonText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
+
+      <LocationPickerModal
+        visible={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        onLocationSelect={(lat, lng) => {
+          setEditedLocation({ latitude: lat, longitude: lng });
+        }}
+        initialLatitude={editedLocation?.latitude}
+        initialLongitude={editedLocation?.longitude}
+      />
     </ScrollView>
   );
 }
@@ -836,155 +563,10 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     marginLeft: 10,
   },
-  photoActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 15,
-  },
-  photoButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: theme.colors.white,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.forest,
-  },
-  photoButtonText: {
-    color: theme.colors.forest,
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  photoList: {
-    marginBottom: 20,
-  },
-  photoContainer: {
-    marginRight: 10,
-    position: "relative",
-  },
-  photo: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-  },
-  removePhotoButton: {
-    position: "absolute",
-    top: -8,
-    right: -8,
-    backgroundColor: theme.colors.white,
-    borderRadius: 12,
-  },
-  saveButton: {
-    backgroundColor: theme.colors.forest,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  saveButtonDisabled: {
-    backgroundColor: theme.colors.lightGray,
-  },
-  saveButtonText: {
-    color: theme.colors.white,
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  cancelButton: {
-    backgroundColor: theme.colors.white,
-    paddingVertical: 15,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  cancelButtonText: {
-    color: theme.colors.gray,
-    fontSize: 16,
-  },
-  deleteButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    marginTop: 20,
-  },
-  deleteButtonText: {
-    color: theme.colors.burntOrange,
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  categoryScroll: {
-    marginBottom: 15,
-    maxHeight: 40,
-  },
-  categoryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  categoryChipText: {
-    marginLeft: 4,
-    fontSize: 12,
-    fontWeight: "500",
-    color: theme.colors.gray,
-  },
-  // Camera styles
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: "black",
-  },
-  camera: {
-    flex: 1,
-  },
-  cameraOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 40,
-  },
-  captureButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  captureButtonInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "white",
-  },
-  closeButton: {
-    position: "absolute",
-    top: 50,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 10,
-    borderRadius: 25,
-    zIndex: 1,
-  },
   locationSection: {
     marginBottom: 20,
     padding: 15,
-    backgroundColor: "white",
+    backgroundColor: theme.colors.white,
     borderRadius: 12,
   },
   locationDisplay: {
@@ -1018,57 +600,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.navy,
   },
-  manualInput: {
-    padding: 15,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    marginBottom: 15,
-  },
-  doneButton: {
+  saveButton: {
     backgroundColor: theme.colors.forest,
-    padding: 10,
-    borderRadius: 8,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    borderRadius: 8,
+    marginBottom: 10,
     marginTop: 10,
   },
-  doneButtonText: {
-    color: "white",
-    fontWeight: "600",
+  saveButtonDisabled: {
+    backgroundColor: theme.colors.lightGray,
   },
-  mapModal: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "white",
-    zIndex: 1000,
-  },
-  mapHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  mapTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: theme.colors.navy,
-  },
-  mapPicker: {
-    flex: 1,
-  },
-  mapDoneButton: {
-    backgroundColor: theme.colors.forest,
-    padding: 16,
-    alignItems: "center",
-  },
-  mapDoneButtonText: {
-    color: "white",
+  saveButtonText: {
+    color: theme.colors.white,
     fontSize: 16,
     fontWeight: "600",
+    marginLeft: 8,
+  },
+  cancelButton: {
+    backgroundColor: theme.colors.white,
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  cancelButtonText: {
+    color: theme.colors.gray,
+    fontSize: 16,
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    marginTop: 20,
+    marginBottom: 40,
+  },
+  deleteButtonText: {
+    color: theme.colors.burntOrange,
+    fontSize: 16,
+    marginLeft: 8,
   },
 });
