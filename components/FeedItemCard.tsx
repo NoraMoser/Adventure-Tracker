@@ -5,6 +5,8 @@ import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -249,6 +251,11 @@ export function FeedItemCard({
     }
   };
 
+  // Get top-level comments and their replies
+  const topLevelComments = item.data.comments.filter((c: any) => !c.replyTo);
+  const getReplies = (commentId: string) => 
+    item.data.comments.filter((c: any) => c.replyTo === commentId);
+
   return (
     <View style={styles.feedCard}>
       <View style={styles.cardHeader}>
@@ -333,8 +340,14 @@ export function FeedItemCard({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton} onPress={() => setShowComments(!showComments)}>
-          <Ionicons name="chatbubble-outline" size={20} color={theme.colors.gray} />
-          <Text style={styles.actionText}>{commentsCount > 0 ? commentsCount : "Comment"}</Text>
+          <Ionicons 
+            name={showComments ? "chatbubble" : "chatbubble-outline"} 
+            size={20} 
+            color={showComments ? theme.colors.forest : theme.colors.gray} 
+          />
+          <Text style={[styles.actionText, showComments && { color: theme.colors.forest }]}>
+            {commentsCount > 0 ? commentsCount : "Comment"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton} onPress={() => onShare(item)}>
@@ -345,71 +358,140 @@ export function FeedItemCard({
 
       {showComments && (
         <View style={styles.commentsSection}>
-          {item.data.comments
-            .filter((comment: any) => !comment.replyToId)
-            .map((comment: any) => (
-              <View key={comment.id}>
-                <View style={styles.comment}>
-                  <View style={styles.commentHeader}>
-                    <Text style={styles.commentUser}>{comment.userName}</Text>
-                    <Text style={styles.commentTime}>{getTimeAgo(comment.timestamp)}</Text>
-                  </View>
-                  <Text style={styles.commentText}>{comment.text}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setCommentText(`@${comment.userName} `);
-                      setReplyingTo({ id: comment.id, userName: comment.userName });
-                    }}
-                    style={styles.replyButton}
-                  >
-                    <Text style={styles.replyButtonText}>Reply</Text>
-                  </TouchableOpacity>
-                </View>
+          {/* Comments Header */}
+          {commentsCount > 0 && (
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsHeaderText}>
+                {commentsCount} {commentsCount === 1 ? "Comment" : "Comments"}
+              </Text>
+            </View>
+          )}
 
-                {item.data.comments
-                  .filter((reply: any) => reply.replyToId === comment.id)
-                  .map((reply: any) => (
-                    <View key={reply.id} style={styles.replyComment}>
-                      <View style={styles.replyIndent}>
-                        <View style={styles.replyLine} />
-                        <View style={styles.replyContent}>
-                          <View style={styles.commentHeader}>
-                            <Text style={styles.commentUser}>{reply.userName}</Text>
-                            <Text style={styles.commentTime}>{getTimeAgo(reply.timestamp)}</Text>
-                          </View>
-                          <Text style={styles.commentText}>
-                            <Text style={styles.replyToMention}>@{comment.userName} </Text>
-                            {reply.text}
+          {/* Scrollable Comments List */}
+          <ScrollView 
+            style={styles.commentsList}
+            contentContainerStyle={styles.commentsListContent}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+          >
+            {topLevelComments.length === 0 ? (
+              <View style={styles.noCommentsContainer}>
+                <Ionicons name="chatbubble-outline" size={32} color={theme.colors.lightGray} />
+                <Text style={styles.noCommentsText}>No comments yet</Text>
+                <Text style={styles.noCommentsSubtext}>Be the first to comment!</Text>
+              </View>
+            ) : (
+              topLevelComments.map((comment: any) => (
+                <View key={comment.id} style={styles.commentThread}>
+                  {/* Main Comment */}
+                  <View style={styles.commentCard}>
+                    <View style={styles.commentAvatar}>
+                      <Text style={styles.commentAvatarText}>
+                        {comment.userName?.charAt(0)?.toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                    <View style={styles.commentBody}>
+                      <View style={styles.commentBubble}>
+                        <View style={styles.commentMeta}>
+                          <Text style={styles.commentUserName}>{comment.userName}</Text>
+                          <Text style={styles.commentTimestamp}>{getTimeAgo(comment.timestamp)}</Text>
+                        </View>
+                        <Text style={styles.commentContent}>{comment.text}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setReplyingTo({ id: comment.id, userName: comment.userName });
+                        }}
+                        style={styles.replyTrigger}
+                      >
+                        <Ionicons name="arrow-undo-outline" size={14} color={theme.colors.forest} />
+                        <Text style={styles.replyTriggerText}>Reply</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Replies */}
+                  {getReplies(comment.id).map((reply: any) => (
+                    <View key={reply.id} style={styles.replyContainer}>
+                      <View style={styles.replyLine} />
+                      <View style={styles.replyCard}>
+                        <View style={styles.replyAvatar}>
+                          <Text style={styles.replyAvatarText}>
+                            {reply.userName?.charAt(0)?.toUpperCase() || "?"}
                           </Text>
+                        </View>
+                        <View style={styles.replyBody}>
+                          <View style={styles.replyBubble}>
+                            <View style={styles.commentMeta}>
+                              <Text style={styles.commentUserName}>{reply.userName}</Text>
+                              <Text style={styles.commentTimestamp}>{getTimeAgo(reply.timestamp)}</Text>
+                            </View>
+                            <Text style={styles.commentContent}>
+                              <Text style={styles.mentionText}>@{comment.userName} </Text>
+                              {reply.text}
+                            </Text>
+                          </View>
                         </View>
                       </View>
                     </View>
                   ))}
-              </View>
-            ))}
+                </View>
+              ))
+            )}
+          </ScrollView>
 
-          <View style={styles.addCommentWrapper}>
-            {replyingTo && (
-              <View style={styles.replyingToIndicator}>
-                <Text style={styles.replyingToText}>Replying to {replyingTo.userName}</Text>
-                <TouchableOpacity onPress={() => setReplyingTo(null)}>
-                  <Ionicons name="close" size={16} color={theme.colors.gray} />
+          {/* Comment Input */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={100}
+          >
+            <View style={styles.commentInputSection}>
+              {replyingTo && (
+                <View style={styles.replyingBanner}>
+                  <View style={styles.replyingInfo}>
+                    <Ionicons name="arrow-undo" size={14} color={theme.colors.forest} />
+                    <Text style={styles.replyingText}>
+                      Replying to <Text style={styles.replyingName}>{replyingTo.userName}</Text>
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => setReplyingTo(null)}
+                    style={styles.cancelReplyButton}
+                  >
+                    <Ionicons name="close-circle" size={20} color={theme.colors.gray} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              <View style={styles.inputRow}>
+                <View style={styles.inputAvatar}>
+                  <Ionicons name="person" size={16} color={theme.colors.gray} />
+                </View>
+                <TextInput
+                  style={styles.commentTextInput}
+                  placeholder={replyingTo ? `Reply to ${replyingTo.userName}...` : "Write a comment..."}
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholderTextColor={theme.colors.lightGray}
+                  multiline
+                  maxLength={500}
+                />
+                <TouchableOpacity 
+                  style={[
+                    styles.sendCommentButton,
+                    !commentText.trim() && styles.sendCommentButtonDisabled
+                  ]} 
+                  onPress={handleSubmitComment}
+                  disabled={!commentText.trim()}
+                >
+                  <Ionicons 
+                    name="send" 
+                    size={18} 
+                    color={commentText.trim() ? "white" : theme.colors.lightGray} 
+                  />
                 </TouchableOpacity>
               </View>
-            )}
-            <View style={styles.addCommentContainer}>
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Add a comment..."
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholderTextColor={theme.colors.lightGray}
-              />
-              <TouchableOpacity style={styles.sendButton} onPress={handleSubmitComment}>
-                <Ionicons name="send" size={20} color={theme.colors.forest} />
-              </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       )}
     </View>
@@ -703,12 +785,10 @@ const styles = StyleSheet.create({
   cardActions: {
     flexDirection: "row",
     justifyContent: "space-around",
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
     backgroundColor: theme.colors.offWhite,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
   },
   actionButton: {
     flexDirection: "row",
@@ -720,108 +800,229 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontSize: 14,
     color: theme.colors.gray,
+    fontWeight: "500",
   },
+  
+  // ===== IMPROVED COMMENTS SECTION =====
   commentsSection: {
-    padding: 15,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,
-    backgroundColor: theme.colors.offWhite,
-  },
-  comment: {
-    marginBottom: 10,
     backgroundColor: "white",
-    padding: 10,
-    borderRadius: 8,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    overflow: "hidden",
   },
-  commentHeader: {
+  commentsHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray + "50",
+  },
+  commentsHeaderText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  commentsList: {
+    maxHeight: 300,
+  },
+  commentsListContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  noCommentsContainer: {
+    alignItems: "center",
+    paddingVertical: 24,
+  },
+  noCommentsText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.gray,
+    marginTop: 8,
+  },
+  noCommentsSubtext: {
+    fontSize: 13,
+    color: theme.colors.lightGray,
+    marginTop: 4,
+  },
+  commentThread: {
+    marginBottom: 16,
+  },
+  commentCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.forest,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  commentAvatarText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  commentBody: {
+    flex: 1,
+  },
+  commentBubble: {
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  commentMeta: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 4,
   },
-  commentUser: {
-    fontSize: 14,
+  commentUserName: {
+    fontSize: 13,
     fontWeight: "600",
     color: theme.colors.navy,
   },
-  commentTime: {
+  commentTimestamp: {
     fontSize: 11,
     color: theme.colors.lightGray,
   },
-  commentText: {
+  commentContent: {
     fontSize: 14,
     color: theme.colors.gray,
-    marginTop: 2,
+    lineHeight: 20,
   },
-  replyButton: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+  replyTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
-  replyButtonText: {
+  replyTriggerText: {
     fontSize: 12,
     color: theme.colors.forest,
     fontWeight: "500",
+    marginLeft: 4,
   },
-  replyComment: {
-    paddingLeft: 30,
-    marginTop: 8,
-  },
-  replyIndent: {
+  replyContainer: {
     flexDirection: "row",
+    marginTop: 8,
+    marginLeft: 18,
   },
   replyLine: {
     width: 2,
-    backgroundColor: theme.colors.lightGray + "30",
-    marginRight: 12,
-    marginLeft: 5,
+    backgroundColor: theme.colors.forest + "30",
+    marginRight: 10,
+    borderRadius: 1,
   },
-  replyContent: {
+  replyCard: {
     flex: 1,
-    backgroundColor: theme.colors.offWhite,
-    padding: 8,
-    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "flex-start",
   },
-  replyToMention: {
+  replyAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.colors.navy,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  replyAvatarText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  replyBody: {
+    flex: 1,
+  },
+  replyBubble: {
+    backgroundColor: theme.colors.forest + "08",
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.forest + "15",
+  },
+  mentionText: {
     color: theme.colors.forest,
     fontWeight: "600",
   },
-  addCommentWrapper: {
-    width: "100%",
+  
+  // Comment Input Section
+  commentInputSection: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+    backgroundColor: theme.colors.offWhite,
   },
-  replyingToIndicator: {
+  replyingBanner: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: theme.colors.forest + "10",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginBottom: 8,
-    width: "100%",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.forest + "20",
   },
-  replyingToText: {
-    fontSize: 12,
-    color: theme.colors.forest,
-    fontWeight: "500",
-  },
-  addCommentContainer: {
+  replyingInfo: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
   },
-  commentInput: {
+  replyingText: {
+    fontSize: 13,
+    color: theme.colors.forest,
+    marginLeft: 6,
+  },
+  replyingName: {
+    fontWeight: "600",
+  },
+  cancelReplyButton: {
+    padding: 4,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  inputAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.borderGray,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  commentTextInput: {
     flex: 1,
     backgroundColor: "white",
     borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginRight: 10,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
     fontSize: 14,
     color: theme.colors.navy,
     borderWidth: 1,
     borderColor: theme.colors.borderGray,
+    maxHeight: 100,
+    marginRight: 8,
   },
-  sendButton: {
-    padding: 8,
+  sendCommentButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.forest,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sendCommentButtonDisabled: {
+    backgroundColor: theme.colors.borderGray,
   },
 });

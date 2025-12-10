@@ -58,45 +58,61 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
         async (response: any) => {
           const { data } = response.notification.request.content;
 
-          // Navigate based on notification type
-          if (data?.type === "friend_request") {
-            await refreshFeed(); // This will fetch the latest friend requests
+          console.log("=== NOTIFICATION TAPPED ===");
+          console.log("Full data:", JSON.stringify(data, null, 2));
 
-            // Small delay to ensure refresh completes
-            setTimeout(() => {
-              router.push("/friend-requests");
-            }, 300);
-          } else if (data?.type === "comment") {
-            if (data.activity_id) {
-              router.push(`/activity/${data.activity_id}` as any);
-            } else if (data.location_id) {
-              router.push(`/location/${data.location_id}` as any);
-            } else {
+          if (!data || !data.type) {
+            console.log("No data or type, going to notifications");
+            router.push("/notifications");
+            return;
+          }
+
+          const { type, activity_id, location_id, trip_id, friend_id } = data;
+
+          switch (type) {
+            case "friend_request":
+              await refreshFeed();
+              setTimeout(() => router.push("/friend-requests"), 300);
+              break;
+
+            case "comment":
+            case "like":
+              if (activity_id) {
+                router.push(`/activity/${activity_id}` as any);
+              } else if (location_id) {
+                router.push(`/location/${location_id}` as any);
+              } else if (trip_id) {
+                router.push(`/trip-detail?tripId=${trip_id}` as any);
+              } else {
+                router.push("/notifications");
+              }
+              break;
+
+            case "friend_accepted":
+              if (friend_id) {
+                router.push(`/friend-profile/${friend_id}` as any);
+              } else {
+                router.push("/friends");
+              }
+              break;
+
+            case "activity_shared":
+            case "location_shared":
               router.push("/friends-feed");
-            }
-          } else if (data?.type === "friend_accepted") {
-            if (data.friend_id) {
-              router.push(`/friend-profile/${data.friend_id}` as any);
-            } else {
-              router.push("/friends");
-            }
-          } else if (
-            data?.type === "like" ||
-            data?.type === "activity_shared"
-          ) {
-            router.push("/friends-feed");
-          } else if (data?.type === "trip_shared") {
-            if (data.trip_id) {
-              router.push(`/trip-detail?tripId=${data.trip_id}` as any);
-            } else {
-              router.push("/trips");
-            }
-          } else if (data?.type === "trip_message") {
-            if (data.trip_id) {
-              router.push(`/trip-detail?tripId=${data.trip_id}` as any);
-            } else {
-              router.push("/trips");
-            }
+              break;
+
+            case "trip_shared":
+            case "trip_message":
+              if (trip_id) {
+                router.push(`/trip-detail?tripId=${trip_id}` as any);
+              } else {
+                router.push("/trips");
+              }
+              break;
+
+            default:
+              console.log("Unknown notification type:", type);
+              router.push("/notifications");
           }
         }
       );
