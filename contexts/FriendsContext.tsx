@@ -797,9 +797,10 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         profileMap[p.id] = p;
       });
 
-      // Load likes for all activities and locations
+      // Load likes for all activities, locations, and trips
       const activityIds = activities?.map((a) => a.id) || [];
       const locationIds = locations?.map((l) => l.id) || [];
+      const tripIds = uniqueTrips.map((t) => t.id);
 
       const { data: activityLikes } = await supabase
         .from("likes")
@@ -811,7 +812,12 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .select("location_id, user_id")
         .in("location_id", locationIds);
 
-      // Load comments for all activities and locations
+      const { data: tripLikes } = await supabase
+        .from("likes")
+        .select("trip_id, user_id")
+        .in("trip_id", tripIds);
+
+      // Load comments for all activities, locations, and trips
       const { data: activityComments } = await supabase
         .from("comments")
         .select(
@@ -828,7 +834,15 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .in("location_id", locationIds)
         .order("created_at", { ascending: false });
 
-      // Create lookup maps for likes and comments
+      const { data: tripComments } = await supabase
+        .from("comments")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
+        .in("trip_id", tripIds)
+        .order("created_at", { ascending: false });
+
+      // Create lookup maps for likes
       const activityLikesMap: Record<string, string[]> = {};
       activityLikes?.forEach((like) => {
         if (!activityLikesMap[like.activity_id]) {
@@ -845,6 +859,15 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         locationLikesMap[like.location_id].push(like.user_id);
       });
 
+      const tripLikesMap: Record<string, string[]> = {};
+      tripLikes?.forEach((like) => {
+        if (!tripLikesMap[like.trip_id]) {
+          tripLikesMap[like.trip_id] = [];
+        }
+        tripLikesMap[like.trip_id].push(like.user_id);
+      });
+
+      // Create lookup maps for comments
       const activityCommentsMap: Record<string, FeedComment[]> = {};
       activityComments?.forEach((comment) => {
         if (!activityCommentsMap[comment.activity_id]) {
@@ -868,6 +891,23 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           locationCommentsMap[comment.location_id] = [];
         }
         locationCommentsMap[comment.location_id].push({
+          id: comment.id,
+          userId: comment.user_id,
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
+          text: comment.text,
+          timestamp: new Date(comment.created_at),
+          replyTo: comment.reply_to_id,
+          replyToUser: undefined,
+        });
+      });
+
+      const tripCommentsMap: Record<string, FeedComment[]> = {};
+      tripComments?.forEach((comment) => {
+        if (!tripCommentsMap[comment.trip_id]) {
+          tripCommentsMap[comment.trip_id] = [];
+        }
+        tripCommentsMap[comment.trip_id].push({
           id: comment.id,
           userId: comment.user_id,
           userName:
@@ -942,7 +982,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         },
       }));
 
-      // NEW: Create trip posts
+      // Trip posts with likes and comments
       const tripPosts: FeedPost[] = uniqueTrips.map((trip) => ({
         id: `trip-${trip.id}`,
         type: "trip" as const,
@@ -971,8 +1011,8 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
             status: "accepted" as const,
           },
           sharedAt: new Date(trip.created_at),
-          likes: [], // You could implement trip likes if needed
-          comments: [], // You could implement trip comments if needed
+          likes: tripLikesMap[trip.id] || [],
+          comments: tripCommentsMap[trip.id] || [],
         },
       }));
 
@@ -994,8 +1034,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       const [type, ...idParts] = itemId.split("-");
       const actualId = idParts.join("-");
 
-          console.log("likeItem called with:", { itemId, type, actualId });
-
+      console.log("likeItem called with:", { itemId, type, actualId });
 
       if (type === "activity") {
         const insertResult = await supabase.from("likes").insert({
@@ -1011,26 +1050,33 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         });
 
         if (insertResult.error) throw insertResult.error;
+      } else if (type === "trip") {
+        const insertResult = await supabase.from("likes").insert({
+          trip_id: actualId,
+          user_id: user.id,
+        });
+
+        if (insertResult.error) throw insertResult.error;
       }
 
       // Just update UI - let the database trigger handle notifications
- setFeed((prev) => {
-  console.log("Updating feed for itemId:", itemId);
-  console.log("Current feed ids:", prev.map(p => p.id));
-  
-  return prev.map((post) => {
-    if (post.id === itemId) {
-      console.log("Current likes:", post.data.likes);
-      console.log("Adding user:", user.id);
-    }
-    return post.id === itemId
-      ? {
-          ...post,
-          data: { ...post.data, likes: [...post.data.likes, user.id] },
-        }
-      : post;
-  });
-});
+      setFeed((prev) => {
+        console.log("Updating feed for itemId:", itemId);
+        console.log("Current feed ids:", prev.map((p) => p.id));
+
+        return prev.map((post) => {
+          if (post.id === itemId) {
+            console.log("Current likes:", post.data.likes);
+            console.log("Adding user:", user.id);
+          }
+          return post.id === itemId
+            ? {
+                ...post,
+                data: { ...post.data, likes: [...post.data.likes, user.id] },
+              }
+            : post;
+        });
+      });
     } catch (error) {
       console.error("Error in likeItem:", error);
       Alert.alert("Error", "Failed to like item");
@@ -1055,6 +1101,12 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           .from("likes")
           .delete()
           .eq("location_id", actualId)
+          .eq("user_id", user.id);
+      } else if (type === "trip") {
+        await supabase
+          .from("likes")
+          .delete()
+          .eq("trip_id", actualId)
           .eq("user_id", user.id);
       }
 
@@ -1097,14 +1149,12 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         created_at: new Date().toISOString(),
       };
 
-      let itemOwnerId: string | null = null;
-
       if (type === "activity") {
         commentData.activity_id = actualId;
-        // Don't fetch owner - let trigger handle it
       } else if (type === "location") {
         commentData.location_id = actualId;
-        // Don't fetch owner - let trigger handle it
+      } else if (type === "trip") {
+        commentData.trip_id = actualId;
       }
 
       if (replyToCommentId) {

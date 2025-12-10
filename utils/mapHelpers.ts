@@ -1037,3 +1037,88 @@ export const generateRouteEditorHTML = ({
     </html>
   `;
 };
+
+// Feed mini map for activity routes
+export const generateMiniMapHTML = (route: any[], name: string): string => {
+  const coords = route.map((p) => `[${p.latitude}, ${p.longitude}]`).join(",");
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 150px; width: 100%; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map', { 
+          zoomControl: false,
+          dragging: false,
+          attributionControl: false
+        });
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        var route = L.polyline([${coords}], {
+          color: '#2d5a3d',
+          weight: 3
+        }).addTo(map);
+        
+        map.fitBounds(route.getBounds().pad(0.05));
+        
+        if (map.getZoom() > 16) map.setZoom(16);
+        if (map.getZoom() < 14) map.setZoom(14);
+      </script>
+    </body>
+    </html>
+  `;
+};
+
+// Feed mini map for location markers
+export const generateLocationMiniMapHTML = (
+  latitude: number,
+  longitude: number,
+  name: string
+): string => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 150px; width: 100%; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        var map = L.map('map', { 
+          zoomControl: false,
+          dragging: false,
+          attributionControl: false
+        }).setView([${latitude}, ${longitude}], 14);
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        L.circleMarker([${latitude}, ${longitude}], {
+          radius: 10,
+          fillColor: '#d85430',
+          color: '#fff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).addTo(map);
+      </script>
+    </body>
+    </html>
+  `;
+};
