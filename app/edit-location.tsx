@@ -299,132 +299,160 @@ export default function EditLocationScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header with coordinates */}
-      <View style={styles.header}>
-        <View style={styles.coordinatesBox}>
-          <Ionicons name="pin" size={20} color={theme.colors.burntOrange} />
-          <Text style={styles.coordinates}>
-            {spot?.location.latitude.toFixed(6)},{" "}
-            {spot?.location.longitude.toFixed(6)}
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header with coordinates */}
+        <View style={styles.header}>
+          <View style={styles.coordinatesBox}>
+            <Ionicons name="pin" size={20} color={theme.colors.burntOrange} />
+            <Text style={styles.coordinates}>
+              {spot?.location.latitude.toFixed(6)},{" "}
+              {spot?.location.longitude.toFixed(6)}
+            </Text>
+          </View>
+          <Text style={styles.savedDate}>
+            Added to collection on{" "}
+            {new Date(spot?.timestamp).toLocaleDateString()}
           </Text>
+
+          <TouchableOpacity
+            style={styles.directionsButton}
+            onPress={handleGetDirections}
+          >
+            <Ionicons name="navigate" size={18} color={theme.colors.white} />
+            <Text style={styles.directionsButtonText}>Get Directions</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.savedDate}>
-          Added to collection on{" "}
-          {new Date(spot?.timestamp).toLocaleDateString()}
-        </Text>
 
-        <TouchableOpacity
-          style={styles.directionsButton}
-          onPress={handleGetDirections}
-        >
-          <Ionicons name="navigate" size={18} color={theme.colors.white} />
-          <Text style={styles.directionsButtonText}>Get Directions</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Form */}
+        <View style={styles.form}>
+          <Text style={styles.label}>Category</Text>
+          <CategorySelector selected={category} onSelect={setCategory} />
 
-      {/* Form */}
-      <View style={styles.form}>
-        <Text style={styles.label}>Category</Text>
-        <CategorySelector
-          selected={category}
-          onSelect={setCategory}
-        />
+          <Text style={styles.label}>Location Name *</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Enter location name"
+            placeholderTextColor={theme.colors.lightGray}
+          />
 
-        <Text style={styles.label}>Location Name *</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Enter location name"
-          placeholderTextColor={theme.colors.lightGray}
-        />
+          <View style={styles.locationSection}>
+            <Text style={styles.label}>Location</Text>
 
-        <View style={styles.locationSection}>
-          <Text style={styles.label}>Location</Text>
+            {editedLocation && (
+              <View style={styles.locationDisplay}>
+                <Text style={styles.coordinateText}>
+                  Lat: {editedLocation.latitude.toFixed(4)}
+                </Text>
+                <Text style={styles.coordinateText}>
+                  Lng: {editedLocation.longitude.toFixed(4)}
+                </Text>
+              </View>
+            )}
 
-          {editedLocation && (
-            <View style={styles.locationDisplay}>
-              <Text style={styles.coordinateText}>
-                Lat: {editedLocation.latitude.toFixed(4)}
-              </Text>
-              <Text style={styles.coordinateText}>
-                Lng: {editedLocation.longitude.toFixed(4)}
-              </Text>
+            <View style={styles.locationButtons}>
+              <TouchableOpacity
+                style={styles.locationButton}
+                onPress={handleLocationUpdate}
+              >
+                <Ionicons
+                  name="location"
+                  size={20}
+                  color={theme.colors.forest}
+                />
+                <Text style={styles.locationButtonText}>
+                  Use Current Location
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.locationButton}
+                onPress={() => setShowMapPicker(true)}
+              >
+                <Ionicons
+                  name="map"
+                  size={20}
+                  color={theme.colors.burntOrange}
+                />
+                <Text style={styles.locationButtonText}>Pick on Map</Text>
+              </TouchableOpacity>
             </View>
+          </View>
+
+          <Text style={styles.label}>Date Visited</Text>
+          <TouchableOpacity
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+            disabled={isSaving}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={20}
+              color={theme.colors.navy}
+            />
+            <Text style={styles.dateButtonText}>
+              {formatDate(locationDate)}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={theme.colors.gray} />
+          </TouchableOpacity>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={locationDate}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) {
+                  setLocationDate(selectedDate);
+                }
+              }}
+              maximumDate={new Date()}
+            />
           )}
 
-          <View style={styles.locationButtons}>
-            <TouchableOpacity
-              style={styles.locationButton}
-              onPress={handleLocationUpdate}
-            >
-              <Ionicons name="location" size={20} color={theme.colors.forest} />
-              <Text style={styles.locationButtonText}>
-                Use Current Location
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.locationButton}
-              onPress={() => setShowMapPicker(true)}
-            >
-              <Ionicons name="map" size={20} color={theme.colors.burntOrange} />
-              <Text style={styles.locationButtonText}>Pick on Map</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Text style={styles.label}>Date Visited</Text>
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => setShowDatePicker(true)}
-          disabled={isSaving}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={20}
-            color={theme.colors.navy}
+          <Text style={styles.label}>Description</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Add notes about this location..."
+            placeholderTextColor={theme.colors.lightGray}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
           />
-          <Text style={styles.dateButtonText}>{formatDate(locationDate)}</Text>
-          <Ionicons name="chevron-down" size={20} color={theme.colors.gray} />
+
+          <Text style={styles.label}>Photos ({photos.length})</Text>
+          <PhotoPicker
+            photos={photos}
+            onPhotosChange={setPhotos}
+            onOpenCamera={() => setShowCamera(true)}
+          />
+
+          {/* Delete Button - stays in scroll */}
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+            <Ionicons
+              name="trash-outline"
+              size={20}
+              color={theme.colors.burntOrange}
+            />
+            <Text style={styles.deleteButtonText}>Delete Location</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Sticky Footer */}
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={locationDate}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(event, selectedDate) => {
-              setShowDatePicker(false);
-              if (selectedDate) {
-                setLocationDate(selectedDate);
-              }
-            }}
-            maximumDate={new Date()}
-          />
-        )}
-
-        <Text style={styles.label}>Description</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Add notes about this location..."
-          placeholderTextColor={theme.colors.lightGray}
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
-
-        <Text style={styles.label}>Photos ({photos.length})</Text>
-        <PhotoPicker
-          photos={photos}
-          onPhotosChange={setPhotos}
-          onOpenCamera={() => setShowCamera(true)}
-        />
-
-        {/* Action Buttons */}
         <TouchableOpacity
           style={[
             styles.saveButton,
@@ -434,31 +462,15 @@ export default function EditLocationScreen() {
           disabled={!hasChanges || isSaving}
         >
           {isSaving ? (
-            <>
-              <ActivityIndicator size="small" color={theme.colors.white} />
-              <Text style={styles.saveButtonText}>Saving...</Text>
-            </>
+            <ActivityIndicator size="small" color={theme.colors.white} />
           ) : (
             <>
-              <Ionicons name="save" size={20} color={theme.colors.white} />
+              <Ionicons name="checkmark" size={20} color={theme.colors.white} />
               <Text style={styles.saveButtonText}>
-                {hasChanges ? "Save Changes" : "No Changes"}
+                {hasChanges ? "Save" : "No Changes"}
               </Text>
             </>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-          <Ionicons
-            name="trash-outline"
-            size={20}
-            color={theme.colors.burntOrange}
-          />
-          <Text style={styles.deleteButtonText}>Delete Location</Text>
         </TouchableOpacity>
       </View>
 
@@ -471,7 +483,7 @@ export default function EditLocationScreen() {
         initialLatitude={editedLocation?.latitude}
         initialLongitude={editedLocation?.longitude}
       />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -479,6 +491,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.offWhite,
+  },
+  scrollView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -525,6 +540,7 @@ const styles = StyleSheet.create({
   },
   form: {
     padding: 20,
+    paddingBottom: 40,
   },
   label: {
     fontSize: 16,
@@ -600,15 +616,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.navy,
   },
-  saveButton: {
-    backgroundColor: theme.colors.forest,
+  deleteButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 15,
+    marginTop: 30,
+  },
+  deleteButtonText: {
+    color: theme.colors.burntOrange,
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  footer: {
+    flexDirection: "row",
+    padding: 16,
+    paddingBottom: Platform.OS === "ios" ? 30 : 16,
+    backgroundColor: theme.colors.white,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: theme.colors.white,
+    paddingVertical: 14,
     borderRadius: 8,
-    marginBottom: 10,
-    marginTop: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  cancelButtonText: {
+    color: theme.colors.gray,
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: theme.colors.forest,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 8,
+    gap: 6,
   },
   saveButtonDisabled: {
     backgroundColor: theme.colors.lightGray,
@@ -617,32 +668,5 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
     fontSize: 16,
     fontWeight: "600",
-    marginLeft: 8,
-  },
-  cancelButton: {
-    backgroundColor: theme.colors.white,
-    paddingVertical: 15,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  cancelButtonText: {
-    color: theme.colors.gray,
-    fontSize: 16,
-  },
-  deleteButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    marginTop: 20,
-    marginBottom: 40,
-  },
-  deleteButtonText: {
-    color: theme.colors.burntOrange,
-    fontSize: 16,
-    marginLeft: 8,
   },
 });
