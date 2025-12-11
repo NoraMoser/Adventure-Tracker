@@ -33,13 +33,16 @@ export default function FriendsFeedScreen() {
     likeItem,
     unlikeItem,
     addComment,
+    currentUserId,
     loading,
   } = useFriends();
   const { formatDistance, formatSpeed } = useSettings();
   const { wishlistItems, addWishlistItem, removeWishlistItem } = useWishlist();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<"all" | "activities" | "locations" | "trips">("all");
+  const [filter, setFilter] = useState<
+    "all" | "activities" | "locations" | "trips"
+  >("all");
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [selectedFriendFeed, setSelectedFriendFeed] = useState<FeedPost[]>([]);
   const [loadingFriendFeed, setLoadingFriendFeed] = useState(false);
@@ -62,6 +65,36 @@ export default function FriendsFeedScreen() {
     } else {
       unlikeItem(itemId);
     }
+
+    // If viewing a specific friend's feed, also update local state
+    if (selectedFriendId && currentUserId) {
+      setSelectedFriendFeed((prev) =>
+        prev.map((post) => {
+          if (post.id === itemId) {
+            if (shouldLike) {
+              return {
+                ...post,
+                data: {
+                  ...post.data,
+                  likes: [...post.data.likes, currentUserId],
+                },
+              };
+            } else {
+              return {
+                ...post,
+                data: {
+                  ...post.data,
+                  likes: post.data.likes.filter(
+                    (id: string) => id !== currentUserId
+                  ),
+                },
+              };
+            }
+          }
+          return post;
+        })
+      );
+    }
   };
 
   const handleComment = (
@@ -71,6 +104,34 @@ export default function FriendsFeedScreen() {
     replyToUserName?: string
   ) => {
     addComment(itemId, text, replyToId, replyToUserName);
+
+    // If viewing a specific friend's feed, also update local state
+    if (selectedFriendId && currentUserId) {
+      const newComment = {
+        id: `temp-${Date.now()}`, // Temp ID until refresh
+        userId: currentUserId,
+        userName: "You", // Will show correctly after refresh
+        text: text,
+        timestamp: new Date(),
+        replyTo: replyToId,
+        replyToUser: replyToUserName,
+      };
+
+      setSelectedFriendFeed((prev) =>
+        prev.map((post) => {
+          if (post.id === itemId) {
+            return {
+              ...post,
+              data: {
+                ...post.data,
+                comments: [...post.data.comments, newComment],
+              },
+            };
+          }
+          return post;
+        })
+      );
+    }
   };
 
   const handleShare = (item: any) => {
@@ -81,7 +142,8 @@ export default function FriendsFeedScreen() {
     const wishlistItem = wishlistItems.find(
       (item) =>
         item.location &&
-        Math.abs(item.location.latitude - location.location.latitude) < 0.0001 &&
+        Math.abs(item.location.latitude - location.location.latitude) <
+          0.0001 &&
         Math.abs(item.location.longitude - location.location.longitude) < 0.0001
     );
 
@@ -103,7 +165,8 @@ export default function FriendsFeedScreen() {
     return wishlistItems.some(
       (item) =>
         item.location &&
-        Math.abs(item.location.latitude - location.location.latitude) < 0.0001 &&
+        Math.abs(item.location.latitude - location.location.latitude) <
+          0.0001 &&
         Math.abs(item.location.longitude - location.location.longitude) < 0.0001
     );
   };
@@ -170,35 +233,43 @@ export default function FriendsFeedScreen() {
 
       const { data: activityComments } = await supabase
         .from("comments")
-        .select("*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
         .in("activity_id", activityIds)
         .order("created_at", { ascending: false });
 
       const { data: locationComments } = await supabase
         .from("comments")
-        .select("*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)")
+        .select(
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+        )
         .in("location_id", locationIds)
         .order("created_at", { ascending: false });
 
       const activityLikesMap: Record<string, string[]> = {};
       activityLikes?.forEach((like) => {
-        if (!activityLikesMap[like.activity_id]) activityLikesMap[like.activity_id] = [];
+        if (!activityLikesMap[like.activity_id])
+          activityLikesMap[like.activity_id] = [];
         activityLikesMap[like.activity_id].push(like.user_id);
       });
 
       const locationLikesMap: Record<string, string[]> = {};
       locationLikes?.forEach((like) => {
-        if (!locationLikesMap[like.location_id]) locationLikesMap[like.location_id] = [];
+        if (!locationLikesMap[like.location_id])
+          locationLikesMap[like.location_id] = [];
         locationLikesMap[like.location_id].push(like.user_id);
       });
 
       const activityCommentsMap: Record<string, any[]> = {};
       activityComments?.forEach((comment) => {
-        if (!activityCommentsMap[comment.activity_id]) activityCommentsMap[comment.activity_id] = [];
+        if (!activityCommentsMap[comment.activity_id])
+          activityCommentsMap[comment.activity_id] = [];
         activityCommentsMap[comment.activity_id].push({
           id: comment.id,
           userId: comment.user_id,
-          userName: comment.user?.display_name || comment.user?.username || "Unknown",
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
           text: comment.text,
           timestamp: new Date(comment.created_at),
           replyTo: comment.reply_to_id,
@@ -207,11 +278,13 @@ export default function FriendsFeedScreen() {
 
       const locationCommentsMap: Record<string, any[]> = {};
       locationComments?.forEach((comment) => {
-        if (!locationCommentsMap[comment.location_id]) locationCommentsMap[comment.location_id] = [];
+        if (!locationCommentsMap[comment.location_id])
+          locationCommentsMap[comment.location_id] = [];
         locationCommentsMap[comment.location_id].push({
           id: comment.id,
           userId: comment.user_id,
-          userName: comment.user?.display_name || comment.user?.username || "Unknown",
+          userName:
+            comment.user?.display_name || comment.user?.username || "Unknown",
           text: comment.text,
           timestamp: new Date(comment.created_at),
           replyTo: comment.reply_to_id,
@@ -242,7 +315,9 @@ export default function FriendsFeedScreen() {
           maxSpeed: activity.max_speed || 0,
           elevationGain: activity.elevation_gain || 0,
           startTime: new Date(activity.start_time),
-          activityDate: activity.activity_date ? new Date(activity.activity_date) : undefined,
+          activityDate: activity.activity_date
+            ? new Date(activity.activity_date)
+            : undefined,
           notes: activity.notes,
           route: activity.route || [],
           sharedBy: friendData,
@@ -259,8 +334,13 @@ export default function FriendsFeedScreen() {
         data: {
           id: location.id,
           name: location.name,
-          location: { latitude: location.latitude, longitude: location.longitude },
-          locationDate: location.location_date ? new Date(location.location_date) : undefined,
+          location: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
+          locationDate: location.location_date
+            ? new Date(location.location_date)
+            : undefined,
           description: location.description,
           photos: location.photos || [],
           category: location.category,
@@ -285,7 +365,9 @@ export default function FriendsFeedScreen() {
           tripItems: trip.trip_items?.slice(0, 3).map((item: any) => ({
             type: item.type,
             name: item.data?.name || "Item",
-            date: new Date(item.data?.start_time || item.data?.created_at || trip.start_date),
+            date: new Date(
+              item.data?.start_time || item.data?.created_at || trip.start_date
+            ),
           })),
           sharedBy: friendData,
           sharedAt: new Date(trip.created_at),
@@ -323,7 +405,11 @@ export default function FriendsFeedScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Ionicons name="people-outline" size={80} color={theme.colors.lightGray} />
+      <Ionicons
+        name="people-outline"
+        size={80}
+        color={theme.colors.lightGray}
+      />
       <Text style={styles.emptyTitle}>No Activity Yet</Text>
       <Text style={styles.emptyText}>
         {selectedFriendId
@@ -331,12 +417,18 @@ export default function FriendsFeedScreen() {
           : "The adventures of your friends will appear here"}
       </Text>
       {selectedFriendId && (
-        <TouchableOpacity style={styles.clearFilterButton} onPress={() => setSelectedFriendId(null)}>
+        <TouchableOpacity
+          style={styles.clearFilterButton}
+          onPress={() => setSelectedFriendId(null)}
+        >
           <Text style={styles.clearFilterText}>Show All Posts</Text>
         </TouchableOpacity>
       )}
       {!selectedFriendId && (
-        <TouchableOpacity style={styles.findFriendsButton} onPress={() => router.push("/friends")}>
+        <TouchableOpacity
+          style={styles.findFriendsButton}
+          onPress={() => router.push("/friends")}
+        >
           <Text style={styles.findFriendsText}>Find Friends</Text>
         </TouchableOpacity>
       )}
@@ -354,14 +446,22 @@ export default function FriendsFeedScreen() {
           headerRight: () => (
             <View style={styles.headerRight}>
               {friendRequests.length > 0 && (
-                <TouchableOpacity style={styles.headerButton} onPress={() => router.push("/friend-requests")}>
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={() => router.push("/friend-requests")}
+                >
                   <Ionicons name="person-add" size={24} color="white" />
                   <View style={styles.requestBadge}>
-                    <Text style={styles.requestBadgeText}>{friendRequests.length}</Text>
+                    <Text style={styles.requestBadgeText}>
+                      {friendRequests.length}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={styles.headerButton} onPress={() => router.push("/friends")}>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={() => router.push("/friends")}
+              >
                 <Ionicons name="people" size={24} color="white" />
               </TouchableOpacity>
             </View>
@@ -376,25 +476,43 @@ export default function FriendsFeedScreen() {
             {acceptedFriends.map((friend) => {
               const isOnline =
                 friend.lastActive &&
-                new Date().getTime() - new Date(friend.lastActive).getTime() < 300000;
+                new Date().getTime() - new Date(friend.lastActive).getTime() <
+                  300000;
               const isSelected = selectedFriendId === friend.id;
 
               return (
                 <TouchableOpacity
                   key={friend.id}
-                  style={[styles.onlineFriend, isSelected && styles.selectedFriend]}
+                  style={[
+                    styles.onlineFriend,
+                    isSelected && styles.selectedFriend,
+                  ]}
                   onPress={() => handleFriendClick(friend.id)}
                 >
-                  <View style={[styles.onlineAvatar, isSelected && styles.selectedAvatar]}>
+                  <View
+                    style={[
+                      styles.onlineAvatar,
+                      isSelected && styles.selectedAvatar,
+                    ]}
+                  >
                     <UserAvatar user={friend} size={46} />
                     {isOnline && <View style={styles.onlineIndicator} />}
                     {isSelected && (
                       <View style={styles.selectedCheckmark}>
-                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.forest} />
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color={theme.colors.forest}
+                        />
                       </View>
                     )}
                   </View>
-                  <Text style={[styles.onlineName, isSelected && styles.selectedName]}>
+                  <Text
+                    style={[
+                      styles.onlineName,
+                      isSelected && styles.selectedName,
+                    ]}
+                  >
                     {(friend.displayName || friend.username).split(" ")[0]}
                   </Text>
                 </TouchableOpacity>
@@ -409,10 +527,16 @@ export default function FriendsFeedScreen() {
         <View style={styles.activeFilterBar}>
           <View style={styles.activeFilterContent}>
             <Ionicons name="filter" size={16} color={theme.colors.forest} />
-            <Text style={styles.activeFilterText}>Showing posts from {selectedFriendName}</Text>
+            <Text style={styles.activeFilterText}>
+              Showing posts from {selectedFriendName}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => setSelectedFriendId(null)}>
-            <Ionicons name="close-circle" size={20} color={theme.colors.burntOrange} />
+            <Ionicons
+              name="close-circle"
+              size={20}
+              color={theme.colors.burntOrange}
+            />
           </TouchableOpacity>
         </View>
       )}
@@ -425,8 +549,19 @@ export default function FriendsFeedScreen() {
             style={[styles.filterTab, filter === tab && styles.filterTabActive]}
             onPress={() => setFilter(tab)}
           >
-            <Text style={[styles.filterTabText, filter === tab && styles.filterTabTextActive]}>
-              {tab === "all" ? "All" : tab === "activities" ? "Activities" : tab === "locations" ? "Places" : "Trips"}
+            <Text
+              style={[
+                styles.filterTabText,
+                filter === tab && styles.filterTabTextActive,
+              ]}
+            >
+              {tab === "all"
+                ? "All"
+                : tab === "activities"
+                ? "Activities"
+                : tab === "locations"
+                ? "Places"
+                : "Trips"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -440,7 +575,9 @@ export default function FriendsFeedScreen() {
       ) : loadingFriendFeed ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.forest} />
-          <Text style={styles.loadingText}>Loading {selectedFriendName}'s posts...</Text>
+          <Text style={styles.loadingText}>
+            Loading {selectedFriendName}'s posts...
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -452,14 +589,20 @@ export default function FriendsFeedScreen() {
               onComment={handleComment}
               onShare={handleShare}
               onAddToWishlist={handleAddToWishlist}
-              isInWishlist={item.type === "location" && isLocationInWishlist(item.data)}
+              isInWishlist={
+                item.type === "location" && isLocationInWishlist(item.data)
+              }
               formatDistance={formatDistance}
               formatSpeed={formatSpeed}
               router={router}
             />
           )}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={filteredFeed.length === 0 ? styles.emptyContainer : styles.feedContainer}
+          contentContainerStyle={
+            filteredFeed.length === 0
+              ? styles.emptyContainer
+              : styles.feedContainer
+          }
           ListEmptyComponent={renderEmptyState}
           refreshControl={
             <RefreshControl

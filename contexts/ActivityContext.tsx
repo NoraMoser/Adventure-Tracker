@@ -14,6 +14,11 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import * as MediaLibrary from "expo-media-library";
 import { Alert } from "react-native";
+import {
+  calculateDistance,
+  getAccuracyThreshold,
+  getMovementThresholds,
+} from "../utils/gps";
 
 const LOCATION_TASK_NAME = "explorable-background-location";
 const PENDING_LOCATIONS_KEY = "pending_location_updates";
@@ -126,27 +131,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     }
   }
 });
-
-// Helper function to calculate distance
-const calculateDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  const R = 6371000; // Earth's radius in meters
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-};
 
 export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
   children,
@@ -295,77 +279,11 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     lastGpsAlertTime.current = 0;
   };
 
-  // Helper functions for activity-based thresholds
-  const getAccuracyThreshold = () => {
-    switch (currentActivity) {
-      case "walk":
-      case "hike":
-      case "climb":
-        return 30; // Stricter for slow activities
-      case "run":
-        return 50; // Medium
-      case "bike":
-      case "paddleboard":
-        return 75; // More lenient
-      case "other":
-        return 100; // Most lenient for vehicles
-      default:
-        return 50;
-    }
-  };
-
-  const getMovementThresholds = () => {
-    switch (currentActivity) {
-      case "walk":
-        return {
-          minDistance: 0.5, // 0.5m minimum movement
-          maxJump: 100, // 100m max instant jump
-          maxSpeed: 10, // 10 km/h max walking speed
-        };
-      case "hike":
-      case "climb":
-        return {
-          minDistance: 0.5,
-          maxJump: 200,
-          maxSpeed: 15,
-        };
-      case "run":
-        return {
-          minDistance: 1,
-          maxJump: 500,
-          maxSpeed: 30,
-        };
-      case "bike":
-        return {
-          minDistance: 2,
-          maxJump: 2000,
-          maxSpeed: 80,
-        };
-      case "paddleboard":
-        return {
-          minDistance: 1,
-          maxJump: 1000,
-          maxSpeed: 25,
-        };
-      case "other": // For vehicles/ferries
-        return {
-          minDistance: 5,
-          maxJump: 10000,
-          maxSpeed: 200,
-        };
-      default:
-        return {
-          minDistance: 1,
-          maxJump: 1000,
-          maxSpeed: 50,
-        };
-    }
-  };
 
   const checkGpsQuality = (accuracy: number | undefined) => {
     if (!accuracy || !isTracking || isPaused) return;
 
-    const threshold = getAccuracyThreshold();
+    const threshold = getAccuracyThreshold(currentActivity);
     const now = Date.now();
 
     // If GPS accuracy is very poor (>3x threshold)
@@ -413,7 +331,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     setCurrentLocation(location);
 
     // Activity-based accuracy thresholds
-    const accuracyThreshold = getAccuracyThreshold();
+    const accuracyThreshold = getAccuracyThreshold(currentActivity);
 
     if (!location.accuracy || location.accuracy <= accuracyThreshold) {
       setCurrentRoute((prev) => {
@@ -436,7 +354,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         const timeDiff = (location.timestamp - lastPoint.timestamp) / 1000;
 
         // Activity-based movement validation
-        const movementThresholds = getMovementThresholds();
+        const movementThresholds = getMovementThresholds(currentActivity);
 
         // Skip if no meaningful movement for the activity type
         if (distance < movementThresholds.minDistance) {
@@ -576,7 +494,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
 
       // NEW PART: Check GPS accuracy and alert user if poor
       const accuracy = initialLocation.coords.accuracy;
-      const accuracyThreshold = getAccuracyThreshold(); // Uses your existing function
+      const accuracyThreshold = getAccuracyThreshold(currentActivity);
 
       if (accuracy && accuracy > accuracyThreshold * 2) {
         // Very poor signal
@@ -654,7 +572,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         (location) => {
           handleLocationUpdate(location);
           // Update GPS status based on accuracy
-          const threshold = getAccuracyThreshold();
+          const threshold = getAccuracyThreshold(currentActivity);
           if (
             location.coords.accuracy &&
             location.coords.accuracy <= threshold / 2

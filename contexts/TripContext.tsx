@@ -13,6 +13,7 @@ import { useActivity } from "./ActivityContext";
 import { useAuth } from "./AuthContext";
 import { useLocation } from "./LocationContext";
 import { PhotoService } from "../services/photoService";
+import { calculateDistance, areLocationsNearby } from "../utils/gps";
 
 export interface TripItem {
   id: string;
@@ -157,41 +158,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     if (clustersToSuggest.length > 0) {
       await showTripSelectionUI(clustersToSuggest);
     }
-  };
-
-  // Helper function to calculate distance between two locations
-  const calculateDistance = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number => {
-    const R = 6371; // Earth's radius in km
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  const areLocationsNearby = (
-    loc1: any,
-    loc2: any,
-    thresholdKm: number = 50
-  ): boolean => {
-    if (!loc1 || !loc2) return false;
-    const distance = calculateDistance(
-      loc1.latitude,
-      loc1.longitude,
-      loc2.latitude,
-      loc2.longitude
-    );
-    return distance <= thresholdKm;
   };
 
   // Load trips on mount and when user changes
