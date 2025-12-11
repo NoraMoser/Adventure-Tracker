@@ -37,84 +37,11 @@ import { useWishlist } from "../contexts/WishlistContext";
 import { useTrips } from "../contexts/TripContext";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
+import { UserAvatar } from "../components/UserAvatar";
 
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
 const BOTTOM_SHEET_MIN_HEIGHT = 80;
-
-// Reusable Avatar Component
-const UserAvatar = ({
-  user,
-  size = 40,
-  style = {},
-}: {
-  user: any;
-  size?: number;
-  style?: any;
-}) => {
-  const textStyle = { fontSize: size * 0.6 };
-  const profilePicture = user?.profile_picture || undefined;
-
-  if (profilePicture) {
-    return (
-      <Image
-        source={{ uri: profilePicture }}
-        style={[
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            backgroundColor: "#f0f0f0",
-          },
-          style,
-        ]}
-        onError={(e) => {
-          console.log("Error loading profile picture:", e.nativeEvent.error);
-        }}
-      />
-    );
-  }
-
-  if (user?.avatar) {
-    return (
-      <View
-        style={[
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            backgroundColor: "white",
-            justifyContent: "center",
-            alignItems: "center",
-            borderWidth: 1,
-            borderColor: theme.colors.borderGray,
-          },
-          style,
-        ]}
-      >
-        <Text style={textStyle}>{user.avatar}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View
-      style={[
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: theme.colors.lightGray + "30",
-          justifyContent: "center",
-          alignItems: "center",
-        },
-        style,
-      ]}
-    >
-      <Ionicons name="person" size={size * 0.6} color={theme.colors.gray} />
-    </View>
-  );
-};
 
 export default function DashboardScreen() {
   const router = useRouter();

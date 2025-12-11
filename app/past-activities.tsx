@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import AddToTripButton from "../components/AddToTripButton";
+import { ShareWithFriendsModal } from "../components/ShareWithFriendsModal";
 import { theme } from "../constants/theme";
 import { ActivityType, useActivity } from "../contexts/ActivityContext";
 import { useFriends } from "../contexts/FriendsContext";
@@ -34,155 +35,6 @@ const activityIcons: Record<ActivityType, string> = {
   paddleboard: "boat",
   climb: "trending-up",
   other: "fitness",
-};
-
-// Share with Friends Modal Component
-const ShareWithFriendsModal = ({
-  visible,
-  onClose,
-  activity,
-  onShare,
-  formatDistance, // Pass formatDistance as prop
-}: {
-  visible: boolean;
-  onClose: () => void;
-  activity: any;
-  onShare: (selectedFriends: string[], message?: string) => void;
-  formatDistance: (meters: number) => string; // Add type
-}) => {
-  const { friends } = useFriends();
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
-  const [shareMessage, setShareMessage] = useState("");
-  const [shareToAll, setShareToAll] = useState(false);
-
-  const toggleFriend = (friendId: string) => {
-    if (selectedFriends.includes(friendId)) {
-      setSelectedFriends(selectedFriends.filter((id) => id !== friendId));
-    } else {
-      setSelectedFriends([...selectedFriends, friendId]);
-    }
-  };
-
-  const handleShare = () => {
-    const friendsToShare = shareToAll
-      ? friends.map((f) => f.id)
-      : selectedFriends;
-    if (friendsToShare.length === 0) {
-      Alert.alert(
-        "Select Friends",
-        "Please select at least one friend to share with"
-      );
-      return;
-    }
-    onShare(friendsToShare, shareMessage);
-    onClose();
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.shareModalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Share Activity</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={theme.colors.gray} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.activityPreview}>
-            <Text style={styles.previewTitle}>{activity?.name}</Text>
-            <View style={styles.previewStats}>
-              <Text style={styles.previewStat}>
-                <Ionicons name="navigate" size={14} />{" "}
-                {formatDistance(activity?.distance || 0)}
-              </Text>
-              <Text style={styles.previewStat}>
-                <Ionicons name="time" size={14} />{" "}
-                {Math.round((activity?.duration || 0) / 60)} min
-              </Text>
-            </View>
-          </View>
-
-          <TextInput
-            style={styles.shareMessageInput}
-            placeholder="Add a message (optional)..."
-            value={shareMessage}
-            onChangeText={setShareMessage}
-            multiline
-            numberOfLines={3}
-            placeholderTextColor={theme.colors.lightGray}
-          />
-
-          <View style={styles.shareToAllContainer}>
-            <Text style={styles.shareToAllText}>Share with all friends</Text>
-            <Switch
-              value={shareToAll}
-              onValueChange={setShareToAll}
-              trackColor={{
-                false: theme.colors.borderGray,
-                true: theme.colors.forest,
-              }}
-              thumbColor={
-                shareToAll ? theme.colors.white : theme.colors.lightGray
-              }
-            />
-          </View>
-
-          {!shareToAll && (
-            <ScrollView style={styles.friendsList}>
-              <Text style={styles.friendsListTitle}>Select Friends:</Text>
-              {friends
-                .filter((f) => f.status === "accepted")
-                .map((friend) => (
-                  <TouchableOpacity
-                    key={friend.id}
-                    style={styles.friendItem}
-                    onPress={() => toggleFriend(friend.id)}
-                  >
-                    <View style={styles.friendInfo}>
-                      <View style={styles.friendAvatar}>
-                        <Text>{friend.avatar || "👤"}</Text>
-                      </View>
-                      <Text style={styles.friendName}>
-                        {friend.displayName}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name={
-                        selectedFriends.includes(friend.id)
-                          ? "checkbox"
-                          : "square-outline"
-                      }
-                      size={24}
-                      color={
-                        selectedFriends.includes(friend.id)
-                          ? theme.colors.forest
-                          : theme.colors.gray
-                      }
-                    />
-                  </TouchableOpacity>
-                ))}
-            </ScrollView>
-          )}
-
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-              <Ionicons name="share-social" size={20} color="white" />
-              <Text style={styles.shareButtonText}>Share</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 };
 
 export default function PastActivitiesScreen() {
@@ -211,6 +63,7 @@ export default function PastActivitiesScreen() {
   >([]);
 
   const photoScrollRef = useRef<ScrollView>(null);
+
   // Filter and sort activities
   const filteredActivities = useMemo(() => {
     let filtered = activities;
@@ -496,9 +349,6 @@ export default function PastActivitiesScreen() {
     `;
   };
 
-  // This is the updated renderActivityItem function for past-activities.tsx
-  // Replace the existing renderActivityItem function with this one:
-
   const renderActivityItem = ({ item }: { item: any }) => {
     const iconName = (activityIcons as any)[item.type] || "fitness";
 
@@ -512,15 +362,12 @@ export default function PastActivitiesScreen() {
       }
     };
 
-    // Format activity date
-    // Replace the formatActivityDate function inside renderActivityItem with this:
     const formatActivityDate = (date: Date | string) => {
       const d = new Date(date);
       const today = new Date();
       const yesterday = new Date();
       yesterday.setDate(today.getDate() - 1);
 
-      // Create date-only versions (midnight local time)
       const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       const todayOnly = new Date(
         today.getFullYear(),
@@ -533,7 +380,6 @@ export default function PastActivitiesScreen() {
         yesterday.getDate()
       );
 
-      // Compare the date-only versions
       if (dateOnly.getTime() === todayOnly.getTime()) {
         return "Today";
       }
@@ -541,13 +387,13 @@ export default function PastActivitiesScreen() {
         return "Yesterday";
       }
 
-      // Otherwise show the date
       return d.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
       });
     };
+
     return (
       <TouchableOpacity
         style={styles.activityCard}
@@ -601,7 +447,7 @@ export default function PastActivitiesScreen() {
           </View>
         </View>
 
-        {/* Rating Row - ADD THIS */}
+        {/* Rating Row */}
         <View style={styles.ratingRow}>
           <Text style={styles.ratingLabel}>Rating:</Text>
           <View style={styles.ratingContainer}>
@@ -649,7 +495,6 @@ export default function PastActivitiesScreen() {
         )}
 
         <View style={styles.activityActions}>
-          {/* Add to Trip Button - NEW */}
           <AddToTripButton
             item={item}
             type="activity"
@@ -658,7 +503,7 @@ export default function PastActivitiesScreen() {
           />
 
           <TouchableOpacity
-            style={[styles.actionButton, styles.shareButton]}
+            style={[styles.actionButton, styles.shareButtonStyle]}
             onPress={() => handleShareActivity(item)}
           >
             <Ionicons
@@ -784,7 +629,6 @@ export default function PastActivitiesScreen() {
             value={autoShareEnabled}
             onValueChange={(value) => {
               setAutoShareEnabled(value);
-              // Update privacy settings
             }}
             trackColor={{
               false: theme.colors.borderGray,
@@ -1017,21 +861,23 @@ export default function PastActivitiesScreen() {
         <Ionicons name="add" size={30} color={theme.colors.white} />
       </TouchableOpacity>
 
-      {/* Share with Friends Modal - Pass formatDistance */}
+      {/* Share with Friends Modal */}
       <ShareWithFriendsModal
         visible={showShareModal}
         onClose={() => setShowShareModal(false)}
-        activity={activityToShare}
+        item={activityToShare}
+        itemType="activity"
         onShare={handleShareToFriends}
         formatDistance={formatDistance}
       />
+
+      {/* Photo Viewer Modal */}
       <Modal
         visible={!!selectedPhoto}
         transparent={true}
         animationType="fade"
         onRequestClose={() => setSelectedPhoto(null)}
         onShow={() => {
-          // Scroll to the selected photo after modal is visible
           setTimeout(() => {
             photoScrollRef.current?.scrollTo({
               x: selectedPhotoIndex * Dimensions.get("window").width,
@@ -1283,7 +1129,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: theme.colors.offWhite,
   },
-  shareButton: {
+  shareButtonStyle: {
     backgroundColor: theme.colors.forest + "10",
   },
   friendsButton: {
@@ -1297,6 +1143,9 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: "transparent",
+  },
+  editButton: {
+    backgroundColor: theme.colors.navy + "10",
   },
   mapHeader: {
     backgroundColor: theme.colors.white,
@@ -1436,140 +1285,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 8,
-  },
-  // Share Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-end",
-  },
-  shareModalContent: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "80%",
-    paddingBottom: 30,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: theme.colors.navy,
-  },
-  activityPreview: {
-    backgroundColor: theme.colors.offWhite,
-    margin: 20,
-    padding: 15,
-    borderRadius: 12,
-  },
-  previewTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: theme.colors.navy,
-    marginBottom: 8,
-  },
-  previewStats: {
-    flexDirection: "row",
-    gap: 15,
-  },
-  previewStat: {
-    fontSize: 14,
-    color: theme.colors.gray,
-  },
-  shareMessageInput: {
-    backgroundColor: theme.colors.offWhite,
-    marginHorizontal: 20,
-    marginBottom: 15,
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 14,
-    color: theme.colors.navy,
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  shareToAllContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginHorizontal: 20,
-    marginBottom: 15,
-    padding: 15,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 8,
-  },
-  shareToAllText: {
-    fontSize: 16,
-    color: theme.colors.navy,
-    fontWeight: "500",
-  },
-  friendsList: {
-    maxHeight: 200,
-    marginHorizontal: 20,
-    marginBottom: 20,
-  },
-  friendsListTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.colors.gray,
-    marginBottom: 10,
-  },
-  friendItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
-  },
-  friendInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  friendAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.offWhite,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  friendName: {
-    fontSize: 14,
-    color: theme.colors.navy,
-  },
-  modalActions: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: theme.colors.offWhite,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    color: theme.colors.gray,
-    fontWeight: "600",
-  },
-  shareButtonText: {
-    fontSize: 16,
-    color: "white",
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  editButton: {
-    backgroundColor: theme.colors.navy + "10",
   },
   activityPhotos: {
     marginVertical: 10,
