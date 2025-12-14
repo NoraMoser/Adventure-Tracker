@@ -35,7 +35,7 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
-  const { refreshFeed } = useFriends(); // ADD THIS - import from FriendsContext
+  const { refreshFeed, refreshFriends } = useFriends();
 
   useEffect(() => {
     // Skip if in Expo Go or notifications not available
@@ -71,7 +71,7 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
 
           switch (type) {
             case "friend_request":
-              await refreshFeed();
+              if (refreshFriends) await refreshFriends();
               setTimeout(() => router.push("/friend-requests"), 300);
               break;
 
@@ -89,6 +89,7 @@ function NotificationHandler({ children }: { children: React.ReactNode }) {
               break;
 
             case "friend_accepted":
+              if (refreshFriends) await refreshFriends();
               if (friend_id) {
                 router.push(`/friend-profile/${friend_id}` as any);
               } else {

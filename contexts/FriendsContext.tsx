@@ -824,7 +824,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
         )
         .in("activity_id", activityIds)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       const { data: locationComments } = await supabase
         .from("comments")
@@ -832,7 +832,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
         )
         .in("location_id", locationIds)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       const { data: tripComments } = await supabase
         .from("comments")
@@ -840,7 +840,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
         )
         .in("trip_id", tripIds)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       // Create lookup maps for likes
       const activityLikesMap: Record<string, string[]> = {};
