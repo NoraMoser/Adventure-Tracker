@@ -21,6 +21,7 @@ import { useFriends } from "../contexts/FriendsContext";
 import { Trip, useTrips } from "../contexts/TripContext";
 import { useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
+import { useJournal } from "../contexts/JournalContext";
 
 // Merge Suggestions Component
 const MergeSuggestions = ({
@@ -96,6 +97,7 @@ export default function TripsScreen() {
   const { user } = useAuth();
   const { activities } = useActivity();
   const { savedSpots } = useLocation();
+  const { entries } = useJournal();
 
   const {
     trips,
@@ -115,6 +117,11 @@ export default function TripsScreen() {
   const userId = user?.id || "default-user";
   const myTrips = getMyTrips();
   const sharedTrips = getSharedTrips();
+
+  // Helper function to get journal count for a trip
+  const getJournalCountForTrip = (tripId: string) => {
+    return entries.filter((e) => e.trip_id === tripId).length;
+  };
 
   useEffect(() => {
     const testClustering = async () => {
@@ -237,6 +244,7 @@ export default function TripsScreen() {
     const activityCount =
       trip.items?.filter((i) => i.type === "activity").length || 0;
     const spotCount = trip.items?.filter((i) => i.type === "spot").length || 0;
+    const journalCount = getJournalCountForTrip(trip.id);
 
     const coverPhoto =
       trip.cover_photo ||
@@ -315,6 +323,12 @@ export default function TripsScreen() {
               />
               <Text style={styles.statText}>{spotCount}</Text>
             </View>
+            {journalCount > 0 && (
+              <View style={styles.statItem}>
+                <Ionicons name="book" size={16} color="#9C27B0" />
+                <Text style={styles.statText}>{journalCount}</Text>
+              </View>
+            )}
             {trip.tagged_friends && trip.tagged_friends.length > 0 && (
               <View style={styles.statItem}>
                 <Ionicons name="people" size={16} color={theme.colors.navy} />

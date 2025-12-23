@@ -21,6 +21,7 @@ import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { useSettings } from "../contexts/SettingsContext";
 import { useTrips } from "../contexts/TripContext";
+import { useJournal } from "../contexts/JournalContext";
 import { useFocusEffect } from "@react-navigation/native";
 import { Modal, Linking } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -61,24 +62,20 @@ const getWeatherForLocation = async (
     const tempUnit = useImperial ? "fahrenheit" : "celsius";
     const precipUnit = useImperial ? "inch" : "mm";
 
-    // Determine if we need historical or forecast API
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
 
     let url: string;
 
     if (end < yesterday) {
-      // All dates in the past - use historical API
       url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${startStr}&end_date=${endStr}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
     } else if (start > now) {
-      // All dates in the future - use forecast API (max 16 days)
       const maxEnd = new Date(now);
       maxEnd.setDate(maxEnd.getDate() + 16);
       const effectiveEndStr =
         end > maxEnd ? maxEnd.toISOString().split("T")[0] : endStr;
       url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&start_date=${startStr}&end_date=${effectiveEndStr}&timezone=auto&temperature_unit=${tempUnit}&precipitation_unit=${precipUnit}`;
     } else {
-      // Trip spans past and future - just use forecast from today
       const todayStr = now.toISOString().split("T")[0];
       const maxEnd = new Date(now);
       maxEnd.setDate(maxEnd.getDate() + 16);
@@ -245,6 +242,7 @@ export default function TripDetailScreen() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const { trips, removeFromTrip, refreshTrips } = useTrips();
+  const { entries, updateEntry, refreshEntries } = useJournal();
 
   const [activeTab, setActiveTab] = useState<"spots" | "photos" | "chat">(
     "spots"
@@ -264,6 +262,9 @@ export default function TripDetailScreen() {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
 
+  // Journal entries state
+  const [showJournalPicker, setShowJournalPicker] = useState(false);
+
   // Chat state
   const [messages, setMessages] = useState<TripMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -273,6 +274,12 @@ export default function TripDetailScreen() {
   const [userProfiles, setUserProfiles] = useState<Record<string, any>>({});
 
   const trip = trips.find((t) => t.id === tripId);
+
+  // Get journal entries linked to this trip
+  const tripJournalEntries = entries.filter((e) => e.trip_id === tripId);
+  
+  // Get unlinked journal entries for the picker
+  const unlinkedJournalEntries = entries.filter((e) => !e.trip_id);
 
   // Check if user can access chat (creator or tagged)
   const canAccessChat =
@@ -310,7 +317,7 @@ export default function TripDetailScreen() {
         }))
     : [];
 
-  // Collect all photos from spots and activities
+  // Collect all photos from spots, activities, and journal entries
   const allPhotos = [
     ...processedSpots.flatMap((spot) =>
       (spot.photos || []).map((photo: string) => ({
@@ -326,6 +333,13 @@ export default function TripDetailScreen() {
         type: "activity",
       }))
     ),
+    ...tripJournalEntries.flatMap((entry) =>
+      (entry.photos || []).map((photo: string) => ({
+        uri: photo,
+        source: entry.title || "Journal Entry",
+        type: "journal",
+      }))
+    ),
   ];
 
   const [processedActivities, setProcessedActivities] = useState<any[]>([]);
@@ -337,6 +351,14 @@ export default function TripDetailScreen() {
       subscribeToMessages();
     }
   }, [trip?.id, canAccessChat, activeTab]);
+
+  // Refresh journal entries on focus
+  useFocusEffect(
+    useCallback(() => {
+      refreshTrips();
+      refreshEntries();
+    }, [])
+  );
 
   const loadMessages = async () => {
     if (!tripId) return;
@@ -353,7 +375,6 @@ export default function TripDetailScreen() {
 
       setMessages(data || []);
 
-      // Load user profiles for messages
       const userIds = [...new Set((data || []).map((m) => m.user_id))];
       await loadUserProfiles(userIds);
     } catch (error) {
@@ -403,12 +424,10 @@ export default function TripDetailScreen() {
           const newMsg = payload.new as TripMessage;
           setMessages((prev) => [...prev, newMsg]);
 
-          // Load profile if needed
           if (!userProfiles[newMsg.user_id]) {
             await loadUserProfiles([newMsg.user_id]);
           }
 
-          // Scroll to bottom
           setTimeout(() => {
             chatListRef.current?.scrollToEnd({ animated: true });
           }, 100);
@@ -440,6 +459,37 @@ export default function TripDetailScreen() {
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  // Journal entry functions
+  const handleLinkJournalEntry = async (entryId: string) => {
+    const success = await updateEntry(entryId, { trip_id: tripId });
+    if (success) {
+      setShowJournalPicker(false);
+      refreshEntries();
+    }
+  };
+
+  const handleUnlinkJournalEntry = (entry: any) => {
+    Alert.alert(
+      "Unlink Journal Entry",
+      `Remove "${entry.title || "this entry"}" from this trip?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unlink",
+          style: "destructive",
+          onPress: async () => {
+            await updateEntry(entry.id, { trip_id: null });
+            refreshEntries();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleJournalEntryPress = (entry: any) => {
+    router.push(`/journal/${entry.id}`);
   };
 
   // Process activity photos
@@ -524,12 +574,6 @@ export default function TripDetailScreen() {
       loadWeatherData();
     }
   }, [trip, tripActivities.length, processedSpots.length]);
-
-  useFocusEffect(
-    useCallback(() => {
-      refreshTrips();
-    }, [])
-  );
 
   const loadWeatherData = async () => {
     if (!trip || (tripActivities.length === 0 && processedSpots.length === 0))
@@ -843,6 +887,10 @@ export default function TripDetailScreen() {
           <Text style={styles.statLabel}>Spots</Text>
         </View>
         <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{tripJournalEntries.length}</Text>
+          <Text style={styles.statLabel}>Journal</Text>
+        </View>
+        <View style={styles.statCard}>
           <Text style={styles.statNumber}>{getDaysCount()}</Text>
           <Text style={styles.statLabel}>Days</Text>
         </View>
@@ -911,8 +959,6 @@ export default function TripDetailScreen() {
           </ScrollView>
         </View>
       )}
-
-      {/* Map Toggle */}
 
       {/* Map Toggle */}
       <TouchableOpacity
@@ -1076,14 +1122,106 @@ export default function TripDetailScreen() {
             </View>
           )}
 
-          {tripActivities.length === 0 && processedSpots.length === 0 && (
+          {/* Journal Entries Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                Journal Entries ({tripJournalEntries.length})
+              </Text>
+              {trip.created_by === user?.id && (
+                <View style={styles.journalActions}>
+                  <TouchableOpacity
+                    style={styles.addJournalButton}
+                    onPress={() => router.push(`/add-journal?tripId=${tripId}`)}
+                  >
+                    <Ionicons name="add" size={18} color={theme.colors.forest} />
+                    <Text style={styles.addJournalText}>New</Text>
+                  </TouchableOpacity>
+                  {unlinkedJournalEntries.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.linkJournalButton}
+                      onPress={() => setShowJournalPicker(true)}
+                    >
+                      <Ionicons name="link" size={18} color={theme.colors.navy} />
+                      <Text style={styles.linkJournalText}>Link</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+            
+            {tripJournalEntries.length > 0 ? (
+              tripJournalEntries.map((entry) => (
+                <TouchableOpacity
+                  key={entry.id}
+                  style={styles.journalCard}
+                  onPress={() => handleJournalEntryPress(entry)}
+                  activeOpacity={0.7}
+                >
+                  {entry.photos && entry.photos.length > 0 ? (
+                    <Image
+                      source={{ uri: entry.photos[0] }}
+                      style={styles.spotImage}
+                    />
+                  ) : (
+                    <View style={[styles.itemIcon, { backgroundColor: '#9C27B0' + '15' }]}>
+                      <Ionicons name="book" size={24} color="#9C27B0" />
+                    </View>
+                  )}
+                  <View style={styles.itemInfo}>
+                    <View style={styles.journalTitleRow}>
+                      {entry.mood && (
+                        <Text style={styles.journalMood}>{entry.mood}</Text>
+                      )}
+                      <Text style={styles.itemName} numberOfLines={1}>
+                        {entry.title || "Untitled Entry"}
+                      </Text>
+                    </View>
+                    <Text style={styles.itemMeta}>
+                      {new Date(entry.created_at).toLocaleDateString()}
+                      {entry.weather && ` • ${entry.weather}`}
+                    </Text>
+                    <Text style={styles.journalPreview} numberOfLines={2}>
+                      {entry.content}
+                    </Text>
+                    {entry.photos && entry.photos.length > 0 && (
+                      <Text style={styles.photoCount}>
+                        📸 {entry.photos.length} photos
+                      </Text>
+                    )}
+                  </View>
+                  {trip.created_by === user?.id && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleUnlinkJournalEntry(entry);
+                      }}
+                      style={styles.removeButton}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyJournalState}>
+                <Ionicons name="book-outline" size={32} color="#ccc" />
+                <Text style={styles.emptyJournalText}>No journal entries yet</Text>
+                <Text style={styles.emptyJournalSubtext}>
+                  Document your memories and experiences
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {tripActivities.length === 0 && processedSpots.length === 0 && tripJournalEntries.length === 0 && (
             <View style={styles.emptyState}>
               <Ionicons name="trail-sign-outline" size={48} color="#ccc" />
               <Text style={styles.emptyText}>
-                No activities or spots added yet
+                No content added yet
               </Text>
               <Text style={styles.emptySubtext}>
-                Add activities and spots to build your trip memories
+                Add activities, spots, and journal entries to build your trip memories
               </Text>
             </View>
           )}
@@ -1124,7 +1262,7 @@ export default function TripDetailScreen() {
               />
               <View style={styles.photoSourceBadge}>
                 <Ionicons
-                  name={item.type === "spot" ? "location" : "fitness"}
+                  name={item.type === "spot" ? "location" : item.type === "journal" ? "book" : "fitness"}
                   size={10}
                   color="white"
                 />
@@ -1137,7 +1275,7 @@ export default function TripDetailScreen() {
           <Ionicons name="images-outline" size={64} color="#ccc" />
           <Text style={styles.emptyPhotosText}>No photos yet</Text>
           <Text style={styles.emptyPhotosSubtext}>
-            Photos from your spots and activities will appear here
+            Photos from your spots, activities, and journal entries will appear here
           </Text>
         </View>
       )}
@@ -1275,6 +1413,71 @@ export default function TripDetailScreen() {
       </KeyboardAvoidingView>
     );
   };
+
+  // Journal Picker Modal
+  const JournalPickerModal = () => (
+    <Modal
+      visible={showJournalPicker}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowJournalPicker(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setShowJournalPicker(false)}
+      >
+        <View style={styles.journalPickerModal}>
+          <View style={styles.journalPickerHeader}>
+            <Text style={styles.journalPickerTitle}>Link Journal Entry</Text>
+            <TouchableOpacity onPress={() => setShowJournalPicker(false)}>
+              <Ionicons name="close" size={24} color={theme.colors.gray} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.journalPickerList}>
+            {unlinkedJournalEntries.length === 0 ? (
+              <View style={styles.emptyPickerState}>
+                <Ionicons name="book-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyPickerText}>No unlinked entries</Text>
+                <Text style={styles.emptyPickerSubtext}>
+                  All your journal entries are already linked to trips
+                </Text>
+              </View>
+            ) : (
+              unlinkedJournalEntries.map((entry) => (
+                <TouchableOpacity
+                  key={entry.id}
+                  style={styles.journalPickerItem}
+                  onPress={() => handleLinkJournalEntry(entry.id)}
+                >
+                  <View style={styles.journalPickerItemIcon}>
+                    {entry.mood ? (
+                      <Text style={styles.journalPickerMood}>{entry.mood}</Text>
+                    ) : (
+                      <Ionicons name="book" size={20} color="#9C27B0" />
+                    )}
+                  </View>
+                  <View style={styles.journalPickerItemInfo}>
+                    <Text style={styles.journalPickerItemTitle} numberOfLines={1}>
+                      {entry.title || "Untitled Entry"}
+                    </Text>
+                    <Text style={styles.journalPickerItemDate}>
+                      {new Date(entry.created_at).toLocaleDateString()}
+                    </Text>
+                    <Text style={styles.journalPickerItemPreview} numberOfLines={1}>
+                      {entry.content}
+                    </Text>
+                  </View>
+                  <Ionicons name="add-circle" size={24} color={theme.colors.forest} />
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 
   const ShareModal = () => (
     <Modal
@@ -1690,6 +1893,7 @@ export default function TripDetailScreen() {
 
       <ItemDetailModal />
       <ShareModal />
+      <JournalPickerModal />
 
       <ImageViewer
         visible={showImageViewer}
@@ -1905,11 +2109,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     padding: 20,
   },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: theme.colors.navy,
-    marginBottom: 15,
   },
   itemCard: {
     flexDirection: "row",
@@ -1978,20 +2187,158 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: "center",
   },
-  addItemsButton: {
+
+  // Journal Section
+  journalActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  addJournalButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.burntOrange,
-    margin: 20,
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: theme.colors.forest + "15",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
   },
-  addItemsText: {
-    color: "#fff",
-    fontSize: 16,
+  addJournalText: {
+    fontSize: 13,
     fontWeight: "600",
-    marginLeft: 8,
+    color: theme.colors.forest,
+  },
+  linkJournalButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.navy + "15",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  linkJournalText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  journalCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  journalTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  journalMood: {
+    fontSize: 16,
+  },
+  journalPreview: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  emptyJournalState: {
+    alignItems: "center",
+    padding: 30,
+  },
+  emptyJournalText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#999",
+    marginTop: 10,
+  },
+  emptyJournalSubtext: {
+    fontSize: 12,
+    color: "#bbb",
+    marginTop: 4,
+  },
+
+  // Journal Picker Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  journalPickerModal: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "70%",
+  },
+  journalPickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  journalPickerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  journalPickerList: {
+    maxHeight: 400,
+  },
+  journalPickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  journalPickerItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#9C27B0' + '15',
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  journalPickerMood: {
+    fontSize: 20,
+  },
+  journalPickerItemInfo: {
+    flex: 1,
+  },
+  journalPickerItemTitle: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.navy,
+  },
+  journalPickerItemDate: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  journalPickerItemPreview: {
+    fontSize: 12,
+    color: theme.colors.lightGray,
+    marginTop: 2,
+  },
+  emptyPickerState: {
+    alignItems: "center",
+    padding: 40,
+  },
+  emptyPickerText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#999",
+    marginTop: 15,
+  },
+  emptyPickerSubtext: {
+    fontSize: 13,
+    color: "#bbb",
+    marginTop: 5,
+    textAlign: "center",
   },
 
   // Photos Tab

@@ -36,6 +36,7 @@ import { supabase } from "../lib/supabase";
 import { MemoryNotificationService } from "../services/memoryNotificationService";
 import { useWishlist } from "../contexts/WishlistContext";
 import { useTrips } from "../contexts/TripContext";
+import { useJournal } from "../contexts/JournalContext";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import { UserAvatar } from "../components/UserAvatar";
@@ -82,9 +83,10 @@ export default function DashboardScreen() {
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const { wishlistItems } = useWishlist();
   const { trips, triggerAutoDetection, showPendingClusters } = useTrips();
+  const { entries: journalEntries } = useJournal();
   const [reviewingTrips, setReviewingTrips] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [activeTab, setActiveTab] = useState<"recent" | "friends">("recent");
+  const [activeTab, setActiveTab] = useState<'recent' | 'friends'>('recent');
 
   // Force re-render when auth state changes
   const [authVersion, setAuthVersion] = useState(0);
@@ -626,11 +628,8 @@ export default function DashboardScreen() {
   const getHeroPhoto = () => {
     const spotsWithPhotos = savedSpots
       .filter((s) => s.photos && s.photos.length > 0)
-      .sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
     if (spotsWithPhotos.length > 0) {
       return {
         uri: spotsWithPhotos[0].photos[0],
@@ -638,14 +637,11 @@ export default function DashboardScreen() {
         date: spotsWithPhotos[0].timestamp,
       };
     }
-
+    
     const tripsWithPhotos = trips
       .filter((t) => t.cover_photo)
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
     if (tripsWithPhotos.length > 0) {
       return {
         uri: tripsWithPhotos[0].cover_photo,
@@ -653,7 +649,7 @@ export default function DashboardScreen() {
         date: tripsWithPhotos[0].created_at,
       };
     }
-
+    
     return null;
   };
 
@@ -834,6 +830,7 @@ export default function DashboardScreen() {
     },
     { icon: "location", label: "Saved Spots", route: "/saved-spots" },
     { icon: "fitness", label: "Activities", route: "/past-activities" },
+    { icon: "book", label: "Journal Entries", route: "/journal" },
     { icon: "airplane", label: "My Trips", route: "/trips" },
     {
       icon: "people",
@@ -895,7 +892,8 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.white} />
-      // Header
+
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => toggleSidebar(true)}
@@ -922,13 +920,14 @@ export default function DashboardScreen() {
             {unreadNotificationCount > 0 && (
               <View style={styles.notificationBadge}>
                 <Text style={styles.notificationBadgeText}>
-                  {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
                 </Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
       </View>
+
       {/* Main Content */}
       <ScrollView
         style={styles.scrollContainer}
@@ -938,7 +937,7 @@ export default function DashboardScreen() {
       >
         {/* Hero Section */}
         {heroPhoto ? (
-          <TouchableOpacity
+          <TouchableOpacity 
             style={styles.heroSection}
             onPress={() => router.push("/saved-spots")}
             activeOpacity={0.9}
@@ -951,33 +950,35 @@ export default function DashboardScreen() {
               <View style={styles.heroOverlay}>
                 <View style={styles.heroContent}>
                   <Text style={styles.heroGreeting}>
-                    {getGreeting()},{" "}
-                    {profile?.display_name?.split(" ")[0] || "Explorer"}
+                    {getGreeting()}, {profile?.display_name?.split(' ')[0] || profile?.username || 'Explorer'}
                   </Text>
                   <Text style={styles.heroLabel}>Latest Adventure</Text>
                   <Text style={styles.heroTitle}>{heroPhoto.name}</Text>
                 </View>
                 <View style={styles.heroStats}>
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatNumber}>
-                      {stats.totalLocations}
-                    </Text>
+                  <TouchableOpacity 
+                    style={styles.heroStatItem}
+                    onPress={() => router.push("/saved-spots")}
+                  >
+                    <Text style={styles.heroStatNumber}>{stats.totalLocations}</Text>
                     <Text style={styles.heroStatLabel}>Places</Text>
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.heroStatDivider} />
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatNumber}>
-                      {stats.totalActivities}
-                    </Text>
+                  <TouchableOpacity 
+                    style={styles.heroStatItem}
+                    onPress={() => router.push("/past-activities")}
+                  >
+                    <Text style={styles.heroStatNumber}>{stats.totalActivities}</Text>
                     <Text style={styles.heroStatLabel}>Activities</Text>
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.heroStatDivider} />
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatNumber}>
-                      {trips?.length || 0}
-                    </Text>
+                  <TouchableOpacity 
+                    style={styles.heroStatItem}
+                    onPress={() => router.push("/trips")}
+                  >
+                    <Text style={styles.heroStatNumber}>{trips?.length || 0}</Text>
                     <Text style={styles.heroStatLabel}>Trips</Text>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               </View>
             </ImageBackground>
@@ -985,10 +986,11 @@ export default function DashboardScreen() {
         ) : (
           <View style={styles.heroPlaceholder}>
             <View style={styles.heroPlaceholderContent}>
-              <ExplorableIcon size={60} />
-              <Text style={styles.heroPlaceholderTitle}>
-                Start Your Adventure
-              </Text>
+            <Text style={styles.heroPlaceholderGreeting}>
+              {getGreeting()}, {profile?.display_name?.split(' ')[0] || profile?.username || 'Explorer'}
+            </Text>
+            <ExplorableIcon size={60} />
+            <Text style={styles.heroPlaceholderTitle}>Start Your Adventure</Text>
               <Text style={styles.heroPlaceholderText}>
                 Save your first spot to see it featured here
               </Text>
@@ -997,60 +999,33 @@ export default function DashboardScreen() {
                 onPress={() => router.push("/save-location")}
               >
                 <Ionicons name="add" size={20} color="white" />
-                <Text style={styles.heroPlaceholderButtonText}>
-                  Add First Spot
-                </Text>
+                <Text style={styles.heroPlaceholderButtonText}>Add First Spot</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.heroStats}>
-              <View style={styles.heroStatItem}>
-                <Text
-                  style={[styles.heroStatNumber, { color: theme.colors.navy }]}
-                >
-                  {stats.totalLocations}
-                </Text>
-                <Text
-                  style={[styles.heroStatLabel, { color: theme.colors.gray }]}
-                >
-                  Places
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.heroStatDivider,
-                  { backgroundColor: theme.colors.borderGray },
-                ]}
-              />
-              <View style={styles.heroStatItem}>
-                <Text
-                  style={[styles.heroStatNumber, { color: theme.colors.navy }]}
-                >
-                  {stats.totalActivities}
-                </Text>
-                <Text
-                  style={[styles.heroStatLabel, { color: theme.colors.gray }]}
-                >
-                  Activities
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.heroStatDivider,
-                  { backgroundColor: theme.colors.borderGray },
-                ]}
-              />
-              <View style={styles.heroStatItem}>
-                <Text
-                  style={[styles.heroStatNumber, { color: theme.colors.navy }]}
-                >
-                  {trips?.length || 0}
-                </Text>
-                <Text
-                  style={[styles.heroStatLabel, { color: theme.colors.gray }]}
-                >
-                  Trips
-                </Text>
-              </View>
+              <TouchableOpacity 
+                style={styles.heroStatItem}
+                onPress={() => router.push("/saved-spots")}
+              >
+                <Text style={[styles.heroStatNumber, { color: theme.colors.navy }]}>{stats.totalLocations}</Text>
+                <Text style={[styles.heroStatLabel, { color: theme.colors.gray }]}>Places</Text>
+              </TouchableOpacity>
+              <View style={[styles.heroStatDivider, { backgroundColor: theme.colors.borderGray }]} />
+              <TouchableOpacity 
+                style={styles.heroStatItem}
+                onPress={() => router.push("/past-activities")}
+              >
+                <Text style={[styles.heroStatNumber, { color: theme.colors.navy }]}>{stats.totalActivities}</Text>
+                <Text style={[styles.heroStatLabel, { color: theme.colors.gray }]}>Activities</Text>
+              </TouchableOpacity>
+              <View style={[styles.heroStatDivider, { backgroundColor: theme.colors.borderGray }]} />
+              <TouchableOpacity 
+                style={styles.heroStatItem}
+                onPress={() => router.push("/trips")}
+              >
+                <Text style={[styles.heroStatNumber, { color: theme.colors.navy }]}>{trips?.length || 0}</Text>
+                <Text style={[styles.heroStatLabel, { color: theme.colors.gray }]}>Trips</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1065,17 +1040,9 @@ export default function DashboardScreen() {
               <View style={styles.streakText}>
                 <Text style={styles.streakTitle}>This Week</Text>
                 <Text style={styles.streakSubtitle}>
-                  {stats.thisWeekSpots > 0 &&
-                    `${stats.thisWeekSpots} spot${
-                      stats.thisWeekSpots > 1 ? "s" : ""
-                    }`}
-                  {stats.thisWeekSpots > 0 &&
-                    stats.thisWeekActivities > 0 &&
-                    " • "}
-                  {stats.thisWeekActivities > 0 &&
-                    `${stats.thisWeekActivities} activit${
-                      stats.thisWeekActivities > 1 ? "ies" : "y"
-                    }`}
+                  {stats.thisWeekSpots > 0 && `${stats.thisWeekSpots} spot${stats.thisWeekSpots > 1 ? 's' : ''}`}
+                  {stats.thisWeekSpots > 0 && stats.thisWeekActivities > 0 && ' • '}
+                  {stats.thisWeekActivities > 0 && `${stats.thisWeekActivities} activit${stats.thisWeekActivities > 1 ? 'ies' : 'y'}`}
                 </Text>
               </View>
             </View>
@@ -1086,29 +1053,20 @@ export default function DashboardScreen() {
         <View style={styles.quickStatsSection}>
           <TouchableOpacity
             style={styles.quickStatCard}
-            onPress={() => router.push("/saved-spots")}
+            onPress={() => router.push("/journal")}
             activeOpacity={0.7}
           >
-            <Ionicons name="location" size={20} color={theme.colors.forest} />
-            <Text style={styles.quickStatNumber}>{stats.uniqueCategories}</Text>
-            <Text style={styles.quickStatLabel}>Categories</Text>
+            <Ionicons name="book" size={20} color="#9C27B0" />
+            <Text style={styles.quickStatNumber}>{journalEntries.length}</Text>
+            <Text style={styles.quickStatLabel}>Journal Entries</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.quickStatCard}
-            onPress={() =>
-              router.push({
-                pathname: "/saved-spots",
-                params: { filter: "withPhotos" },
-              } as any)
-            }
+            onPress={() => router.push({ pathname: "/saved-spots", params: { filter: "withPhotos" } } as any)}
             activeOpacity={0.7}
           >
-            <Ionicons
-              name="camera"
-              size={20}
-              color={theme.colors.burntOrange}
-            />
+            <Ionicons name="camera" size={20} color={theme.colors.burntOrange} />
             <Text style={styles.quickStatNumber}>
               {savedSpots.filter((s) => s.photos && s.photos.length > 0).length}
             </Text>
@@ -1134,9 +1092,7 @@ export default function DashboardScreen() {
             activeOpacity={0.7}
           >
             <Ionicons name="heart" size={20} color="#9C27B0" />
-            <Text style={styles.quickStatNumber}>
-              {wishlistItems?.length || 0}
-            </Text>
+            <Text style={styles.quickStatNumber}>{wishlistItems?.length || 0}</Text>
             <Text style={styles.quickStatLabel}>Wishlist</Text>
           </TouchableOpacity>
         </View>
@@ -1145,53 +1101,35 @@ export default function DashboardScreen() {
         <View style={styles.activitySection}>
           <View style={styles.tabHeader}>
             <TouchableOpacity
-              style={[styles.tab, activeTab === "recent" && styles.tabActive]}
-              onPress={() => setActiveTab("recent")}
+              style={[styles.tab, activeTab === 'recent' && styles.tabActive]}
+              onPress={() => setActiveTab('recent')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "recent" && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === 'recent' && styles.tabTextActive]}>
                 Recent
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.tab, activeTab === "friends" && styles.tabActive]}
-              onPress={() => setActiveTab("friends")}
+              style={[styles.tab, activeTab === 'friends' && styles.tabActive]}
+              onPress={() => setActiveTab('friends')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "friends" && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === 'friends' && styles.tabTextActive]}>
                 Friends
               </Text>
               {friendRequests.length > 0 && (
                 <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>
-                    {friendRequests.length}
-                  </Text>
+                  <Text style={styles.tabBadgeText}>{friendRequests.length}</Text>
                 </View>
               )}
             </TouchableOpacity>
           </View>
 
-          {activeTab === "recent" ? (
+          {activeTab === 'recent' ? (
             <View style={styles.tabContent}>
               {recentItems.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Ionicons
-                    name="compass-outline"
-                    size={48}
-                    color={theme.colors.lightGray}
-                  />
+                  <Ionicons name="compass-outline" size={48} color={theme.colors.lightGray} />
                   <Text style={styles.emptyText}>No adventures yet</Text>
-                  <Text style={styles.emptySubtext}>
-                    Start exploring to see your activity here
-                  </Text>
+                  <Text style={styles.emptySubtext}>Start exploring to see your activity here</Text>
                 </View>
               ) : (
                 recentItems.map((item) => {
@@ -1200,8 +1138,7 @@ export default function DashboardScreen() {
                   let onPress = () => {};
 
                   if (item.type === "spot") {
-                    const category =
-                      categories[item.category] || categories.other;
+                    const category = categories[item.category] || categories.other;
                     icon = "location";
                     color = category.color;
                     onPress = () => router.push(`/location/${item.id}` as any);
@@ -1214,8 +1151,7 @@ export default function DashboardScreen() {
                         params: { tripId: item.id },
                       } as any);
                   } else if (item.type === "activity") {
-                    const activityIcon =
-                      activityIcons[item.activityType] || "fitness";
+                    const activityIcon = activityIcons[item.activityType] || "fitness";
                     icon = activityIcon;
                     color = theme.colors.burntOrange;
                     onPress = () => router.push(`/activity/${item.id}` as any);
@@ -1228,29 +1164,17 @@ export default function DashboardScreen() {
                       onPress={onPress}
                       activeOpacity={0.7}
                     >
-                      <View
-                        style={[
-                          styles.recentIcon,
-                          { backgroundColor: color + "15" },
-                        ]}
-                      >
+                      <View style={[styles.recentIcon, { backgroundColor: color + "15" }]}>
                         <Ionicons name={icon as any} size={18} color={color} />
                       </View>
                       <View style={styles.recentInfo}>
-                        <Text style={styles.recentName} numberOfLines={1}>
-                          {item.name}
-                        </Text>
+                        <Text style={styles.recentName} numberOfLines={1}>{item.name}</Text>
                         <Text style={styles.recentMeta}>
-                          {item.type.charAt(0).toUpperCase() +
-                            item.type.slice(1)}{" "}
-                          • {new Date(item.timestamp).toLocaleDateString()}
+                          {item.type.charAt(0).toUpperCase() + item.type.slice(1)} •{" "}
+                          {new Date(item.timestamp).toLocaleDateString()}
                         </Text>
                       </View>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={18}
-                        color={theme.colors.lightGray}
-                      />
+                      <Ionicons name="chevron-forward" size={18} color={theme.colors.lightGray} />
                     </TouchableOpacity>
                   );
                 })
@@ -1263,29 +1187,14 @@ export default function DashboardScreen() {
                 onPress={() => router.push("/friends-feed")}
                 activeOpacity={0.7}
               >
-                <View
-                  style={[
-                    styles.friendsCardIcon,
-                    { backgroundColor: theme.colors.forest + "15" },
-                  ]}
-                >
-                  <Ionicons
-                    name="people"
-                    size={24}
-                    color={theme.colors.forest}
-                  />
+                <View style={[styles.friendsCardIcon, { backgroundColor: theme.colors.forest + "15" }]}>
+                  <Ionicons name="people" size={24} color={theme.colors.forest} />
                 </View>
                 <View style={styles.friendsCardInfo}>
                   <Text style={styles.friendsCardTitle}>Friends Feed</Text>
-                  <Text style={styles.friendsCardSubtitle}>
-                    See what friends are up to
-                  </Text>
+                  <Text style={styles.friendsCardSubtitle}>See what friends are up to</Text>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={theme.colors.lightGray}
-                />
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1293,36 +1202,19 @@ export default function DashboardScreen() {
                 onPress={() => router.push("/friends")}
                 activeOpacity={0.7}
               >
-                <View
-                  style={[
-                    styles.friendsCardIcon,
-                    { backgroundColor: theme.colors.burntOrange + "15" },
-                  ]}
-                >
-                  <Ionicons
-                    name="person-add"
-                    size={24}
-                    color={theme.colors.burntOrange}
-                  />
+                <View style={[styles.friendsCardIcon, { backgroundColor: theme.colors.burntOrange + "15" }]}>
+                  <Ionicons name="person-add" size={24} color={theme.colors.burntOrange} />
                 </View>
                 <View style={styles.friendsCardInfo}>
                   <Text style={styles.friendsCardTitle}>Find Friends</Text>
-                  <Text style={styles.friendsCardSubtitle}>
-                    Connect with other explorers
-                  </Text>
+                  <Text style={styles.friendsCardSubtitle}>Connect with other explorers</Text>
                 </View>
                 {friendRequests.length > 0 && (
                   <View style={styles.friendsRequestBadge}>
-                    <Text style={styles.friendsRequestBadgeText}>
-                      {friendRequests.length}
-                    </Text>
+                    <Text style={styles.friendsRequestBadgeText}>{friendRequests.length}</Text>
                   </View>
                 )}
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={theme.colors.lightGray}
-                />
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.lightGray} />
               </TouchableOpacity>
             </View>
           )}
@@ -1356,9 +1248,7 @@ export default function DashboardScreen() {
               style={styles.mapContainer}
               onTouchStart={() => setScrollEnabled(false)}
               onTouchEnd={() => setTimeout(() => setScrollEnabled(true), 100)}
-              onTouchCancel={() =>
-                setTimeout(() => setScrollEnabled(true), 100)
-              }
+              onTouchCancel={() => setTimeout(() => setScrollEnabled(true), 100)}
             >
               <WebView
                 ref={webViewRef}
@@ -1371,30 +1261,15 @@ export default function DashboardScreen() {
               />
               <View style={styles.mapLegend} pointerEvents="none">
                 <View style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: theme.colors.burntOrange },
-                    ]}
-                  />
+                  <View style={[styles.legendDot, { backgroundColor: theme.colors.burntOrange }]} />
                   <Text style={styles.legendText}>You</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: theme.colors.forest },
-                    ]}
-                  />
+                  <View style={[styles.legendDot, { backgroundColor: theme.colors.forest }]} />
                   <Text style={styles.legendText}>Routes</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View
-                    style={[
-                      styles.legendDot,
-                      { backgroundColor: theme.colors.navy },
-                    ]}
-                  />
+                  <View style={[styles.legendDot, { backgroundColor: theme.colors.navy }]} />
                   <Text style={styles.legendText}>Places</Text>
                 </View>
               </View>
@@ -1405,6 +1280,7 @@ export default function DashboardScreen() {
         {/* Bottom padding for scroll */}
         <View style={{ height: 100 }} />
       </ScrollView>
+
       {/* Bottom Sheet */}
       <Animated.View
         style={[
@@ -1424,12 +1300,7 @@ export default function DashboardScreen() {
             style={styles.quickAction}
             onPress={() => router.push("/save-location")}
           >
-            <View
-              style={[
-                styles.quickActionIcon,
-                { backgroundColor: theme.colors.forest + "15" },
-              ]}
-            >
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.forest + "15" }]}>
               <Ionicons name="location" size={22} color={theme.colors.forest} />
             </View>
             <Text style={styles.quickActionText}>Save Spot</Text>
@@ -1439,12 +1310,7 @@ export default function DashboardScreen() {
             style={styles.quickAction}
             onPress={() => router.push("/quick-photo")}
           >
-            <View
-              style={[
-                styles.quickActionIcon,
-                { backgroundColor: "#FFB800" + "15" },
-              ]}
-            >
+            <View style={[styles.quickActionIcon, { backgroundColor: "#FFB800" + "15" }]}>
               <Ionicons name="camera" size={22} color="#FFB800" />
             </View>
             <Text style={styles.quickActionText}>Quick Log</Text>
@@ -1454,12 +1320,7 @@ export default function DashboardScreen() {
             style={styles.quickAction}
             onPress={() => router.push("/track-activity")}
           >
-            <View
-              style={[
-                styles.quickActionIcon,
-                { backgroundColor: theme.colors.navy + "15" },
-              ]}
-            >
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.navy + "15" }]}>
               <Ionicons name="fitness" size={22} color={theme.colors.navy} />
             </View>
             <Text style={styles.quickActionText}>Track</Text>
@@ -1469,26 +1330,24 @@ export default function DashboardScreen() {
             style={styles.quickAction}
             onPress={() => router.push("/create-trip")}
           >
-            <View
-              style={[
-                styles.quickActionIcon,
-                { backgroundColor: theme.colors.burntOrange + "15" },
-              ]}
-            >
-              <Ionicons
-                name="airplane"
-                size={22}
-                color={theme.colors.burntOrange}
-              />
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.burntOrange + "15" }]}>
+              <Ionicons name="airplane" size={22} color={theme.colors.burntOrange} />
             </View>
             <Text style={styles.quickActionText}>New Trip</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.quickAction,
-              reviewingTrips && styles.quickActionDisabled,
-            ]}
+            style={styles.quickAction}
+            onPress={() => router.push("/add-journal")}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: "#9C27B0" + "15" }]}>
+              <Ionicons name="book" size={22} color="#9C27B0" />
+            </View>
+            <Text style={styles.quickActionText}>New Journal</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.quickAction, reviewingTrips && styles.quickActionDisabled]}
             onPress={async () => {
               if (reviewingTrips) return;
               try {
@@ -1496,26 +1355,18 @@ export default function DashboardScreen() {
                 await showPendingClusters();
               } catch (error) {
                 console.error("Error reviewing trips:", error);
-                Alert.alert(
-                  "Error",
-                  "Failed to check for trips. Please try again."
-                );
+                Alert.alert("Error", "Failed to check for trips. Please try again.");
               } finally {
                 setReviewingTrips(false);
               }
             }}
             disabled={reviewingTrips}
           >
-            <View
-              style={[
-                styles.quickActionIcon,
-                { backgroundColor: "#9C27B0" + "15" },
-              ]}
-            >
+            <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.forest + "15" }]}>
               {reviewingTrips ? (
-                <ActivityIndicator size="small" color="#9C27B0" />
+                <ActivityIndicator size="small" color={theme.colors.forest} />
               ) : (
-                <Ionicons name="sparkles" size={22} color="#9C27B0" />
+                <Ionicons name="sparkles" size={22} color={theme.colors.forest} />
               )}
             </View>
             <Text style={styles.quickActionText}>
@@ -1524,6 +1375,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
       </Animated.View>
+
       {/* Sidebar Modal */}
       <Modal
         visible={showSidebar}
@@ -1561,16 +1413,11 @@ export default function DashboardScreen() {
                 {profile?.display_name || profile?.username || "Explorer"}
               </Text>
               <Text style={styles.profileStats}>
-                {stats.totalLocations} places • {stats.totalActivities}{" "}
-                activities
+                {stats.totalLocations} places • {stats.totalActivities} activities
               </Text>
               {user && <Text style={styles.profileEmail}>{user.email}</Text>}
               <View style={styles.editIndicator}>
-                <Ionicons
-                  name="create-outline"
-                  size={16}
-                  color={theme.colors.gray}
-                />
+                <Ionicons name="create-outline" size={16} color={theme.colors.gray} />
                 <Text style={styles.editText}>Tap to edit</Text>
               </View>
             </TouchableOpacity>
@@ -1599,9 +1446,7 @@ export default function DashboardScreen() {
                       <Ionicons
                         name={item.icon as any}
                         size={24}
-                        color={
-                          item.active ? theme.colors.forest : theme.colors.gray
-                        }
+                        color={item.active ? theme.colors.forest : theme.colors.gray}
                       />
                       <Text
                         style={[
@@ -1614,9 +1459,7 @@ export default function DashboardScreen() {
                     </View>
                     {item.badge !== undefined && item.badge > 0 && (
                       <View style={styles.sidebarBadge}>
-                        <Text style={styles.sidebarBadgeText}>
-                          {item.badge}
-                        </Text>
+                        <Text style={styles.sidebarBadgeText}>{item.badge}</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -1633,11 +1476,7 @@ export default function DashboardScreen() {
                     router.push("/settings");
                   }}
                 >
-                  <Ionicons
-                    name="cloud-done"
-                    size={20}
-                    color={theme.colors.forest}
-                  />
+                  <Ionicons name="cloud-done" size={20} color={theme.colors.forest} />
                   <Text style={styles.authStatusText}>Synced</Text>
                 </TouchableOpacity>
               ) : (
@@ -1648,11 +1487,7 @@ export default function DashboardScreen() {
                     router.push("/auth/login");
                   }}
                 >
-                  <Ionicons
-                    name="cloud-offline"
-                    size={20}
-                    color={theme.colors.gray}
-                  />
+                  <Ionicons name="cloud-offline" size={20} color={theme.colors.gray} />
                   <Text style={styles.authStatusText}>
                     {isOfflineMode ? "Offline Mode" : "Sign In"}
                   </Text>
@@ -1662,6 +1497,7 @@ export default function DashboardScreen() {
           </Animated.View>
         </View>
       </Modal>
+
       {/* Profile Edit Modal */}
       <ProfileEditModal />
     </SafeAreaView>
@@ -1744,11 +1580,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
   },
-  greetingText: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: theme.colors.navy,
-  },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -1806,6 +1637,12 @@ const styles = StyleSheet.create({
   heroContent: {
     marginBottom: 12,
   },
+  heroGreeting: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "500",
+    marginBottom: 8,
+  },
   heroLabel: {
     fontSize: 12,
     color: "rgba(255,255,255,0.8)",
@@ -1858,6 +1695,12 @@ const styles = StyleSheet.create({
     padding: 24,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
+  },
+  heroPlaceholderGreeting: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.forest,
+    marginBottom: 12,
   },
   heroPlaceholderTitle: {
     fontSize: 18,
@@ -2376,12 +2219,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: theme.colors.navy,
     marginLeft: 8,
-  },
-  heroGreeting: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.9)",
-    fontWeight: "500",
-    marginBottom: 8,
   },
 });
 
