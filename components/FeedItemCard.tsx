@@ -19,12 +19,20 @@ import { TouchableImage } from "./TouchableImage";
 import { UserAvatar } from "./UserAvatar";
 import { theme } from "../constants/theme";
 import { useFriends } from "../contexts/FriendsContext";
-import { generateMiniMapHTML, generateLocationMiniMapHTML } from "../utils/mapHelpers";
+import {
+  generateMiniMapHTML,
+  generateLocationMiniMapHTML,
+} from "../utils/mapHelpers";
 
 interface FeedItemCardProps {
   item: any;
   onLike: (itemId: string, shouldLike: boolean) => void;
-  onComment: (itemId: string, text: string, replyToId?: string, replyToUserName?: string) => void;
+  onComment: (
+    itemId: string,
+    text: string,
+    replyToId?: string,
+    replyToUserName?: string
+  ) => void;
   onShare: (item: any) => void;
   onAddToWishlist: (location: any) => void;
   isInWishlist: boolean;
@@ -73,7 +81,10 @@ export function FeedItemCard({
   const { currentUserId } = useFriends();
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [replyingTo, setReplyingTo] = useState<{ id: string; userName: string } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{
+    id: string;
+    userName: string;
+  } | null>(null);
 
   const isLiked = item.data.likes.includes(currentUserId);
   const likesCount = item.data.likes.length;
@@ -96,7 +107,8 @@ export function FeedItemCard({
         <View style={styles.dateBadge}>
           <Ionicons name="calendar" size={14} color={theme.colors.forest} />
           <Text style={styles.dateBadgeText}>
-            Activity on {new Date(activity.activityDate).toLocaleDateString("en-US", {
+            Activity on{" "}
+            {new Date(activity.activityDate).toLocaleDateString("en-US", {
               weekday: "short",
               month: "short",
               day: "numeric",
@@ -108,15 +120,21 @@ export function FeedItemCard({
       <View style={styles.activityStats}>
         <View style={styles.statItem}>
           <Ionicons name="navigate" size={16} color={theme.colors.forest} />
-          <Text style={styles.statText}>{formatDistance(activity.distance)}</Text>
+          <Text style={styles.statText}>
+            {formatDistance(activity.distance)}
+          </Text>
         </View>
         <View style={styles.statItem}>
           <Ionicons name="time" size={16} color={theme.colors.forest} />
-          <Text style={styles.statText}>{Math.round(activity.duration / 60)}min</Text>
+          <Text style={styles.statText}>
+            {Math.round(activity.duration / 60)}min
+          </Text>
         </View>
         <View style={styles.statItem}>
           <Ionicons name="speedometer" size={16} color={theme.colors.forest} />
-          <Text style={styles.statText}>{formatSpeed(activity.averageSpeed)}</Text>
+          <Text style={styles.statText}>
+            {formatSpeed(activity.averageSpeed)}
+          </Text>
         </View>
       </View>
       {activity.notes && <Text style={styles.notes}>{activity.notes}</Text>}
@@ -130,10 +148,15 @@ export function FeedItemCard({
           <Text style={styles.locationName}>{location.name}</Text>
           {location.locationDate && (
             <Text style={styles.locationDate}>
-              Visited {new Date(location.locationDate).toLocaleDateString("en-US", {
+              Visited{" "}
+              {new Date(location.locationDate).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
-                year: new Date(location.locationDate).getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+                year:
+                  new Date(location.locationDate).getFullYear() !==
+                  new Date().getFullYear()
+                    ? "numeric"
+                    : undefined,
               })}
             </Text>
           )}
@@ -163,7 +186,11 @@ export function FeedItemCard({
         <Text style={styles.locationDescription}>{location.description}</Text>
       )}
       {location.photos && location.photos.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.photoScroll}
+        >
           {location.photos.slice(0, 3).map((photo: string, index: number) => (
             <TouchableImage
               key={index}
@@ -178,7 +205,8 @@ export function FeedItemCard({
       <View style={styles.locationCoords}>
         <Ionicons name="location" size={14} color={theme.colors.burntOrange} />
         <Text style={styles.coordsText}>
-          {location.location?.latitude?.toFixed(4)}, {location.location?.longitude?.toFixed(4)}
+          {location.location?.latitude?.toFixed(4)},{" "}
+          {location.location?.longitude?.toFixed(4)}
         </Text>
       </View>
     </View>
@@ -191,12 +219,19 @@ export function FeedItemCard({
         <Text style={styles.tripDates}>
           {trip.start_date && trip.end_date && (
             <>
-              {new Date(trip.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              {new Date(trip.start_date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
               {" - "}
               {new Date(trip.end_date).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
-                year: new Date(trip.end_date).getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+                year:
+                  new Date(trip.end_date).getFullYear() !==
+                  new Date().getFullYear()
+                    ? "numeric"
+                    : undefined,
               })}
             </>
           )}
@@ -204,15 +239,23 @@ export function FeedItemCard({
       </View>
 
       {trip.cover_photo && (
-        <Image source={{ uri: trip.cover_photo }} style={styles.tripCoverPhoto} />
+        <Image
+          source={{ uri: trip.cover_photo }}
+          style={styles.tripCoverPhoto}
+        />
       )}
 
       <View style={styles.tripStats}>
         <View style={styles.tripStatItem}>
           <Ionicons name="calendar" size={16} color={theme.colors.forest} />
           <Text style={styles.tripStatText}>
-            {trip.start_date && trip.end_date &&
-              Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / (1000 * 60 * 60 * 24))}{" "}
+            {trip.start_date &&
+              trip.end_date &&
+              Math.ceil(
+                (new Date(trip.end_date).getTime() -
+                  new Date(trip.start_date).getTime()) /
+                  (1000 * 60 * 60 * 24)
+              )}{" "}
             days
           </Text>
         </View>
@@ -226,7 +269,9 @@ export function FeedItemCard({
         <View style={styles.tripItemsPreview}>
           <Text style={styles.tripItemsTitle}>Includes:</Text>
           {trip.tripItems.map((tripItem: any, index: number) => (
-            <Text key={index} style={styles.tripItemText}>• {tripItem.name}</Text>
+            <Text key={index} style={styles.tripItemText}>
+              • {tripItem.name}
+            </Text>
           ))}
         </View>
       )}
@@ -236,7 +281,11 @@ export function FeedItemCard({
   const renderAchievementContent = (achievement: any) => (
     <View style={styles.achievementContent}>
       <View style={styles.achievementBadge}>
-        <Ionicons name={achievement.achievementIcon as any} size={40} color="#FFD700" />
+        <Ionicons
+          name={achievement.achievementIcon as any}
+          size={40}
+          color="#FFD700"
+        />
       </View>
       <Text style={styles.achievementName}>{achievement.achievementName}</Text>
       <Text style={styles.achievementText}>Achievement Unlocked!</Text>
@@ -253,7 +302,7 @@ export function FeedItemCard({
 
   // Get top-level comments and their replies
   const topLevelComments = item.data.comments.filter((c: any) => !c.replyTo);
-  const getReplies = (commentId: string) => 
+  const getReplies = (commentId: string) =>
     item.data.comments.filter((c: any) => c.replyTo === commentId);
 
   return (
@@ -263,11 +312,16 @@ export function FeedItemCard({
           <UserAvatar user={item.data.sharedBy} size={40} />
           <View style={styles.userText}>
             <Text style={styles.userName}>
-              {item.data.sharedBy.displayName || item.data.sharedBy.display_name}
+              {item.data.sharedBy.displayName ||
+                item.data.sharedBy.display_name}
             </Text>
             <View style={styles.timeRow}>
-              <Text style={styles.timeAgo}>{getTimeAgo(item.data.sharedAt)}</Text>
-              {formatItemDate() && <Text style={styles.itemDate}>• {formatItemDate()}</Text>}
+              <Text style={styles.timeAgo}>
+                {getTimeAgo(item.data.sharedAt)}
+              </Text>
+              {formatItemDate() && (
+                <Text style={styles.itemDate}>• {formatItemDate()}</Text>
+              )}
             </View>
           </View>
         </View>
@@ -275,29 +329,46 @@ export function FeedItemCard({
 
       <View style={styles.cardContent}>
         {item.type === "activity" && (
-          <View style={[styles.activityTypeBadge, { backgroundColor: theme.colors.forest + "20" }]}>
-            <Ionicons name={getActivityIcon(item.data.type) as any} size={16} color={theme.colors.forest} />
-            <Text style={[styles.activityTypeText, { color: theme.colors.forest }]}>{item.data.type}</Text>
-          </View>
-        )}
-        
-        {item.type === "activity" && renderActivityContent(item.data)}
-        {item.type === "activity" && item.data.route && item.data.route.length > 0 && (
-          <View style={styles.miniMapContainer}>
-            <WebView
-              source={{ html: generateMiniMapHTML(item.data.route, item.data.name) }}
-              style={styles.miniMap}
-              scrollEnabled={false}
-              pointerEvents="none"
+          <View
+            style={[
+              styles.activityTypeBadge,
+              { backgroundColor: theme.colors.forest + "20" },
+            ]}
+          >
+            <Ionicons
+              name={getActivityIcon(item.data.type) as any}
+              size={16}
+              color={theme.colors.forest}
             />
-            <TouchableOpacity
-              style={styles.mapOverlay}
-              onPress={() => router.push(`/feed-map/activity/${item.id}`)}
+            <Text
+              style={[styles.activityTypeText, { color: theme.colors.forest }]}
             >
-              <Ionicons name="expand" size={20} color="white" />
-            </TouchableOpacity>
+              {item.data.type}
+            </Text>
           </View>
         )}
+
+        {item.type === "activity" && renderActivityContent(item.data)}
+        {item.type === "activity" &&
+          item.data.route &&
+          item.data.route.length > 0 && (
+            <View style={styles.miniMapContainer}>
+              <WebView
+                source={{
+                  html: generateMiniMapHTML(item.data.route, item.data.name),
+                }}
+                style={styles.miniMap}
+                scrollEnabled={false}
+                pointerEvents="none"
+              />
+              <TouchableOpacity
+                style={styles.mapOverlay}
+                onPress={() => router.push(`/feed-map/activity/${item.id}`)}
+              >
+                <Ionicons name="expand" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
 
         {item.type === "location" && renderLocationContent(item.data)}
         {item.type === "location" && item.data.location && (
@@ -328,7 +399,10 @@ export function FeedItemCard({
       </View>
 
       <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.actionButton} onPress={() => onLike(item.id, !isLiked)}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => onLike(item.id, !isLiked)}
+        >
           <Ionicons
             name={isLiked ? "heart" : "heart-outline"}
             size={20}
@@ -339,19 +413,34 @@ export function FeedItemCard({
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={() => setShowComments(!showComments)}>
-          <Ionicons 
-            name={showComments ? "chatbubble" : "chatbubble-outline"} 
-            size={20} 
-            color={showComments ? theme.colors.forest : theme.colors.gray} 
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => setShowComments(!showComments)}
+        >
+          <Ionicons
+            name={showComments ? "chatbubble" : "chatbubble-outline"}
+            size={20}
+            color={showComments ? theme.colors.forest : theme.colors.gray}
           />
-          <Text style={[styles.actionText, showComments && { color: theme.colors.forest }]}>
+          <Text
+            style={[
+              styles.actionText,
+              showComments && { color: theme.colors.forest },
+            ]}
+          >
             {commentsCount > 0 ? commentsCount : "Comment"}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={() => onShare(item)}>
-          <Ionicons name="share-social-outline" size={20} color={theme.colors.gray} />
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => onShare(item)}
+        >
+          <Ionicons
+            name="share-social-outline"
+            size={20}
+            color={theme.colors.gray}
+          />
           <Text style={styles.actionText}>Share</Text>
         </TouchableOpacity>
       </View>
@@ -368,7 +457,7 @@ export function FeedItemCard({
           )}
 
           {/* Scrollable Comments List */}
-          <ScrollView 
+          <ScrollView
             style={styles.commentsList}
             contentContainerStyle={styles.commentsListContent}
             showsVerticalScrollIndicator={true}
@@ -376,9 +465,15 @@ export function FeedItemCard({
           >
             {topLevelComments.length === 0 ? (
               <View style={styles.noCommentsContainer}>
-                <Ionicons name="chatbubble-outline" size={32} color={theme.colors.lightGray} />
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={32}
+                  color={theme.colors.lightGray}
+                />
                 <Text style={styles.noCommentsText}>No comments yet</Text>
-                <Text style={styles.noCommentsSubtext}>Be the first to comment!</Text>
+                <Text style={styles.noCommentsSubtext}>
+                  Be the first to comment!
+                </Text>
               </View>
             ) : (
               topLevelComments.map((comment: any) => (
@@ -393,18 +488,31 @@ export function FeedItemCard({
                     <View style={styles.commentBody}>
                       <View style={styles.commentBubble}>
                         <View style={styles.commentMeta}>
-                          <Text style={styles.commentUserName}>{comment.userName}</Text>
-                          <Text style={styles.commentTimestamp}>{getTimeAgo(comment.timestamp)}</Text>
+                          <Text style={styles.commentUserName}>
+                            {comment.userName}
+                          </Text>
+                          <Text style={styles.commentTimestamp}>
+                            {getTimeAgo(comment.timestamp)}
+                          </Text>
                         </View>
-                        <Text style={styles.commentContent}>{comment.text}</Text>
+                        <Text style={styles.commentContent}>
+                          {comment.text}
+                        </Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => {
-                          setReplyingTo({ id: comment.id, userName: comment.userName });
+                          setReplyingTo({
+                            id: comment.id,
+                            userName: comment.userName,
+                          });
                         }}
                         style={styles.replyTrigger}
                       >
-                        <Ionicons name="arrow-undo-outline" size={14} color={theme.colors.forest} />
+                        <Ionicons
+                          name="arrow-undo-outline"
+                          size={14}
+                          color={theme.colors.forest}
+                        />
                         <Text style={styles.replyTriggerText}>Reply</Text>
                       </TouchableOpacity>
                     </View>
@@ -423,14 +531,37 @@ export function FeedItemCard({
                         <View style={styles.replyBody}>
                           <View style={styles.replyBubble}>
                             <View style={styles.commentMeta}>
-                              <Text style={styles.commentUserName}>{reply.userName}</Text>
-                              <Text style={styles.commentTimestamp}>{getTimeAgo(reply.timestamp)}</Text>
+                              <Text style={styles.commentUserName}>
+                                {reply.userName}
+                              </Text>
+                              <Text style={styles.commentTimestamp}>
+                                {getTimeAgo(reply.timestamp)}
+                              </Text>
                             </View>
                             <Text style={styles.commentContent}>
-                              <Text style={styles.mentionText}>@{comment.userName} </Text>
+                              <Text style={styles.mentionText}>
+                                @{reply.replyToUser || comment.userName}{" "}
+                              </Text>
                               {reply.text}
                             </Text>
                           </View>
+                          {/* Reply button for replies */}
+                          <TouchableOpacity
+                            onPress={() => {
+                              setReplyingTo({
+                                id: comment.id,
+                                userName: reply.userName,
+                              });
+                            }}
+                            style={styles.replyTrigger}
+                          >
+                            <Ionicons
+                              name="arrow-undo-outline"
+                              size={14}
+                              color={theme.colors.forest}
+                            />
+                            <Text style={styles.replyTriggerText}>Reply</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     </View>
@@ -449,16 +580,27 @@ export function FeedItemCard({
               {replyingTo && (
                 <View style={styles.replyingBanner}>
                   <View style={styles.replyingInfo}>
-                    <Ionicons name="arrow-undo" size={14} color={theme.colors.forest} />
+                    <Ionicons
+                      name="arrow-undo"
+                      size={14}
+                      color={theme.colors.forest}
+                    />
                     <Text style={styles.replyingText}>
-                      Replying to <Text style={styles.replyingName}>{replyingTo.userName}</Text>
+                      Replying to{" "}
+                      <Text style={styles.replyingName}>
+                        {replyingTo.userName}
+                      </Text>
                     </Text>
                   </View>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setReplyingTo(null)}
                     style={styles.cancelReplyButton}
                   >
-                    <Ionicons name="close-circle" size={20} color={theme.colors.gray} />
+                    <Ionicons
+                      name="close-circle"
+                      size={20}
+                      color={theme.colors.gray}
+                    />
                   </TouchableOpacity>
                 </View>
               )}
@@ -468,25 +610,31 @@ export function FeedItemCard({
                 </View>
                 <TextInput
                   style={styles.commentTextInput}
-                  placeholder={replyingTo ? `Reply to ${replyingTo.userName}...` : "Write a comment..."}
+                  placeholder={
+                    replyingTo
+                      ? `Reply to ${replyingTo.userName}...`
+                      : "Write a comment..."
+                  }
                   value={commentText}
                   onChangeText={setCommentText}
                   placeholderTextColor={theme.colors.lightGray}
                   multiline
                   maxLength={500}
                 />
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
                     styles.sendCommentButton,
-                    !commentText.trim() && styles.sendCommentButtonDisabled
-                  ]} 
+                    !commentText.trim() && styles.sendCommentButtonDisabled,
+                  ]}
                   onPress={handleSubmitComment}
                   disabled={!commentText.trim()}
                 >
-                  <Ionicons 
-                    name="send" 
-                    size={18} 
-                    color={commentText.trim() ? "white" : theme.colors.lightGray} 
+                  <Ionicons
+                    name="send"
+                    size={18}
+                    color={
+                      commentText.trim() ? "white" : theme.colors.lightGray
+                    }
                   />
                 </TouchableOpacity>
               </View>
@@ -802,7 +950,7 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     fontWeight: "500",
   },
-  
+
   // ===== IMPROVED COMMENTS SECTION =====
   commentsSection: {
     borderTopWidth: 1,
@@ -953,7 +1101,7 @@ const styles = StyleSheet.create({
     color: theme.colors.forest,
     fontWeight: "600",
   },
-  
+
   // Comment Input Section
   commentInputSection: {
     borderTopWidth: 1,

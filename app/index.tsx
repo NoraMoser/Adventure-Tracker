@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   View,
   Linking,
+  ImageBackground,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -42,6 +43,14 @@ import { UserAvatar } from "../components/UserAvatar";
 const { width, height } = Dimensions.get("window");
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.5;
 const BOTTOM_SHEET_MIN_HEIGHT = 80;
+
+// Get time-based greeting
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -74,6 +83,8 @@ export default function DashboardScreen() {
   const { wishlistItems } = useWishlist();
   const { trips, triggerAutoDetection, showPendingClusters } = useTrips();
   const [reviewingTrips, setReviewingTrips] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [activeTab, setActiveTab] = useState<"recent" | "friends">("recent");
 
   // Force re-render when auth state changes
   const [authVersion, setAuthVersion] = useState(0);
@@ -189,22 +200,15 @@ export default function DashboardScreen() {
   ]);
 
   // Request permissions on first launch (after initialization)
-  // FIXED: Works for all users (new and existing) without hanging in React 19
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
     const requestInitialPermissions = async () => {
       try {
-        // Wait to ensure app UI is fully rendered (iOS needs this)
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        // Request location - works for everyone:
-        // - Already granted? Returns immediately, no prompt
-        // - Never asked? Shows prompt
-        // - Previously denied? Returns immediately, no prompt
         const locationResult =
           await Location.requestForegroundPermissionsAsync();
-        // Request notifications with explicit iOS options
         const notificationResult = await Notifications.requestPermissionsAsync({
           ios: {
             allowAlert: true,
@@ -217,7 +221,6 @@ export default function DashboardScreen() {
           },
         });
 
-        // Show alert if location was denied
         if (locationResult.status === "denied") {
           setTimeout(() => {
             Alert.alert(
@@ -238,12 +241,10 @@ export default function DashboardScreen() {
       }
     };
 
-    // Run for all users after initialization (authenticated or offline mode)
     const shouldRequest =
       !isInitializing && !authLoading && (user?.id || isOfflineMode);
 
     if (shouldRequest) {
-      // Additional delay to ensure UI is fully rendered
       timeoutId = setTimeout(() => {
         requestInitialPermissions();
       }, 500);
@@ -274,15 +275,11 @@ export default function DashboardScreen() {
     };
 
     if (user) {
-      // Initialize background tracking (for "always on" users)
       MemoryNotificationService.initialize(user.id);
-
-      // Initialize foreground checks (for "when in use" users)
       MemoryNotificationService.initializeForegroundChecks(user.id);
 
       fetchNotificationCount();
 
-      // Set up real-time subscription for notifications
       const subscription = supabase
         .channel("notifications")
         .on(
@@ -311,15 +308,12 @@ export default function DashboardScreen() {
         )
         .subscribe();
 
-      // Handle app state changes for foreground checks
       const appStateSubscription = AppState.addEventListener(
         "change",
         (nextAppState) => {
           if (nextAppState === "active") {
-            // App came to foreground - restart foreground checks
             MemoryNotificationService.initializeForegroundChecks(user.id);
           } else if (nextAppState === "background") {
-            // App went to background - stop foreground checks
             MemoryNotificationService.stopForegroundChecks();
           }
         }
@@ -333,7 +327,6 @@ export default function DashboardScreen() {
     }
   }, [user]);
 
-  // Refresh notification count when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
       const fetchNotificationCount = async () => {
@@ -620,8 +613,51 @@ export default function DashboardScreen() {
       weekAgo.setDate(weekAgo.getDate() - 7);
       return actDate > weekAgo;
     }).length,
+    thisWeekSpots: savedSpots.filter((spot) => {
+      const spotDate = new Date(spot.timestamp);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return spotDate > weekAgo;
+    }).length,
     uniqueCategories: new Set(savedSpots.map((s) => s.category)).size,
   };
+
+  // Get hero photo - most recent photo from spots or trips
+  const getHeroPhoto = () => {
+    const spotsWithPhotos = savedSpots
+      .filter((s) => s.photos && s.photos.length > 0)
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+
+    if (spotsWithPhotos.length > 0) {
+      return {
+        uri: spotsWithPhotos[0].photos[0],
+        name: spotsWithPhotos[0].name,
+        date: spotsWithPhotos[0].timestamp,
+      };
+    }
+
+    const tripsWithPhotos = trips
+      .filter((t) => t.cover_photo)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+    if (tripsWithPhotos.length > 0) {
+      return {
+        uri: tripsWithPhotos[0].cover_photo,
+        name: tripsWithPhotos[0].name,
+        date: tripsWithPhotos[0].created_at,
+      };
+    }
+
+    return null;
+  };
+
+  const heroPhoto = getHeroPhoto();
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -820,12 +856,46 @@ export default function DashboardScreen() {
     other: "fitness",
   };
 
+  // Get recent items for the activity tab
+  const getRecentItems = () => {
+    const allItems = [
+      ...savedSpots.map((spot) => ({
+        type: "spot" as const,
+        id: spot.id,
+        name: spot.name,
+        timestamp: spot.timestamp,
+        category: spot.category,
+      })),
+      ...trips.map((trip) => ({
+        type: "trip" as const,
+        id: trip.id,
+        name: trip.name,
+        timestamp: trip.created_at,
+      })),
+      ...activities.map((activity) => ({
+        type: "activity" as const,
+        id: activity.id,
+        name: activity.name,
+        timestamp: activity.startTime,
+        activityType: activity.type,
+      })),
+    ];
+
+    return allItems
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+      .slice(0, 5);
+  };
+
+  const recentItems = getRecentItems();
+
   // Main dashboard render
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.white} />
-
-      {/* Header */}
+      // Header
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => toggleSidebar(true)}
@@ -835,59 +905,30 @@ export default function DashboardScreen() {
           <Ionicons name="menu" size={28} color={theme.colors.navy} />
         </TouchableOpacity>
 
-        <View style={styles.logoContainer}>
-          <ExplorableLogo width={140} variant="default" />
+        <View style={styles.headerCenter}>
+          <ExplorableLogo width={120} variant="default" />
         </View>
 
         <View style={styles.headerActions}>
-          {unreadNotificationCount > 0 && (
-            <TouchableOpacity
-              style={styles.notificationButton}
-              onPress={() => router.push("/notifications")}
-            >
-              <Ionicons
-                name="notifications"
-                size={24}
-                color={theme.colors.burntOrange}
-              />
+          <TouchableOpacity
+            style={styles.notificationButton}
+            onPress={() => router.push("/notifications")}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color={theme.colors.navy}
+            />
+            {unreadNotificationCount > 0 && (
               <View style={styles.notificationBadge}>
                 <Text style={styles.notificationBadgeText}>
-                  {unreadNotificationCount}
+                  {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
                 </Text>
               </View>
-            </TouchableOpacity>
-          )}
-          {user ? (
-            <View style={styles.authIndicator}>
-              <Ionicons
-                name="cloud-done"
-                size={20}
-                color={theme.colors.forest}
-              />
-            </View>
-          ) : isOfflineMode ? (
-            <View style={styles.authIndicator}>
-              <Ionicons
-                name="cloud-offline"
-                size={20}
-                color={theme.colors.gray}
-              />
-            </View>
-          ) : null}
+            )}
+          </TouchableOpacity>
         </View>
       </View>
-
-      {/* Welcome Bar */}
-      {profile && (
-        <View style={styles.welcomeBar}>
-          <View style={styles.welcomeContent}>
-            <Text style={styles.welcomeText}>
-              Welcome back, {profile.display_name || profile.username}!
-            </Text>
-          </View>
-        </View>
-      )}
-
       {/* Main Content */}
       <ScrollView
         style={styles.scrollContainer}
@@ -895,384 +936,474 @@ export default function DashboardScreen() {
         scrollEnabled={scrollEnabled}
         onScrollBeginDrag={() => setScrollEnabled(true)}
       >
-        {/* Stats Section */}
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Your Adventure Summary</Text>
-
-          <View style={styles.statsGrid}>
-            <TouchableOpacity
-              style={styles.statCard}
-              onPress={() => router.push("/saved-spots")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: theme.colors.forest + "20" },
-                ]}
-              >
-                <Ionicons
-                  name="location"
-                  size={24}
-                  color={theme.colors.forest}
-                />
-              </View>
-              <Text style={styles.statNumber}>{stats.totalLocations}</Text>
-              <Text style={styles.statLabel}>Places</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.statCard}
-              onPress={() => router.push("/past-activities")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: theme.colors.burntOrange + "20" },
-                ]}
-              >
-                <Ionicons
-                  name="fitness"
-                  size={24}
-                  color={theme.colors.burntOrange}
-                />
-              </View>
-              <Text style={styles.statNumber}>{activities.length}</Text>
-              <Text style={styles.statLabel}>Activities</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.statCard}
-              onPress={() => router.push("/trips")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: theme.colors.navy + "20" },
-                ]}
-              >
-                <Ionicons name="airplane" size={24} color={theme.colors.navy} />
-              </View>
-              <Text style={styles.statNumber}>{trips?.length || 0}</Text>
-              <Text style={styles.statLabel}>Trips</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.statCard}
-              onPress={() => router.push("/wishlist")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.statIconContainer,
-                  { backgroundColor: "#9C27B0" + "20" },
-                ]}
-              >
-                <Ionicons name="heart" size={24} color="#9C27B0" />
-              </View>
-              <Text style={styles.statNumber}>
-                {wishlistItems?.length || 0}
-              </Text>
-              <Text style={styles.statLabel}>Wishlist</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Updated Quick Stats - travel focused */}
-          <View style={styles.quickStats}>
-            <TouchableOpacity
-              style={styles.quickStatItem}
-              onPress={() =>
-                router.push({
-                  pathname: "/saved-spots",
-                  params: { filter: "categories" },
-                } as any)
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={styles.quickStatValue}>
-                {stats.uniqueCategories}
-              </Text>
-              <Text style={styles.quickStatLabel}>Categories</Text>
-            </TouchableOpacity>
-            <View style={styles.quickStatDivider} />
-            <TouchableOpacity
-              style={styles.quickStatItem}
-              onPress={() =>
-                router.push({
-                  pathname: "/saved-spots",
-                  params: { filter: "withPhotos" },
-                } as any)
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={styles.quickStatValue}>
-                {
-                  savedSpots.filter((s) => s.photos && s.photos.length > 0)
-                    .length
-                }
-              </Text>
-              <Text style={styles.quickStatLabel}>With Photos</Text>
-            </TouchableOpacity>
-            <View style={styles.quickStatDivider} />
-            <TouchableOpacity
-              style={styles.quickStatItem}
-              onPress={() => router.push("/top-rated")}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.quickStatValue}>
-                {savedSpots.filter((s) => s.rating && s.rating >= 4).length +
-                  activities.filter((a) => a.rating && a.rating >= 4).length}
-              </Text>
-              <Text style={styles.quickStatLabel}>Top Rated</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Map Section */}
-        <View style={styles.mapSection}>
-          <View style={styles.mapTitleRow}>
-            <Text style={styles.sectionTitle}>Your Adventure Map</Text>
-            <View style={styles.mapStyleBadge}>
-              <Ionicons
-                name={
-                  settings.mapStyle === "satellite"
-                    ? "globe"
-                    : settings.mapStyle === "terrain"
-                    ? "trail-sign"
-                    : "map"
-                }
-                size={14}
-                color={theme.colors.forest}
-              />
-              <Text style={styles.mapStyleText}>
-                {settings.mapStyle.charAt(0).toUpperCase() +
-                  settings.mapStyle.slice(1)}
-              </Text>
-            </View>
-          </View>
-          <View
-            style={styles.mapContainer}
-            onTouchStart={() => {
-              setScrollEnabled(false);
-            }}
-            onTouchEnd={() => {
-              // Small delay to let map finish processing touch
-              setTimeout(() => setScrollEnabled(true), 100);
-            }}
-            onTouchCancel={() => {
-              setTimeout(() => setScrollEnabled(true), 100);
-            }}
+        {/* Hero Section */}
+        {heroPhoto ? (
+          <TouchableOpacity
+            style={styles.heroSection}
+            onPress={() => router.push("/saved-spots")}
+            activeOpacity={0.9}
           >
-            <WebView
-              ref={webViewRef}
-              style={styles.map}
-              source={{ html: generateMapHTML() }}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              scrollEnabled={true}
-              scalesPageToFit={false}
-            />
-
-            <View style={styles.mapLegend} pointerEvents="none">
-              <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: theme.colors.burntOrange },
-                  ]}
-                />
-                <Text style={styles.legendText}>You</Text>
+            <ImageBackground
+              source={{ uri: heroPhoto.uri }}
+              style={styles.heroImage}
+              imageStyle={styles.heroImageStyle}
+            >
+              <View style={styles.heroOverlay}>
+                <View style={styles.heroContent}>
+                  <Text style={styles.heroGreeting}>
+                    {getGreeting()},{" "}
+                    {profile?.display_name?.split(" ")[0] || "Explorer"}
+                  </Text>
+                  <Text style={styles.heroLabel}>Latest Adventure</Text>
+                  <Text style={styles.heroTitle}>{heroPhoto.name}</Text>
+                </View>
+                <View style={styles.heroStats}>
+                  <View style={styles.heroStatItem}>
+                    <Text style={styles.heroStatNumber}>
+                      {stats.totalLocations}
+                    </Text>
+                    <Text style={styles.heroStatLabel}>Places</Text>
+                  </View>
+                  <View style={styles.heroStatDivider} />
+                  <View style={styles.heroStatItem}>
+                    <Text style={styles.heroStatNumber}>
+                      {stats.totalActivities}
+                    </Text>
+                    <Text style={styles.heroStatLabel}>Activities</Text>
+                  </View>
+                  <View style={styles.heroStatDivider} />
+                  <View style={styles.heroStatItem}>
+                    <Text style={styles.heroStatNumber}>
+                      {trips?.length || 0}
+                    </Text>
+                    <Text style={styles.heroStatLabel}>Trips</Text>
+                  </View>
+                </View>
               </View>
-              <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: theme.colors.forest },
-                  ]}
-                />
-                <Text style={styles.legendText}>Routes</Text>
+            </ImageBackground>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.heroPlaceholder}>
+            <View style={styles.heroPlaceholderContent}>
+              <ExplorableIcon size={60} />
+              <Text style={styles.heroPlaceholderTitle}>
+                Start Your Adventure
+              </Text>
+              <Text style={styles.heroPlaceholderText}>
+                Save your first spot to see it featured here
+              </Text>
+              <TouchableOpacity
+                style={styles.heroPlaceholderButton}
+                onPress={() => router.push("/save-location")}
+              >
+                <Ionicons name="add" size={20} color="white" />
+                <Text style={styles.heroPlaceholderButtonText}>
+                  Add First Spot
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.heroStats}>
+              <View style={styles.heroStatItem}>
+                <Text
+                  style={[styles.heroStatNumber, { color: theme.colors.navy }]}
+                >
+                  {stats.totalLocations}
+                </Text>
+                <Text
+                  style={[styles.heroStatLabel, { color: theme.colors.gray }]}
+                >
+                  Places
+                </Text>
               </View>
-              <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: theme.colors.navy },
-                  ]}
-                />
-                <Text style={styles.legendText}>Places</Text>
+              <View
+                style={[
+                  styles.heroStatDivider,
+                  { backgroundColor: theme.colors.borderGray },
+                ]}
+              />
+              <View style={styles.heroStatItem}>
+                <Text
+                  style={[styles.heroStatNumber, { color: theme.colors.navy }]}
+                >
+                  {stats.totalActivities}
+                </Text>
+                <Text
+                  style={[styles.heroStatLabel, { color: theme.colors.gray }]}
+                >
+                  Activities
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.heroStatDivider,
+                  { backgroundColor: theme.colors.borderGray },
+                ]}
+              />
+              <View style={styles.heroStatItem}>
+                <Text
+                  style={[styles.heroStatNumber, { color: theme.colors.navy }]}
+                >
+                  {trips?.length || 0}
+                </Text>
+                <Text
+                  style={[styles.heroStatLabel, { color: theme.colors.gray }]}
+                >
+                  Trips
+                </Text>
               </View>
             </View>
           </View>
-        </View>
+        )}
 
-        {/* Friends Section */}
-        <View style={styles.friendsSection}>
-          <Text style={styles.sectionTitle}>Friends & Social</Text>
-          <View style={styles.friendsButtons}>
-            <TouchableOpacity
-              style={styles.friendButton}
-              onPress={() => router.push("/friends-feed")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.friendIconContainer,
-                  { backgroundColor: theme.colors.forest + "20" },
-                ]}
-              >
-                <Ionicons name="people" size={24} color={theme.colors.forest} />
+        {/* Weekly Streak */}
+        {(stats.thisWeekSpots > 0 || stats.thisWeekActivities > 0) && (
+          <View style={styles.streakSection}>
+            <View style={styles.streakContent}>
+              <View style={styles.streakIcon}>
+                <Ionicons name="flame" size={24} color="#FF6B35" />
               </View>
-              <Text style={styles.friendButtonTitle}>Friends Feed</Text>
-              <Text style={styles.friendButtonSubtitle}>
-                See what friends are up to
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.friendButton}
-              onPress={() => router.push("/friends")}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.friendIconContainer,
-                  { backgroundColor: theme.colors.burntOrange + "20" },
-                ]}
-              >
-                <Ionicons
-                  name="person-add"
-                  size={24}
-                  color={theme.colors.burntOrange}
-                />
+              <View style={styles.streakText}>
+                <Text style={styles.streakTitle}>This Week</Text>
+                <Text style={styles.streakSubtitle}>
+                  {stats.thisWeekSpots > 0 &&
+                    `${stats.thisWeekSpots} spot${
+                      stats.thisWeekSpots > 1 ? "s" : ""
+                    }`}
+                  {stats.thisWeekSpots > 0 &&
+                    stats.thisWeekActivities > 0 &&
+                    " • "}
+                  {stats.thisWeekActivities > 0 &&
+                    `${stats.thisWeekActivities} activit${
+                      stats.thisWeekActivities > 1 ? "ies" : "y"
+                    }`}
+                </Text>
               </View>
-              <Text style={styles.friendButtonTitle}>Manage Friends</Text>
-              <Text style={styles.friendButtonSubtitle}>
-                Add or find friends
-              </Text>
-            </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
-        {/* Latest Additions - Show actual recent items */}
-        <View style={styles.recentSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Latest Additions</Text>
-          </View>
+        {/* Quick Stats Row */}
+        <View style={styles.quickStatsSection}>
+          <TouchableOpacity
+            style={styles.quickStatCard}
+            onPress={() => router.push("/saved-spots")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="location" size={20} color={theme.colors.forest} />
+            <Text style={styles.quickStatNumber}>{stats.uniqueCategories}</Text>
+            <Text style={styles.quickStatLabel}>Categories</Text>
+          </TouchableOpacity>
 
-          {(() => {
-            // Combine all items with timestamps
-            const allItems = [
-              ...savedSpots.map((spot) => ({
-                type: "spot" as const,
-                id: spot.id,
-                name: spot.name,
-                timestamp: spot.timestamp,
-                category: spot.category,
-              })),
-              ...trips.map((trip) => ({
-                type: "trip" as const,
-                id: trip.id,
-                name: trip.name,
-                timestamp: trip.created_at,
-              })),
-              ...activities.map((activity) => ({
-                type: "activity" as const,
-                id: activity.id,
-                name: activity.name,
-                timestamp: activity.startTime,
-                activityType: activity.type,
-              })),
-            ];
-
-            // Sort by timestamp (most recent first) and take top 5
-            const recentItems = allItems
-              .sort(
-                (a, b) =>
-                  new Date(b.timestamp).getTime() -
-                  new Date(a.timestamp).getTime()
-              )
-              .slice(0, 5);
-
-            if (recentItems.length === 0) {
-              return (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    Start exploring! Save your favorite spots and track your
-                    adventures.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.startButton}
-                    onPress={() => router.push("/save-location")}
-                  >
-                    <Ionicons name="add-circle" size={20} color="white" />
-                    <Text style={styles.startButtonText}>
-                      Add Your First Place
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              );
+          <TouchableOpacity
+            style={styles.quickStatCard}
+            onPress={() =>
+              router.push({
+                pathname: "/saved-spots",
+                params: { filter: "withPhotos" },
+              } as any)
             }
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="camera"
+              size={20}
+              color={theme.colors.burntOrange}
+            />
+            <Text style={styles.quickStatNumber}>
+              {savedSpots.filter((s) => s.photos && s.photos.length > 0).length}
+            </Text>
+            <Text style={styles.quickStatLabel}>With Photos</Text>
+          </TouchableOpacity>
 
-            return recentItems.map((item) => {
-              let icon = "ellipse";
-              let color = theme.colors.gray;
-              let onPress = () => {};
+          <TouchableOpacity
+            style={styles.quickStatCard}
+            onPress={() => router.push("/top-rated")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="star" size={20} color="#FFB800" />
+            <Text style={styles.quickStatNumber}>
+              {savedSpots.filter((s) => s.rating && s.rating >= 4).length +
+                activities.filter((a) => a.rating && a.rating >= 4).length}
+            </Text>
+            <Text style={styles.quickStatLabel}>Top Rated</Text>
+          </TouchableOpacity>
 
-              if (item.type === "spot") {
-                const category = categories[item.category] || categories.other;
-                icon = "location";
-                color = category.color;
-                onPress = () => router.push(`/location/${item.id}` as any);
-              } else if (item.type === "trip") {
-                icon = "airplane";
-                color = theme.colors.navy;
-                onPress = () =>
-                  router.push({
-                    pathname: "/trip-detail",
-                    params: { tripId: item.id },
-                  } as any);
-              } else if (item.type === "activity") {
-                const activityIcon =
-                  activityIcons[item.activityType] || "fitness";
-                icon = activityIcon;
-                color = theme.colors.burntOrange;
-                onPress = () => router.push(`/activity/${item.id}` as any);
-              }
+          <TouchableOpacity
+            style={styles.quickStatCard}
+            onPress={() => router.push("/wishlist")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="heart" size={20} color="#9C27B0" />
+            <Text style={styles.quickStatNumber}>
+              {wishlistItems?.length || 0}
+            </Text>
+            <Text style={styles.quickStatLabel}>Wishlist</Text>
+          </TouchableOpacity>
+        </View>
 
-              return (
-                <TouchableOpacity
-                  key={`${item.type}-${item.id}`}
-                  style={styles.recentCard}
-                  onPress={onPress}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.recentIcon,
-                      { backgroundColor: color + "20" },
-                    ]}
-                  >
-                    <Ionicons name={icon as any} size={20} color={color} />
-                  </View>
-                  <View style={styles.recentInfo}>
-                    <Text style={styles.recentName}>{item.name}</Text>
-                    <Text style={styles.recentMeta}>
-                      {item.type.charAt(0).toUpperCase() + item.type.slice(1)} •{" "}
-                      {new Date(item.timestamp).toLocaleDateString()}
-                    </Text>
-                  </View>
+        {/* Activity Section with Tabs */}
+        <View style={styles.activitySection}>
+          <View style={styles.tabHeader}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === "recent" && styles.tabActive]}
+              onPress={() => setActiveTab("recent")}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "recent" && styles.tabTextActive,
+                ]}
+              >
+                Recent
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === "friends" && styles.tabActive]}
+              onPress={() => setActiveTab("friends")}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "friends" && styles.tabTextActive,
+                ]}
+              >
+                Friends
+              </Text>
+              {friendRequests.length > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {friendRequests.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {activeTab === "recent" ? (
+            <View style={styles.tabContent}>
+              {recentItems.length === 0 ? (
+                <View style={styles.emptyState}>
                   <Ionicons
-                    name="chevron-forward"
-                    size={20}
+                    name="compass-outline"
+                    size={48}
                     color={theme.colors.lightGray}
                   />
-                </TouchableOpacity>
-              );
-            });
-          })()}
+                  <Text style={styles.emptyText}>No adventures yet</Text>
+                  <Text style={styles.emptySubtext}>
+                    Start exploring to see your activity here
+                  </Text>
+                </View>
+              ) : (
+                recentItems.map((item) => {
+                  let icon = "ellipse";
+                  let color = theme.colors.gray;
+                  let onPress = () => {};
+
+                  if (item.type === "spot") {
+                    const category =
+                      categories[item.category] || categories.other;
+                    icon = "location";
+                    color = category.color;
+                    onPress = () => router.push(`/location/${item.id}` as any);
+                  } else if (item.type === "trip") {
+                    icon = "airplane";
+                    color = theme.colors.navy;
+                    onPress = () =>
+                      router.push({
+                        pathname: "/trip-detail",
+                        params: { tripId: item.id },
+                      } as any);
+                  } else if (item.type === "activity") {
+                    const activityIcon =
+                      activityIcons[item.activityType] || "fitness";
+                    icon = activityIcon;
+                    color = theme.colors.burntOrange;
+                    onPress = () => router.push(`/activity/${item.id}` as any);
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={`${item.type}-${item.id}`}
+                      style={styles.recentCard}
+                      onPress={onPress}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.recentIcon,
+                          { backgroundColor: color + "15" },
+                        ]}
+                      >
+                        <Ionicons name={icon as any} size={18} color={color} />
+                      </View>
+                      <View style={styles.recentInfo}>
+                        <Text style={styles.recentName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.recentMeta}>
+                          {item.type.charAt(0).toUpperCase() +
+                            item.type.slice(1)}{" "}
+                          • {new Date(item.timestamp).toLocaleDateString()}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={theme.colors.lightGray}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
+          ) : (
+            <View style={styles.tabContent}>
+              <TouchableOpacity
+                style={styles.friendsCard}
+                onPress={() => router.push("/friends-feed")}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.friendsCardIcon,
+                    { backgroundColor: theme.colors.forest + "15" },
+                  ]}
+                >
+                  <Ionicons
+                    name="people"
+                    size={24}
+                    color={theme.colors.forest}
+                  />
+                </View>
+                <View style={styles.friendsCardInfo}>
+                  <Text style={styles.friendsCardTitle}>Friends Feed</Text>
+                  <Text style={styles.friendsCardSubtitle}>
+                    See what friends are up to
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={theme.colors.lightGray}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.friendsCard}
+                onPress={() => router.push("/friends")}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.friendsCardIcon,
+                    { backgroundColor: theme.colors.burntOrange + "15" },
+                  ]}
+                >
+                  <Ionicons
+                    name="person-add"
+                    size={24}
+                    color={theme.colors.burntOrange}
+                  />
+                </View>
+                <View style={styles.friendsCardInfo}>
+                  <Text style={styles.friendsCardTitle}>Find Friends</Text>
+                  <Text style={styles.friendsCardSubtitle}>
+                    Connect with other explorers
+                  </Text>
+                </View>
+                {friendRequests.length > 0 && (
+                  <View style={styles.friendsRequestBadge}>
+                    <Text style={styles.friendsRequestBadgeText}>
+                      {friendRequests.length}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={theme.colors.lightGray}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
+
+        {/* Collapsible Map Section */}
+        <View style={styles.mapSection}>
+          <TouchableOpacity
+            style={styles.mapToggle}
+            onPress={() => setShowMap(!showMap)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.mapToggleLeft}>
+              <Ionicons name="map" size={20} color={theme.colors.forest} />
+              <Text style={styles.mapToggleText}>Adventure Map</Text>
+            </View>
+            <View style={styles.mapToggleRight}>
+              <Text style={styles.mapToggleHint}>
+                {savedSpots.length} places • {activities.length} routes
+              </Text>
+              <Ionicons
+                name={showMap ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={theme.colors.gray}
+              />
+            </View>
+          </TouchableOpacity>
+
+          {showMap && (
+            <View
+              style={styles.mapContainer}
+              onTouchStart={() => setScrollEnabled(false)}
+              onTouchEnd={() => setTimeout(() => setScrollEnabled(true), 100)}
+              onTouchCancel={() =>
+                setTimeout(() => setScrollEnabled(true), 100)
+              }
+            >
+              <WebView
+                ref={webViewRef}
+                style={styles.map}
+                source={{ html: generateMapHTML() }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                scrollEnabled={true}
+                scalesPageToFit={false}
+              />
+              <View style={styles.mapLegend} pointerEvents="none">
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      { backgroundColor: theme.colors.burntOrange },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>You</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      { backgroundColor: theme.colors.forest },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>Routes</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      { backgroundColor: theme.colors.navy },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>Places</Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Bottom padding for scroll */}
+        <View style={{ height: 100 }} />
       </ScrollView>
       {/* Bottom Sheet */}
       <Animated.View
@@ -1293,49 +1424,66 @@ export default function DashboardScreen() {
             style={styles.quickAction}
             onPress={() => router.push("/save-location")}
           >
-            <Ionicons name="location" size={24} color={theme.colors.forest} />
+            <View
+              style={[
+                styles.quickActionIcon,
+                { backgroundColor: theme.colors.forest + "15" },
+              ]}
+            >
+              <Ionicons name="location" size={22} color={theme.colors.forest} />
+            </View>
             <Text style={styles.quickActionText}>Save Spot</Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push("/quick-photo")}
           >
-            <Ionicons name="camera" size={24} color="#FFB800" />
+            <View
+              style={[
+                styles.quickActionIcon,
+                { backgroundColor: "#FFB800" + "15" },
+              ]}
+            >
+              <Ionicons name="camera" size={22} color="#FFB800" />
+            </View>
             <Text style={styles.quickActionText}>Quick Log</Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.quickAction}
             onPress={() => router.push("/track-activity")}
           >
-            <Ionicons name="fitness" size={24} color={theme.colors.navy} />
+            <View
+              style={[
+                styles.quickActionIcon,
+                { backgroundColor: theme.colors.navy + "15" },
+              ]}
+            >
+              <Ionicons name="fitness" size={22} color={theme.colors.navy} />
+            </View>
             <Text style={styles.quickActionText}>Track</Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.quickAction}
-            onPress={() => router.push("/friends")}
+            onPress={() => router.push("/create-trip")}
           >
-            <Ionicons
-              name="people"
-              size={24}
-              color={theme.colors.burntOrange}
-            />
-            <Text style={styles.quickActionText}>Friends</Text>
+            <View
+              style={[
+                styles.quickActionIcon,
+                { backgroundColor: theme.colors.burntOrange + "15" },
+              ]}
+            >
+              <Ionicons
+                name="airplane"
+                size={22}
+                color={theme.colors.burntOrange}
+              />
+            </View>
+            <Text style={styles.quickActionText}>New Trip</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => router.push("/notifications")}
-          >
-            <Ionicons name="notifications" size={24} color="#9C27B0" />
-            <Text style={styles.quickActionText}>Alerts</Text>
-            {unreadNotificationCount > 0 && (
-              <View style={styles.quickActionBadge}>
-                <Text style={styles.quickActionBadgeText}>
-                  {unreadNotificationCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {/* ADD THIS NEW BUTTON */}
+
           <TouchableOpacity
             style={[
               styles.quickAction,
@@ -1343,7 +1491,6 @@ export default function DashboardScreen() {
             ]}
             onPress={async () => {
               if (reviewingTrips) return;
-
               try {
                 setReviewingTrips(true);
                 await showPendingClusters();
@@ -1359,18 +1506,24 @@ export default function DashboardScreen() {
             }}
             disabled={reviewingTrips}
           >
-            {reviewingTrips ? (
-              <ActivityIndicator size="small" color={theme.colors.forest} />
-            ) : (
-              <Ionicons name="airplane" size={24} color={theme.colors.forest} />
-            )}
+            <View
+              style={[
+                styles.quickActionIcon,
+                { backgroundColor: "#9C27B0" + "15" },
+              ]}
+            >
+              {reviewingTrips ? (
+                <ActivityIndicator size="small" color="#9C27B0" />
+              ) : (
+                <Ionicons name="sparkles" size={22} color="#9C27B0" />
+              )}
+            </View>
             <Text style={styles.quickActionText}>
-              {reviewingTrips ? "Checking..." : "Create Trips"}
+              {reviewingTrips ? "..." : "Auto Trip"}
             </Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
-
       {/* Sidebar Modal */}
       <Modal
         visible={showSidebar}
@@ -1509,7 +1662,6 @@ export default function DashboardScreen() {
           </Animated.View>
         </View>
       </Modal>
-
       {/* Profile Edit Modal */}
       <ProfileEditModal />
     </SafeAreaView>
@@ -1573,42 +1725,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textDecorationLine: "underline",
   },
+
+  // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: theme.colors.white,
     paddingVertical: 12,
-    paddingHorizontal: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 5,
-    zIndex: 10,
-  },
-  logoContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
   },
   menuButton: {
-    padding: 8,
-    marginLeft: -8,
+    padding: 4,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+  greetingText: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: theme.colors.navy,
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
   },
   notificationButton: {
-    padding: 8,
+    padding: 4,
     position: "relative",
   },
   notificationBadge: {
     position: "absolute",
-    top: 4,
-    right: 4,
+    top: 0,
+    right: 0,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
     minWidth: 18,
@@ -1622,186 +1774,381 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "bold",
   },
-  authIndicator: {
-    padding: 8,
-  },
-  welcomeBar: {
-    backgroundColor: theme.colors.forest + "10",
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.forest + "20",
-    minHeight: 44,
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: theme.colors.forest,
-    fontWeight: "500",
-    lineHeight: 20,
-    includeFontPadding: false,
-    textAlignVertical: "center",
-  },
-  welcomeContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+
   scrollContainer: {
     flex: 1,
   },
-  statsSection: {
-    backgroundColor: theme.colors.white,
-    paddingVertical: 20,
-    paddingHorizontal: 15,
-    marginBottom: 10,
+
+  // Hero Section
+  heroSection: {
+    margin: 16,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  sectionTitle: {
+  heroImage: {
+    height: 200,
+    justifyContent: "flex-end",
+  },
+  heroImageStyle: {
+    borderRadius: 16,
+  },
+  heroOverlay: {
+    backgroundColor: "rgba(0,0,0,0.4)",
+    padding: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  heroContent: {
+    marginBottom: 12,
+  },
+  heroLabel: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+  heroTitle: {
     fontSize: 20,
+    fontWeight: "700",
+    color: "white",
+  },
+  heroStats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+  },
+  heroStatItem: {
+    alignItems: "center",
+  },
+  heroStatNumber: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "white",
+  },
+  heroStatLabel: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
+  },
+  heroStatDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+
+  // Hero Placeholder
+  heroPlaceholder: {
+    margin: 16,
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  heroPlaceholderContent: {
+    alignItems: "center",
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  heroPlaceholderTitle: {
+    fontSize: 18,
     fontWeight: "600",
     color: theme.colors.navy,
-    marginBottom: 15,
-    lineHeight: 28,
-    includeFontPadding: false,
+    marginTop: 12,
   },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
-  statCard: {
-    width: "48%",
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-    alignItems: "center",
-    minHeight: 120,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: theme.colors.navy,
-    lineHeight: 32,
-    includeFontPadding: false,
-    textAlignVertical: "center",
-  },
-  statLabel: {
-    fontSize: 12,
+  heroPlaceholderText: {
+    fontSize: 14,
     color: theme.colors.gray,
-    marginTop: 4,
-    lineHeight: 16,
-    includeFontPadding: false,
     textAlign: "center",
+    marginTop: 8,
+    marginBottom: 16,
   },
-  statIconContainer: {
+  heroPlaceholderButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  heroPlaceholderButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+
+  // Streak Section
+  streakSection: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: "#FFF8F0",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#FFE4CC",
+  },
+  streakContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  streakIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: "center",
+    backgroundColor: "#FFECE0",
     justifyContent: "center",
-    marginBottom: 8,
-  },
-  quickStats: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 15,
-  },
-  quickStatItem: {
     alignItems: "center",
+    marginRight: 12,
   },
-  quickStatValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: theme.colors.navy,
-    lineHeight: 22,
-    includeFontPadding: false,
-  },
-  quickStatLabel: {
-    fontSize: 11,
-    color: theme.colors.gray,
-    marginTop: 2,
-    lineHeight: 15,
-    includeFontPadding: false,
-    textAlign: "center",
-  },
-  quickStatDivider: {
-    width: 1,
-    backgroundColor: theme.colors.borderGray,
-  },
-  friendsSection: {
-    backgroundColor: theme.colors.white,
-    paddingVertical: 20,
-    paddingHorizontal: 15,
-    marginBottom: 10,
-  },
-  friendsButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  friendButton: {
+  streakText: {
     flex: 1,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 15,
-    alignItems: "center",
   },
-  friendIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  friendButtonTitle: {
+  streakTitle: {
     fontSize: 14,
     fontWeight: "600",
     color: theme.colors.navy,
-    marginBottom: 4,
-    lineHeight: 20,
-    includeFontPadding: false,
-    textAlign: "center",
   },
-  friendButtonSubtitle: {
-    fontSize: 11,
-    color: theme.colors.gray,
-    textAlign: "center",
-    lineHeight: 15,
-    includeFontPadding: false,
+  streakSubtitle: {
+    fontSize: 13,
+    color: "#FF6B35",
+    marginTop: 2,
   },
-  mapSection: {
-    backgroundColor: theme.colors.white,
-    padding: 15,
-    marginBottom: 10,
-  },
-  mapTitleRow: {
+
+  // Quick Stats
+  quickStatsSection: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 15,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
   },
-  mapStyleBadge: {
+  quickStatCard: {
+    flex: 1,
+    backgroundColor: theme.colors.white,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  quickStatNumber: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: theme.colors.navy,
+    marginTop: 6,
+  },
+  quickStatLabel: {
+    fontSize: 10,
+    color: theme.colors.gray,
+    marginTop: 2,
+    textAlign: "center",
+  },
+
+  // Activity Section with Tabs
+  activitySection: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tabHeader: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    gap: 6,
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.forest,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: theme.colors.gray,
+  },
+  tabTextActive: {
+    color: theme.colors.forest,
+    fontWeight: "600",
+  },
+  tabBadge: {
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 5,
+  },
+  tabBadgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  tabContent: {
+    padding: 12,
+  },
+
+  // Recent Cards
+  recentCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: theme.colors.offWhite,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
   },
-  mapStyleText: {
-    fontSize: 12,
-    color: theme.colors.forest,
-    marginLeft: 5,
+  recentIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  recentInfo: {
+    flex: 1,
+  },
+  recentName: {
+    fontSize: 14,
     fontWeight: "500",
+    color: theme.colors.navy,
+  },
+  recentMeta: {
+    fontSize: 12,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+
+  // Friends Cards
+  friendsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  friendsCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  friendsCardInfo: {
+    flex: 1,
+  },
+  friendsCardTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  friendsCardSubtitle: {
+    fontSize: 13,
+    color: theme.colors.gray,
+    marginTop: 2,
+  },
+  friendsRequestBadge: {
+    backgroundColor: theme.colors.burntOrange,
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    marginRight: 8,
+  },
+  friendsRequestBadgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+
+  // Empty State
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 24,
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.gray,
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: theme.colors.lightGray,
+    marginTop: 4,
+  },
+
+  // Map Section
+  mapSection: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+  },
+  mapToggleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  mapToggleText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  mapToggleRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  mapToggleHint: {
+    fontSize: 12,
+    color: theme.colors.gray,
   },
   mapContainer: {
-    height: height * 0.4,
-    borderRadius: 12,
-    overflow: "hidden",
+    height: height * 0.35,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
     position: "relative",
   },
   map: {
@@ -1811,7 +2158,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 10,
     left: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderRadius: 8,
     padding: 8,
     flexDirection: "row",
@@ -1831,85 +2178,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.colors.gray,
   },
-  recentSection: {
-    backgroundColor: theme.colors.white,
-    padding: 15,
-    marginBottom: 100,
-  },
-  emptyState: {
-    alignItems: "center",
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: theme.colors.gray,
-    textAlign: "center",
-    marginBottom: 15,
-  },
-  startButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: theme.colors.forest,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  startButtonText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 8,
-  },
-  recentCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-  },
-  recentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  recentInfo: {
-    flex: 1,
-  },
-  recentName: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: theme.colors.navy,
-    lineHeight: 22,
-    includeFontPadding: false,
-  },
-  recentMeta: {
-    fontSize: 12,
-    color: theme.colors.gray,
-    marginTop: 2,
-    lineHeight: 16,
-    includeFontPadding: false,
-  },
-  viewStatsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 10,
-  },
-  viewStatsText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.colors.forest,
-    marginHorizontal: 8,
-    flex: 1,
-    textAlign: "center",
-  },
+
+  // Bottom Sheet
   bottomSheet: {
     position: "absolute",
     bottom: 0,
@@ -1919,66 +2189,59 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
+    shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 5,
+    shadowRadius: 6,
+    elevation: 8,
   },
   bottomSheetHeader: {
-    padding: 15,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,
   },
   dragHandle: {
-    width: 40,
+    width: 36,
     height: 4,
     backgroundColor: theme.colors.borderGray,
     borderRadius: 2,
     alignSelf: "center",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   bottomSheetTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: theme.colors.navy,
-    textAlign: "center",
-    lineHeight: 22,
-    includeFontPadding: false,
-  },
-  quickActionText: {
-    fontSize: 12,
-    color: theme.colors.gray,
-    marginTop: 4,
-    lineHeight: 16,
-    includeFontPadding: false,
     textAlign: "center",
   },
   quickActions: {
     flexDirection: "row",
     justifyContent: "space-around",
-    padding: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
   },
   quickAction: {
     alignItems: "center",
-    position: "relative",
+    width: 60,
   },
-  quickActionBadge: {
-    position: "absolute",
-    top: -5,
-    right: -8,
-    backgroundColor: theme.colors.burntOrange,
-    borderRadius: 10,
-    minWidth: 16,
-    height: 16,
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 4,
+    marginBottom: 6,
   },
-  quickActionBadgeText: {
-    color: "white",
-    fontSize: 10,
-    fontWeight: "bold",
+  quickActionText: {
+    fontSize: 11,
+    color: theme.colors.gray,
+    textAlign: "center",
   },
+  quickActionDisabled: {
+    opacity: 0.6,
+  },
+
+  // Sidebar
   sidebarContainer: {
     flex: 1,
     flexDirection: "row",
@@ -2019,24 +2282,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: theme.colors.navy,
-    lineHeight: 28,
-    includeFontPadding: false,
     textAlign: "center",
   },
   profileStats: {
     fontSize: 14,
     color: theme.colors.gray,
     marginTop: 5,
-    lineHeight: 20,
-    includeFontPadding: false,
     textAlign: "center",
   },
   profileEmail: {
     fontSize: 12,
     color: theme.colors.lightGray,
     marginTop: 3,
-    lineHeight: 16,
-    includeFontPadding: false,
     textAlign: "center",
   },
   editIndicator: {
@@ -2076,8 +2333,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.gray,
     marginLeft: 15,
-    lineHeight: 22,
-    includeFontPadding: false,
     flex: 1,
   },
   sidebarItemTextActive: {
@@ -2122,108 +2377,11 @@ const styles = StyleSheet.create({
     color: theme.colors.navy,
     marginLeft: 8,
   },
-  memoryTestSection: {
-    backgroundColor: "#FFF3E0",
-    paddingVertical: 20,
-    paddingHorizontal: 15,
-    marginBottom: 10,
-    borderWidth: 2,
-    borderColor: "#FFB800",
-    borderStyle: "dashed" as any,
-  },
-  memoryTestButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "white",
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGray,
-  },
-  memoryTestContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  memoryTestText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: theme.colors.navy,
-    marginLeft: 12,
-  },
-  tripManagementSection: {
-    backgroundColor: theme.colors.white,
-    paddingVertical: 20,
-    paddingHorizontal: 15,
-    marginBottom: 10,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  tripCount: {
+  heroGreeting: {
     fontSize: 14,
-    color: theme.colors.gray,
-  },
-  reviewTripsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 15,
-  },
-  reviewTripsContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  reviewTripsText: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  reviewTripsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: theme.colors.navy,
-    marginBottom: 2,
-  },
-  reviewTripsSubtitle: {
-    fontSize: 13,
-    color: theme.colors.gray,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  quickActionDisabled: {
-    opacity: 0.6,
-  },
-  latestGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  latestCard: {
-    flex: 1,
-    backgroundColor: theme.colors.offWhite,
-    borderRadius: 12,
-    padding: 20,
-    alignItems: "center",
-  },
-  latestNumber: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: theme.colors.navy,
-    marginTop: 8,
-  },
-  latestLabel: {
-    fontSize: 13,
-    color: theme.colors.gray,
-    marginTop: 4,
-    textAlign: "center",
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "500",
+    marginBottom: 8,
   },
 });
 
