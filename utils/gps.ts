@@ -1,14 +1,14 @@
 // utils/gps.ts - GPS utility functions
 
 export interface MovementThresholds {
-  minDistance: number; // Minimum movement to register
-  maxJump: number; // Max instant jump (filter GPS glitches)
+  minDistance: number; // Minimum movement to register (meters)
+  maxJump: number; // Max instant jump (meters) - filter GPS glitches
   maxSpeed: number; // Max reasonable speed in km/h
 }
 
 /**
  * Calculate distance between two coordinates using Haversine formula
- * @returns Distance in kilometers
+ * @returns Distance in METERS
  */
 export const calculateDistance = (
   lat1: number,
@@ -26,7 +26,7 @@ export const calculateDistance = (
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * c * 1000; // Return METERS (not km)
 };
 
 /**
@@ -42,18 +42,19 @@ export const areLocationsNearby = (
   thresholdKm: number = 50
 ): boolean => {
   if (!loc1 || !loc2) return false;
-  const distance = calculateDistance(
+  const distanceMeters = calculateDistance(
     loc1.latitude,
     loc1.longitude,
     loc2.latitude,
     loc2.longitude
   );
-  return distance <= thresholdKm;
+  return distanceMeters <= thresholdKm * 1000; // Convert threshold to meters
 };
 
 /**
  * Get accuracy threshold based on activity type
  * Higher values = more lenient (accepts less accurate readings)
+ * @returns threshold in meters
  */
 export const getAccuracyThreshold = (activityType: string): number => {
   switch (activityType) {
@@ -74,11 +75,12 @@ export const getAccuracyThreshold = (activityType: string): number => {
 /**
  * Get movement thresholds based on activity type
  * Used to filter GPS noise and detect valid movement
+ * minDistance and maxJump are in METERS
  */
 export const getMovementThresholds = (activityType: string): MovementThresholds => {
   switch (activityType) {
     case "walk":
-      return { minDistance: 0.5, maxJump: 50, maxSpeed: 10 };
+      return { minDistance: 0.5, maxJump: 50, maxSpeed: 10 }; // 0.5m min, 50m max jump
     case "hike":
     case "climb":
       return { minDistance: 0.5, maxJump: 30, maxSpeed: 15 };
