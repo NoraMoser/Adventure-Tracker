@@ -1,4 +1,3 @@
-// app/trips.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -23,7 +22,6 @@ import { useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
 import { useJournal } from "../contexts/JournalContext";
 
-// Merge Suggestions Component
 const MergeSuggestions = ({
   onMerge,
 }: {

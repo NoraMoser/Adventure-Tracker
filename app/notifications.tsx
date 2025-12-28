@@ -1,4 +1,3 @@
-// app/notifications.tsx - Fixed type issues
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";

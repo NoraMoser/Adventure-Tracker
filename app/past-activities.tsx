@@ -1,4 +1,3 @@
-// past-activities.tsx - Complete file with unit support
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useMemo, useRef, useState } from "react";

@@ -1,4 +1,3 @@
-// contexts/LocationContext.tsx - Complete with date support
 import * as Location from "expo-location";
 import React, {
   createContext,
@@ -55,7 +54,7 @@ interface LocationContextType {
   loading: boolean;
   error: string | null;
   refreshSpots: () => Promise<void>;
-  migrateLocalPhotosToSupabase: () => Promise<number | undefined>; // ADD THIS LINE
+  migrateLocalPhotosToSupabase: () => Promise<number | undefined>;
 }
 
 export type { SavedSpot };
@@ -337,7 +336,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     description: string,
     photos: string[],
     category: CategoryType,
-    locationDate: Date // Add this parameter
+    locationDate: Date
   ): Promise<any> => {
     if (!location) {
       setError("No location available to save");
@@ -367,7 +366,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         await savePhotosToGallery(photos);
       }
 
-      return newLocation; // Now this exists
+      return newLocation;
     } catch (err) {
       console.error("Error saving current location:", err);
       setError("Failed to save location");

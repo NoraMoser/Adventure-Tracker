@@ -1,4 +1,3 @@
-// app/today.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";

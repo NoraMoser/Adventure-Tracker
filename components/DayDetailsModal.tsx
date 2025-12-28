@@ -1,5 +1,3 @@
-// components/DayDetailsModal.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";

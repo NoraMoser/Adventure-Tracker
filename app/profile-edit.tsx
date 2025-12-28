@@ -1,4 +1,3 @@
-// app/profile-edit.tsx - Fixed with expo-camera
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from "expo-router";
@@ -22,7 +21,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { Camera, CameraView } from "expo-camera";
 
-// Avatar Selection Modal (unchanged)
+// Avatar Selection Modal
 const AvatarModal = ({
   visible,
   onClose,

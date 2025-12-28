@@ -1,5 +1,3 @@
-// hooks/useFriendProfile.ts
-
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { Activity } from "../contexts/ActivityContext";

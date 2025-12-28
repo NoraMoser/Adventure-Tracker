@@ -1,4 +1,3 @@
-// utils/TripDetector.ts
 import { Activity } from '../contexts/ActivityContext';
 import { SavedSpot } from '../contexts/LocationContext';
 import { Trip, TripItem } from '../contexts/TripContext';
@@ -145,7 +144,6 @@ export class TripDetector {
     return null;
   }
 
-  // In TripDetector.ts, update the createTripFromCandidate method:
 
 private static createTripFromCandidate(
   candidate: DetectionCandidate, 

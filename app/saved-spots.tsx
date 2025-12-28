@@ -1,4 +1,3 @@
-// app/saved-spots.tsx - Complete file with date display
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -320,14 +319,14 @@ const AnimatedListItem = ({
   onPress,
   onRate,
   onDelete,
-  onShare, // Add this
+  onShare,
 }: {
   item: SavedSpot;
   index: number;
   onPress: (item: SavedSpot) => void;
   onRate: (item: SavedSpot, rating: number) => void;
   onDelete: (item: SavedSpot) => void;
-  onShare: (item: SavedSpot) => void; // Add this
+  onShare: (item: SavedSpot) => void;
 }) => {
   const animatedValue = useRef(new Animated.Value(0)).current;
   const category = categories[item.category] || categories.other;
@@ -483,7 +482,7 @@ const AnimatedListItem = ({
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionIcon}
-                onPress={() => onShare(item)} // Add this
+                onPress={() => onShare(item)}
               >
                 <Ionicons
                   name="share-social-outline"
@@ -874,7 +873,7 @@ export default function SavedSpotsScreen() {
               onPress={handleSpotPress}
               onRate={handleUpdateRating}
               onDelete={handleDeleteSpot}
-              onShare={handleShareSpot} // Add this
+              onShare={handleShareSpot}
             />
           )}
           keyExtractor={(item) => item.id}

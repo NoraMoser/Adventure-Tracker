@@ -1,4 +1,3 @@
-// hooks/useAutoAddToTrip.ts - Improved version with rejection tracking
 import { Alert } from "react-native";
 import { useTrips } from "../contexts/TripContext";
 import { supabase } from "../lib/supabase";

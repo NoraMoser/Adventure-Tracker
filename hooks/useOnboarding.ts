@@ -1,4 +1,3 @@
-// hooks/useOnboarding.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';

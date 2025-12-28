@@ -1,4 +1,3 @@
-// contexts/AuthContext.tsx - Clean, working version
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Session, User } from "@supabase/supabase-js";
 import React, {

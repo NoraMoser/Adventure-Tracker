@@ -1,4 +1,3 @@
-// services/memoryNotificationService.ts
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 // Only import BackgroundFetch if not in Expo Go

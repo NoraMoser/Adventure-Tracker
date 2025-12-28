@@ -1,4 +1,3 @@
-// contexts/ActivityContext.tsx - Adaptive tracking version
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
@@ -492,7 +491,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
         }
       }
 
-      // NEW PART: Check GPS accuracy and alert user if poor
       const accuracy = initialLocation.coords.accuracy;
       const accuracyThreshold = getAccuracyThreshold(currentActivity);
 
@@ -511,7 +509,6 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
           ]
         );
       }
-      // END OF NEW PART
 
       // Start tracking immediately with whatever location we have
       const initialPoint: LocationPoint = {
@@ -929,7 +926,7 @@ export const ActivityProvider: React.FC<{ children: ReactNode }> = ({
     };
 
     await saveActivity(newActivity);
-    return newActivity; // Add this line
+    return newActivity;
   };
 
   const value: ActivityContextType = {

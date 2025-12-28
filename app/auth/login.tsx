@@ -1,4 +1,3 @@
-// app/auth/login.tsx
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link, useRouter } from "expo-router";
@@ -27,8 +26,6 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
-
-  // In your login.tsx, replace the handleLogin function with this:
 
 const handleLogin = async () => {
   if (!email || !password) {
@@ -62,9 +59,6 @@ const handleLogin = async () => {
       router.replace("/auth/complete-profile");
       return;
     }
-
-    // REMOVED: Don't sync here - let AuthContext handle it after state updates
-    // The AuthContext will sync once it detects the user is logged in
     
     // Step 3: Save auth state (optional - Supabase handles this)
     await AsyncStorage.setItem("isAuthenticated", "true");
@@ -73,7 +67,6 @@ const handleLogin = async () => {
     // Step 4: Navigate - the AuthContext will handle sync
     setSyncStatus("Redirecting...");
     
-    // Give AuthContext a moment to update
     setTimeout(() => {
       router.replace("/");
     }, 100);

@@ -1,4 +1,3 @@
-// app/top-rated.tsx
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";

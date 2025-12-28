@@ -1,4 +1,3 @@
-// contexts/WishlistContext.tsx - Complete with date support and Supabase integration
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { CategoryType } from '../constants/categories';
 import { supabase } from '../lib/supabase';

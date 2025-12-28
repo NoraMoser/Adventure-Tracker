@@ -1,4 +1,3 @@
-// app/track-activity.tsx - Updated with expo-camera
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -27,7 +26,7 @@ import {
   State,
 } from "react-native-gesture-handler";
 import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
-import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip"; // Add this import
+import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 
 type ActivityType =
   | "bike"
@@ -146,7 +145,7 @@ export default function TrackActivityScreen() {
       console.error("Error starting activity:", err);
       Alert.alert("Error", "Failed to start tracking. Please try again.");
     } finally {
-      setManualLoading(false); // Only need it once here
+      setManualLoading(false);
     }
   };
 

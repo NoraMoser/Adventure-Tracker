@@ -1,4 +1,3 @@
-// utils/activity.ts
 
 export const formatDuration = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);

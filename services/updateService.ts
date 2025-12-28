@@ -1,4 +1,3 @@
-// services/updateService.tsx
 import * as Application from "expo-application";
 import * as Linking from "expo-linking";
 import React, { useEffect } from "react";

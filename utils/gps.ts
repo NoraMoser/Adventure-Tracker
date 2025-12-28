@@ -1,5 +1,3 @@
-// utils/gps.ts - GPS utility functions
-
 export interface MovementThresholds {
   minDistance: number; // Minimum movement to register (meters)
   maxJump: number; // Max instant jump (meters) - filter GPS glitches

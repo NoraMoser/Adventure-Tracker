@@ -1,4 +1,3 @@
-// services/locationService.ts
 import * as Location from "expo-location";
 import { CategoryType } from "../constants/categories";
 
@@ -179,7 +178,6 @@ export class LocationService {
   /**
    * Fetch nearby places (mock implementation - replace with actual API)
    */
-  // In locationService.ts, replace the mock fetchNearbyPlaces with this:
 
   private static async fetchNearbyPlaces(
     latitude: number,

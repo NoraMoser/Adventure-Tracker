@@ -1,5 +1,3 @@
-// components/CategorySelector.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";

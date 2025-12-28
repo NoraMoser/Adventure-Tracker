@@ -1,4 +1,3 @@
-// services/shareService.ts - Fixed with unit preferences
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system";
 import * as Linking from "expo-linking";
@@ -16,7 +15,7 @@ export interface ShareOptions {
   friendIds?: string[];
   message?: string;
   units?: "metric" | "imperial";
-  includeLink?: boolean; // Add this line
+  includeLink?: boolean;
 }
 
 export class ShareService {

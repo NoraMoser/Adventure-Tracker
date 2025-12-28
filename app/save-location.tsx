@@ -1,4 +1,3 @@
-// app/save-location.tsx - Updated with expo-camera
 import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -169,7 +168,7 @@ export default function SaveLocationScreen() {
             longitude: savedSpot.location.longitude,
           },
           true
-        )) as { name?: string; id?: string } | null; // Add this type assertion
+        )) as { name?: string; id?: string } | null;
 
         if (trip?.name && trip?.id) {
           Alert.alert(
@@ -402,7 +401,7 @@ export default function SaveLocationScreen() {
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              {/* Smart Suggestions - ADD THIS SECTION */}
+              {/* Smart Suggestions */}
               {loadingSuggestions ? (
                 <View style={styles.suggestionsLoading}>
                   <ActivityIndicator size="small" color={theme.colors.forest} />

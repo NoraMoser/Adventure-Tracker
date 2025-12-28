@@ -1,5 +1,3 @@
-// components/LocationPickerModal.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Modal, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";

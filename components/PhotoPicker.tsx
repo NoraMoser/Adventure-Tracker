@@ -1,5 +1,3 @@
-// components/PhotoPicker.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import React from "react";

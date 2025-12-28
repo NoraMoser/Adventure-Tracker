@@ -1,4 +1,3 @@
-// app/friend-requests.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import React, { useState } from "react";

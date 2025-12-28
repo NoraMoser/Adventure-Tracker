@@ -1,5 +1,3 @@
-// types/activity.ts
-
 // Re-export Comment from shared types for backwards compatibility
 export { Comment } from "./comment";
 

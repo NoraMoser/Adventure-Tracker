@@ -1,5 +1,3 @@
-// utils/mapHelpers.ts
-
 interface GenerateRouteDrawerHTMLOptions {
   centerLat: number;
   centerLng: number;

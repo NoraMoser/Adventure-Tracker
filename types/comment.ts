@@ -1,4 +1,3 @@
-// types/comment.ts
 
 export interface CommentUser {
   id: string;

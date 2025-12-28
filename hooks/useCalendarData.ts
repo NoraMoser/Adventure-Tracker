@@ -1,5 +1,3 @@
-// hooks/useCalendarData.ts
-
 import { useMemo } from "react";
 
 export interface DayData {

@@ -1,4 +1,3 @@
-// app/feed-map/location/[id].tsx
 import { Stack, useLocalSearchParams } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";

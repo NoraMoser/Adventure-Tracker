@@ -1,5 +1,3 @@
-// services/syncService.ts - Fixed to prevent duplicates
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 

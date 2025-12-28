@@ -1,13 +1,15 @@
-// services/exportService.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as ExpoFileSystem from 'expo-file-system';
 import * as MailComposer from 'expo-mail-composer';
 import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
 import { Activity } from '../contexts/ActivityContext';
 import { SavedSpot } from '../contexts/LocationContext';
 import { WishlistItem } from '../contexts/WishlistContext';
+
+// Cast to any to work around TypeScript issues with expo-file-system
+const FileSystem = ExpoFileSystem as any;
 
 export interface ExportData {
   version: string;
@@ -26,9 +28,6 @@ export class ExportService {
   private static readonly APP_VERSION = '1.0.0';
   private static readonly EXPORT_VERSION = '1.0';
 
-  /**
-   * Export all app data to JSON
-   */
   static async exportToJSON(data: ExportData): Promise<string> {
     const exportData: ExportData = {
       ...data,
@@ -40,20 +39,18 @@ export class ExportService {
     return JSON.stringify(exportData, null, 2);
   }
 
-  /**
-   * Export activities to GPX format (GPS Exchange Format)
-   */
   static async exportToGPX(activities: Activity[]): Promise<string> {
+    const nameTag = 'name'; // GPX spec requires <name> tags
     const gpxHeader = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="explorAble App"
   xmlns="http://www.topografix.com/GPX/1/1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
   <metadata>
-    <name>explorAble Activities Export</name>
+    <${nameTag}>explorAble Activities Export</${nameTag}>
     <desc>GPS tracks from explorAble adventure tracking app</desc>
     <author>
-      <name>explorAble User</name>
+      <${nameTag}>explorAble User</${nameTag}>
     </author>
     <time>${new Date().toISOString()}</time>
   </metadata>`;
@@ -72,7 +69,7 @@ export class ExportService {
 
         return `
   <trk>
-    <name>${this.escapeXml(activity.name)}</name>
+    <${nameTag}>${this.escapeXml(activity.name)}</${nameTag}>
     <type>${activity.type}</type>
     <desc>${this.escapeXml(activity.notes || '')}</desc>
     <trkseg>${trackPoints}
@@ -83,9 +80,6 @@ export class ExportService {
     return gpxHeader + tracks + gpxFooter;
   }
 
-  /**
-   * Export saved spots to CSV
-   */
   static async exportSpotsToCSV(spots: SavedSpot[]): Promise<string> {
     const headers = ['Name', 'Category', 'Latitude', 'Longitude', 'Description', 'Rating', 'Date', 'Photos'];
     
@@ -108,9 +102,6 @@ export class ExportService {
     return csvContent;
   }
 
-  /**
-   * Export activities summary to CSV
-   */
   static async exportActivitiesToCSV(activities: Activity[]): Promise<string> {
     const headers = [
       'Name',
@@ -144,9 +135,6 @@ export class ExportService {
     return csvContent;
   }
 
-  /**
-   * Create a comprehensive backup file
-   */
   static async createBackup(
     settings: any,
     savedSpots: SavedSpot[],
@@ -184,9 +172,6 @@ export class ExportService {
     }
   }
 
-  /**
-   * Export activities as GPX file
-   */
   static async exportActivitiesAsGPX(activities: Activity[]): Promise<{ uri: string; filename: string }> {
     try {
       const gpxContent = await this.exportToGPX(activities);
@@ -204,9 +189,6 @@ export class ExportService {
     }
   }
 
-  /**
-   * Export data as CSV files (creates a summary)
-   */
   static async exportAsCSV(
     spots: SavedSpot[],
     activities: Activity[]
@@ -232,9 +214,6 @@ export class ExportService {
     }
   }
 
-  /**
-   * Share files using native share sheet
-   */
   static async shareFile(fileUri: string, mimeType: string = 'application/json'): Promise<void> {
     try {
       const isAvailable = await Sharing.isAvailableAsync();
@@ -255,9 +234,6 @@ export class ExportService {
     }
   }
 
-  /**
-   * Send backup via email
-   */
   static async emailBackup(
     fileUri: string,
     filename: string,
@@ -267,7 +243,6 @@ export class ExportService {
       const isAvailable = await MailComposer.isAvailableAsync();
       
       if (!isAvailable) {
-        // Fallback to sharing if email is not available
         await this.shareFile(fileUri);
         return;
       }
@@ -311,14 +286,10 @@ export class ExportService {
       }
     } catch (error) {
       console.error('Error sending email:', error);
-      // Fallback to sharing
       await this.shareFile(fileUri);
     }
   }
 
-  /**
-   * Import backup from file
-   */
   static async importBackup(): Promise<ExportData | null> {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -326,27 +297,22 @@ export class ExportService {
         copyToCacheDirectory: true,
       });
 
-      // Check if user cancelled (new API structure)
       if (result.canceled || !result.assets || result.assets.length === 0) {
         return null;
       }
 
-      // Get the first asset
       const file = result.assets[0];
 
-      // Read the file
       const fileContent = await FileSystem.readAsStringAsync(file.uri, {
         encoding: FileSystem.EncodingType.UTF8,
       });
 
       const data: ExportData = JSON.parse(fileContent);
 
-      // Validate the backup
       if (!data.version || !data.exportDate) {
         throw new Error('Invalid backup file format');
       }
 
-      // Check version compatibility
       if (data.version !== this.EXPORT_VERSION) {
         Alert.alert(
           'Version Mismatch',
@@ -363,32 +329,24 @@ export class ExportService {
     }
   }
 
-  /**
-   * Restore app data from backup
-   */
   static async restoreFromBackup(data: ExportData): Promise<boolean> {
     try {
-      // Restore user data
       if (data.userData?.userName) {
         await AsyncStorage.setItem('userName', data.userData.userName);
       }
 
-      // Restore settings
       if (data.settings) {
         await AsyncStorage.setItem('explorableSettings', JSON.stringify(data.settings));
       }
 
-      // Restore saved spots
       if (data.savedSpots) {
         await AsyncStorage.setItem('savedSpots', JSON.stringify(data.savedSpots));
       }
 
-      // Restore activities
       if (data.activities) {
         await AsyncStorage.setItem('activities', JSON.stringify(data.activities));
       }
 
-      // Restore wishlist
       if (data.wishlistItems) {
         await AsyncStorage.setItem('wishlist', JSON.stringify(data.wishlistItems));
       }
@@ -400,9 +358,6 @@ export class ExportService {
     }
   }
 
-  /**
-   * Helper function to escape XML special characters
-   */
   private static escapeXml(text: string): string {
     return text
       .replace(/&/g, '&amp;')
@@ -412,9 +367,6 @@ export class ExportService {
       .replace(/'/g, '&apos;');
   }
 
-  /**
-   * Helper function to escape CSV special characters
-   */
   private static escapeCSV(text: string): string {
     if (text.includes(',') || text.includes('"') || text.includes('\n')) {
       return `"${text.replace(/"/g, '""')}"`;
@@ -422,13 +374,10 @@ export class ExportService {
     return text;
   }
 
-  /**
-   * Get file size in human readable format
-   */
   static async getFileSize(uri: string): Promise<string> {
     try {
       const fileInfo = await FileSystem.getInfoAsync(uri);
-      if (!fileInfo.exists || fileInfo.size === undefined) {
+      if (!fileInfo.exists || !('size' in fileInfo) || fileInfo.size === undefined) {
         return 'Unknown size';
       }
 

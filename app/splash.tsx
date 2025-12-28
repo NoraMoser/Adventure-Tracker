@@ -1,7 +1,6 @@
-// app/splash.tsx - Fixed with no naming conflicts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter } from 'expo-router';
-import * as ExpoSplashScreen from 'expo-splash-screen'; // Renamed import to avoid conflict
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { useEffect, useRef } from 'react';
 import {
     Animated,
@@ -16,7 +15,7 @@ import { theme } from '../constants/theme';
 // Keep the splash screen visible while we load
 ExpoSplashScreen.preventAutoHideAsync();
 
-export default function CustomSplashScreen() { // Renamed component
+export default function CustomSplashScreen() {
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;

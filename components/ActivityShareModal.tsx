@@ -1,4 +1,3 @@
-// components/ActivityShareModal.tsx - Complete file with unit support
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {

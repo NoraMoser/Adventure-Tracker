@@ -14,7 +14,7 @@ import { LineChart, PieChart, ProgressChart } from "react-native-chart-kit";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useLocation } from "../contexts/LocationContext";
-import { useSettings } from "../contexts/SettingsContext"; // ADD THIS
+import { useSettings } from "../contexts/SettingsContext";
 
 const { width } = Dimensions.get("window");
 
@@ -177,7 +177,7 @@ export default function StatisticsScreen() {
     convertDistance,
     getDistanceUnit,
     getSpeedUnit,
-  } = useSettings(); // ADD THIS
+  } = useSettings();
   const [selectedPeriod, setSelectedPeriod] = useState<
     "week" | "month" | "year"
   >("week");

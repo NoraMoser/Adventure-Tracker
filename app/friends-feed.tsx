@@ -1,5 +1,3 @@
-// app/friends-feed.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
@@ -108,7 +106,7 @@ export default function FriendsFeedScreen() {
     // If viewing a specific friend's feed, also update local state
     if (selectedFriendId && currentUserId) {
       const newComment = {
-        id: `temp-${Date.now()}`, // Temp ID until refresh
+        id: `temp-${Date.now()}`,
         userId: currentUserId,
         userName: "You", // Will show correctly after refresh
         text: text,

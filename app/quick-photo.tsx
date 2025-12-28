@@ -98,7 +98,6 @@ export default function QuickPhotoScreen() {
     })();
   }, []);
 
-  // Add this new function after the useEffect:
   const fetchLocationSuggestions = async () => {
     if (!location) return;
 
@@ -586,7 +585,7 @@ export default function QuickPhotoScreen() {
                 />
               </View>
 
-              {/* Location Suggestions - ADD THIS AFTER titleContainer */}
+              {/* Location Suggestions */}
               {loadingSuggestions ? (
                 <View style={styles.suggestionsLoading}>
                   <ActivityIndicator size="small" color={theme.colors.forest} />

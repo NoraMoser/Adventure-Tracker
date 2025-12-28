@@ -1,5 +1,3 @@
-// utils/date.ts
-
 export const normalizeDate = (date: Date | string): Date => {
   const d = date instanceof Date ? date : new Date(date);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);

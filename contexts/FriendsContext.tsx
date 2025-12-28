@@ -1,4 +1,3 @@
-// contexts/FriendsContext.tsx - Complete with push notifications and trips
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -739,7 +738,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .order("created_at", { ascending: false })
         .limit(50);
 
-      // NEW: Load trips where friends are creators
       const { data: trips } = await supabase
         .from("trips")
         .select(
@@ -752,7 +750,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .order("created_at", { ascending: false })
         .limit(20);
 
-      // NEW: Also load trips where friends are tagged
       const { data: taggedTrips } = await supabase
         .from("trip_tags")
         .select("trip_id")
@@ -1169,7 +1166,6 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
       if (error) throw error;
 
-      // REMOVE ALL NOTIFICATION CODE HERE
       // The database trigger will handle it
 
       // Just update local feed state

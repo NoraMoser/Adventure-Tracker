@@ -1,5 +1,3 @@
-// app/add-location.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Location from "expo-location";

@@ -1,5 +1,3 @@
-// components/FeedItemCard.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
@@ -950,8 +948,6 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     fontWeight: "500",
   },
-
-  // ===== IMPROVED COMMENTS SECTION =====
   commentsSection: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderGray,

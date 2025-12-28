@@ -1,4 +1,4 @@
-// generate-app-icons.js
+
 // This is a Node.js script - run it from terminal with: node generate-app-icons.js
 
 const fs = require('fs');

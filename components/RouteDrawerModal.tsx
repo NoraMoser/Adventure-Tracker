@@ -1,5 +1,3 @@
-// components/RouteDrawerModal.tsx
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
@@ -69,7 +67,6 @@ export function RouteDrawerModal({
   };
 
   // Only generate HTML once when modal becomes visible
-  // Don't regenerate on existingRoute changes (that happens every click)
   const mapHTML = useMemo(() => {
     if (!visible) return "";
     return generateRouteDrawerHTML({

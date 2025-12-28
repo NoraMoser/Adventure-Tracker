@@ -1,4 +1,3 @@
-// services/photoService.ts - Fixed with robust fetch handling
 import { decode } from "base64-arraybuffer";
 import * as ImageManipulator from "expo-image-manipulator";
 import { supabase } from "../lib/supabase";

@@ -1,4 +1,3 @@
-// hooks/useActivitySharing.ts
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { Activity } from '../contexts/ActivityContext';

@@ -1,5 +1,3 @@
-// components/RouteEditorModal.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import React, { useRef } from "react";
 import { Modal, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";

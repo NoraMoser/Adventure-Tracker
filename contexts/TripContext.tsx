@@ -1,4 +1,3 @@
-// contexts/TripContext.tsx - Enhanced version with detailed trip detection
 import React, {
   createContext,
   useContext,
@@ -1273,11 +1272,10 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       autoDetectionInProgress.current = false;
     }
   };
-  // Add this function to manually show pending clusters
   const showPendingClusters = async () => {
     if (pendingClusters.length > 0) {
       await showTripSelectionUI(pendingClusters);
-      setPendingClusters([]); // Clear after showing
+      setPendingClusters([]);
     } else {
       // If no pending clusters, run detection first
       await runDetailedAutoDetection();

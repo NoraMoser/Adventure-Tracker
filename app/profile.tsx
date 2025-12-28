@@ -1,4 +1,3 @@
-// app/profile.tsx - Complete profile screen with proper avatar handling
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from 'expo-router';

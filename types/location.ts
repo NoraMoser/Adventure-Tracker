@@ -1,4 +1,3 @@
-// types/location.ts
 
 export interface LocationUser {
   id: string;

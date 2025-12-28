@@ -1,4 +1,3 @@
-// components/TouchableImage.tsx
 import React, { useState } from 'react';
 import { Image, ImageStyle, TouchableOpacity } from 'react-native';
 import ImageViewer from './ImageViewer';

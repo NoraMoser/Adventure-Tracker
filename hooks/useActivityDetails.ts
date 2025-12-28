@@ -1,5 +1,3 @@
-// hooks/useActivityDetails.ts
-
 import { useEffect, useRef, useState } from "react";
 import { Alert, TextInput } from "react-native";
 import { useAuth } from "../contexts/AuthContext";

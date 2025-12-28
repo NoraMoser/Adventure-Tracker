@@ -1,4 +1,3 @@
-// app/auth/signup.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';

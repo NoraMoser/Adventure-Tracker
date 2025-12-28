@@ -1,4 +1,3 @@
-// lib/notifications.ts - Complete version with all functions
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
@@ -22,7 +21,6 @@ if (!isExpoGo) {
 }
 
 export class NotificationService {
-  // In lib/notifications.ts - Fix the token registration
 static async registerForPushNotifications() {
   if (isExpoGo || !Notifications || !Device) {
     console.log('Push notifications not available in Expo Go');

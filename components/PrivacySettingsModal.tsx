@@ -1,5 +1,3 @@
-// components/PrivacySettingsModal.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {

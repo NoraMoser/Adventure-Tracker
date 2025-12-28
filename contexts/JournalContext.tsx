@@ -1,4 +1,3 @@
-// contexts/JournalContext.tsx
 import React, {
   createContext,
   ReactNode,

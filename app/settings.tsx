@@ -1,12 +1,11 @@
-// app/settings.tsx - Complete Settings Screen with Home Location Feature
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import * as Location from "expo-location"; // ADD THIS IMPORT
+import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
-import { useEffect, useState } from "react"; // ADD useEffect
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -220,15 +219,13 @@ export default function SettingsScreen() {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  // NEW STATE FOR HOME LOCATION
   const [homeLocation, setHomeLocation] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
   const [isSettingHome, setIsSettingHome] = useState(false);
-  const [homeRadius, setHomeRadius] = useState(2); // Default 2km
+  const [homeRadius, setHomeRadius] = useState(2);
 
-  // LOAD HOME LOCATION ON MOUNT
   useEffect(() => {
     loadHomeLocation();
   }, [user]);
@@ -530,8 +527,6 @@ export default function SettingsScreen() {
             {
               text: "Import",
               onPress: async () => {
-                // Here you would restore the data to your contexts
-                // This is simplified - you'd need to update each context
                 Alert.alert("Success", "Data imported successfully!");
               },
             },

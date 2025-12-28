@@ -1,4 +1,3 @@
-// components/Logo.tsx
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { G, Path, Polygon, Text as SvgText } from 'react-native-svg';

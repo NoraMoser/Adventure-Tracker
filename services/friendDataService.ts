@@ -1,4 +1,3 @@
-// services/friendDataService.ts
 import { Activity } from "../contexts/ActivityContext";
 import { SavedSpot } from "../contexts/LocationContext";
 import { supabase } from "../lib/supabase";
@@ -38,7 +37,7 @@ export class FriendDataService {
         notes: act.notes,
         photos: act.photos || [],
         isManualEntry: act.is_manual_entry,
-        activityDate: new Date(act.activity_date || act.start_time), // ADD THIS
+        activityDate: new Date(act.activity_date || act.start_time),
         createdAt: new Date(act.created_at || act.start_time),
       }));
 
@@ -81,9 +80,7 @@ export class FriendDataService {
         description: spot.description,
         category: spot.category,
         rating: spot.rating,
-        locationDate: new Date(spot.location_date || spot.created_at), // ADD THIS
-
-        // reviews: spot.reviews || [], // Removed - column doesn't exist
+        locationDate: new Date(spot.location_date || spot.created_at),
       }));
       return locations;
     } catch (error) {

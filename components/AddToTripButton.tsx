@@ -1,4 +1,3 @@
-// components/AddToTripButton.tsx - Updated with loading states
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
