@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { Session, User } from "@supabase/supabase-js";
 import React, {
   createContext,
@@ -34,6 +35,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isOfflineMode: boolean;
+  isConnected: boolean;
   signUp: (
     email: string,
     password: string,
@@ -57,8 +59,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const lastRefresh = useRef<Date>(new Date());
   const hasSyncedThisSession = useRef(false);
+  const wasOffline = useRef(false);
+  const pendingSyncRef = useRef(false);
+
+  // Network connectivity listener - auto offline/online handling
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      const connected = state.isConnected ?? false;
+      console.log("🌐 Network state changed:", connected ? "ONLINE" : "OFFLINE");
+      setIsConnected(connected);
+
+      if (!connected) {
+        // Lost connection - enter offline mode automatically
+        console.log("📴 Auto-entering offline mode (no network)");
+        wasOffline.current = true;
+        setIsOfflineMode(true);
+      } else if (connected && wasOffline.current) {
+        // Back online after being offline - trigger sync
+        console.log("📶 Back online - preparing to sync...");
+        wasOffline.current = false;
+        
+        // Small delay to ensure network is stable before syncing
+        if (!pendingSyncRef.current) {
+          pendingSyncRef.current = true;
+          setTimeout(async () => {
+            try {
+              // Try to restore session first
+              const { data: { session: currentSession } } = await supabase.auth.getSession();
+              
+              if (currentSession) {
+                console.log("🔄 Session restored, syncing data...");
+                setSession(currentSession);
+                setUser(currentSession.user);
+                setIsOfflineMode(false);
+                
+                // Load fresh profile
+                await loadProfile(currentSession.user.id);
+                
+                // Sync any offline data
+                await syncLocalData();
+                
+                Alert.alert(
+                  "Back Online! 🎉",
+                  "Your connection is restored. Syncing your offline data now."
+                );
+              } else {
+                // No session but online - user can sign in
+                console.log("📶 Online but no session - user needs to sign in");
+                setIsOfflineMode(false);
+              }
+            } catch (error) {
+              console.error("❌ Error during reconnection:", error);
+            } finally {
+              pendingSyncRef.current = false;
+            }
+          }, 2000); // 2 second delay for network stability
+        }
+      }
+    });
+
+    // Check initial network state
+    NetInfo.fetch().then((state) => {
+      const connected = state.isConnected ?? false;
+      console.log("🌐 Initial network state:", connected ? "ONLINE" : "OFFLINE");
+      setIsConnected(connected);
+      if (!connected) {
+        wasOffline.current = true;
+        setIsOfflineMode(true);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Initialize auth state
   useEffect(() => {
@@ -110,6 +187,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       }
+
+      // Also check if we have no network
+      const networkState = await NetInfo.fetch();
+      if (!networkState.isConnected) {
+        console.log("🔍 AuthContext: No network on startup, entering offline mode");
+        setIsOfflineMode(true);
+        wasOffline.current = true;
+        
+        // Try to load cached profile
+        const cachedProfile = await AsyncStorage.getItem("userProfile");
+        if (cachedProfile) {
+          setProfile(JSON.parse(cachedProfile));
+          console.log("🔍 AuthContext: Loaded cached profile for offline use");
+        }
+        
+        clearTimeout(timeoutId);
+        setLoading(false);
+        return;
+      }
+
       const {
         data: { session },
         error: sessionError,
@@ -140,6 +237,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadProfile = async (userId: string) => {
     try {
+      // If offline, try to load from cache
+      if (!isConnected) {
+        const cachedProfile = await AsyncStorage.getItem("userProfile");
+        if (cachedProfile) {
+          setProfile(JSON.parse(cachedProfile));
+          console.log("🔍 AuthContext: Loaded profile from cache (offline)");
+          return;
+        }
+      }
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -148,12 +255,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error("🔍 AuthContext: Profile load error:", error);
+        // Try cache as fallback
+        const cachedProfile = await AsyncStorage.getItem("userProfile");
+        if (cachedProfile) {
+          setProfile(JSON.parse(cachedProfile));
+          console.log("🔍 AuthContext: Loaded profile from cache (fallback)");
+        }
         return;
       }
       setProfile(data);
       await AsyncStorage.setItem("userProfile", JSON.stringify(data));
     } catch (error) {
       console.error("🔍 AuthContext: Error loading profile:", error);
+      // Try cache as fallback
+      const cachedProfile = await AsyncStorage.getItem("userProfile");
+      if (cachedProfile) {
+        setProfile(JSON.parse(cachedProfile));
+      }
     }
   };
 
@@ -180,6 +298,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshSession = async (): Promise<boolean> => {
     try {
+      // Don't try to refresh if offline
+      if (!isConnected) {
+        console.log("⏭️ Skipping session refresh - offline");
+        return false;
+      }
+
       const now = new Date();
       const timeSince = now.getTime() - lastRefresh.current.getTime();
 
@@ -332,6 +456,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.removeItem("offlineMode");
 
       setIsOfflineMode(false);
+      wasOffline.current = false;
     } catch (error: any) {
       Alert.alert("Sign In Error", error.message);
       throw error;
@@ -365,6 +490,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setIsOfflineMode(false);
       hasSyncedThisSession.current = false;
+      wasOffline.current = false;
       setLoading(false);
 
     } catch (error) {
@@ -381,6 +507,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = async (updates: Partial<Profile>) => {
     try {
       if (!user) throw new Error("No user logged in");
+
+      // If offline, queue the update
+      if (!isConnected) {
+        const currentProfile = profile ? { ...profile, ...updates } : null;
+        if (currentProfile) {
+          setProfile(currentProfile as Profile);
+          await AsyncStorage.setItem("userProfile", JSON.stringify(currentProfile));
+          await AsyncStorage.setItem("pendingProfileUpdate", JSON.stringify(updates));
+          console.log("📝 Profile update queued for sync (offline)");
+        }
+        return;
+      }
 
       const { data, error } = await supabase
         .from("profiles")
@@ -408,6 +546,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // Don't sync if offline
+      if (!isConnected) {
+        console.log("⏭️ Skipping sync - offline");
+        return;
+      }
+
+      console.log("🔄 Starting sync for user:", user.id);
+
+      // Check for pending profile updates first
+      const pendingProfileUpdate = await AsyncStorage.getItem("pendingProfileUpdate");
+      if (pendingProfileUpdate) {
+        try {
+          const updates = JSON.parse(pendingProfileUpdate);
+          await supabase
+            .from("profiles")
+            .update({
+              ...updates,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", user.id);
+          await AsyncStorage.removeItem("pendingProfileUpdate");
+          console.log("✅ Pending profile update synced");
+        } catch (profileSyncError) {
+          console.error("❌ Failed to sync pending profile update:", profileSyncError);
+        }
+      }
+
       const result = await syncService.syncAllData(user.id);
 
       if (result.success) {
@@ -415,6 +580,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           result.synced.activities +
           result.synced.locations +
           result.synced.achievements;
+        console.log("🔄 Sync complete:", result.synced);
         if (totalSynced > 0) {
           Alert.alert(
             "Data Synced!",
@@ -434,12 +600,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (enabled) {
         await AsyncStorage.setItem("offlineMode", "true");
         setIsOfflineMode(true);
+        wasOffline.current = true;
         if (session) {
           await supabase.auth.signOut();
         }
       } else {
         await AsyncStorage.removeItem("offlineMode");
         setIsOfflineMode(false);
+        wasOffline.current = false;
       }
     } catch (error) {
       console.error("Error setting offline mode:", error);
@@ -452,6 +620,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     loading,
     isOfflineMode,
+    isConnected,
     signUp,
     signIn,
     signOut,

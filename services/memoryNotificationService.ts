@@ -708,19 +708,6 @@ export class MemoryNotificationService {
       } catch (pushError) {
         console.log('Push notification failed (normal in Expo Go):', pushError);
       }
-
-      // Try to send local notification as backup
-      try {
-        await NotificationService.sendLocalNotification(
-          title,
-          body,
-          {
-            type: 'proximity',
-            placeId: closestPlace.id,
-          }
-        );
-      } catch (localError) {
-      }
     } catch (error) {
       console.error('Failed to send proximity notifications:', error);
       throw error;

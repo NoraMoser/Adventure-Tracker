@@ -151,7 +151,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             longitude: spot.longitude,
           },
           locationDate: spot.location_date
-            ? new Date(spot.location_date)
+            ? new Date(
+                spot.location_date.endsWith?.("Z")
+                  ? spot.location_date
+                  : spot.location_date + "Z"
+              )
             : new Date(spot.created_at),
           photos: spot.photos || [],
           timestamp: new Date(spot.created_at),
