@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as MediaLibrary from "expo-media-library";
 import { useRouter } from "expo-router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,26 +11,16 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  PanResponder,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Camera, CameraType, CameraView } from "expo-camera";
+import { CameraCapture } from "../components/CameraCapture";
 import { categories, CategoryType } from "../constants/categories";
 import { theme } from "../constants/theme";
 import { useLocation as useLocationContext } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 import { LocationService, PlaceSuggestion } from "../services/locationService";
-import Slider from "@react-native-community/slider";
-import {
-  GestureHandlerRootView,
-  PinchGestureHandler,
-  GestureEvent,
-  HandlerStateChangeEvent,
-  State,
-} from "react-native-gesture-handler";
-import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
 
 export default function QuickPhotoScreen() {
   const router = useRouter();
@@ -45,19 +34,13 @@ export default function QuickPhotoScreen() {
   const [saving, setSaving] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [title, setTitle] = useState("");
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [showCamera, setShowCamera] = useState(true);
-  const cameraRef = useRef<CameraView>(null);
   const [locationSuggestions, setLocationSuggestions] = useState<
     PlaceSuggestion[]
   >([]);
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<PlaceSuggestion | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [zoom, setZoom] = useState(0);
-  const scale = useSharedValue(1);
-  const baseScale = useSharedValue(1);
-  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
   const [refreshingLocation, setRefreshingLocation] = useState(false);
 
   useEffect(() => {
@@ -65,22 +48,18 @@ export default function QuickPhotoScreen() {
       try {
         await getLocation();
 
-        // If still no location, try again after a delay
         setTimeout(async () => {
           if (!location) {
             await getLocation();
           } else {
-            // Fetch suggestions when we have location
             fetchLocationSuggestions();
           }
         }, 2000);
 
-        // Try once more after longer delay
         setTimeout(async () => {
           if (!location) {
             await getLocation();
           } else if (!locationSuggestions.length) {
-            // Try suggestions again if we didn't get them yet
             fetchLocationSuggestions();
           }
         }, 4000);
@@ -90,12 +69,6 @@ export default function QuickPhotoScreen() {
     };
 
     attemptLocation();
-
-    // Check camera permissions (keep existing code)
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === "granted");
-    })();
   }, []);
 
   const fetchLocationSuggestions = async () => {
@@ -110,7 +83,6 @@ export default function QuickPhotoScreen() {
 
       setLocationSuggestions(suggestions);
 
-      // Auto-select first business/POI suggestion if available
       const businessSuggestion = suggestions.find(
         (s) => s.type === "business" || s.type === "poi"
       );
@@ -130,56 +102,8 @@ export default function QuickPhotoScreen() {
     }
   };
 
-  const takePicture = async () => {
-    if (cameraRef.current) {
-      try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
-          base64: false,
-          skipProcessing: true,
-        });
-
-        if (photo) {
-          setPhotos((prev) => {
-            const newPhotos = [...prev, photo.uri];
-            return newPhotos;
-          });
-          // Add a small delay to ensure state updates
-          setTimeout(() => {
-            setShowCamera(false);
-          }, 100);
-        }
-      } catch (error) {
-        console.error("Camera error:", error);
-        Alert.alert("Error", "Failed to take picture");
-      }
-    }
-  };
-
   const removePhoto = (index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handlePinchGesture = (event: GestureEvent<any>) => {
-    "worklet";
-    scale.value = baseScale.value * event.nativeEvent.scale;
-    const zoomValue = Math.min(Math.max(scale.value - 1, 0), 1);
-    runOnJS(setZoom)(zoomValue);
-  };
-
-  const handlePinchStateChange = (event: HandlerStateChangeEvent<any>) => {
-    "worklet";
-    if (event.nativeEvent.oldState === State.ACTIVE) {
-      // Pinch ended
-      if (scale.value < 1) {
-        scale.value = 1;
-        runOnJS(setZoom)(0);
-      }
-      baseScale.value = scale.value;
-    } else if (event.nativeEvent.state === State.BEGAN) {
-      // Pinch started
-      baseScale.value = scale.value;
-    }
   };
 
   const saveQuickLog = async () => {
@@ -193,15 +117,11 @@ export default function QuickPhotoScreen() {
       const spotName =
         title || caption || `Quick log ${new Date().toLocaleDateString()}`;
 
-      // Check if we have location
       if (!location) {
         await getLocation();
-
-        // Wait for location to potentially update
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
         if (!location) {
-          // Use fallback with saveManualLocation
           await saveManualLocation(
             spotName,
             { latitude: 37.7749, longitude: -122.4194 },
@@ -217,7 +137,6 @@ export default function QuickPhotoScreen() {
         }
       }
 
-      // Save to context and GET THE ACTUAL RETURNED SPOT
       const savedSpot = await saveCurrentLocation(
         spotName,
         caption,
@@ -226,11 +145,10 @@ export default function QuickPhotoScreen() {
         new Date()
       );
 
-      // Only proceed with trip check if we have a valid saved spot
       if (savedSpot) {
         try {
           const trip = (await checkAndAddToTrip(
-            savedSpot, // Use the REAL saved spot, not a fake one
+            savedSpot,
             "spot",
             savedSpot.name,
             {
@@ -272,7 +190,6 @@ export default function QuickPhotoScreen() {
         }
       }
 
-      // Default success message if no trip match or savedSpot was null
       Alert.alert("Saved!", "Your moment has been logged.", [
         {
           text: "Take Another",
@@ -289,7 +206,7 @@ export default function QuickPhotoScreen() {
           onPress: () => router.back(),
         },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in saveQuickLog:", error);
       Alert.alert("Error", `Failed to save: ${error.message || error}`);
     } finally {
@@ -375,103 +292,12 @@ export default function QuickPhotoScreen() {
 
   if (showCamera) {
     return (
-      <GestureHandlerRootView style={styles.cameraContainer}>
-        <PinchGestureHandler
-          onGestureEvent={handlePinchGesture}
-          onHandlerStateChange={handlePinchStateChange}
-        >
-          <Animated.View style={styles.cameraContainer}>
-            <CameraView
-              ref={cameraRef}
-              style={styles.camera}
-              zoom={zoom}
-              onCameraReady={() => console.log("Camera ready")}
-              facing={cameraFacing} // Changed from hardcoded "back"
-            />
-            <View style={styles.cameraOverlay}>
-              <TouchableOpacity
-                style={styles.flipButton}
-                onPress={() => {
-                  setCameraFacing((current) =>
-                    current === "back" ? "front" : "back"
-                  );
-                  // Reset zoom when flipping
-                  setZoom(0);
-                  scale.value = 1;
-                  baseScale.value = 1;
-                }}
-              >
-                <Ionicons name="camera-reverse" size={30} color="white" />
-              </TouchableOpacity>
-
-              {/* Zoom indicator */}
-              <View
-                style={[styles.zoomIndicator, { opacity: zoom > 0 ? 1 : 0.6 }]}
-              >
-                <Text style={styles.zoomText}>
-                  {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
-                </Text>
-              </View>
-
-              {/* Zoom slider */}
-              <View style={styles.zoomSliderContainer}>
-                <TouchableOpacity
-                  onPress={() => {
-                    const newZoom = Math.max(0, zoom - 0.1);
-                    setZoom(newZoom);
-                    scale.value = 1 + newZoom;
-                  }}
-                >
-                  <Ionicons name="remove" size={24} color="white" />
-                </TouchableOpacity>
-
-                <Slider
-                  style={styles.zoomSlider}
-                  minimumValue={0}
-                  maximumValue={1}
-                  value={zoom}
-                  onValueChange={(value) => {
-                    setZoom(value);
-                    scale.value = 1 + value;
-                  }}
-                  minimumTrackTintColor="#FFFFFF"
-                  maximumTrackTintColor="rgba(255,255,255,0.3)"
-                  thumbTintColor="#FFFFFF"
-                />
-
-                <TouchableOpacity
-                  onPress={() => {
-                    const newZoom = Math.min(1, zoom + 0.1);
-                    setZoom(newZoom);
-                    scale.value = 1 + newZoom;
-                  }}
-                >
-                  <Ionicons name="add" size={24} color="white" />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.captureButton}
-                onPress={takePicture}
-              >
-                <View style={styles.captureButtonInner} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => {
-                  setZoom(0);
-                  scale.value = 1;
-                  baseScale.value = 1;
-                  setShowCamera(false);
-                }}
-              >
-                <Ionicons name="close" size={30} color="white" />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </PinchGestureHandler>
-      </GestureHandlerRootView>
+      <CameraCapture
+        onCapture={(uri) => {
+          setPhotos((prev) => [...prev, uri]);
+        }}
+        onClose={() => setShowCamera(false)}
+      />
     );
   }
 
@@ -517,14 +343,9 @@ export default function QuickPhotoScreen() {
               <TouchableOpacity
                 style={styles.cameraButton}
                 onPress={() => setShowCamera(true)}
-                disabled={hasPermission === false}
               >
                 <Ionicons name="camera" size={50} color={theme.colors.forest} />
-                <Text style={styles.cameraButtonText}>
-                  {hasPermission === false
-                    ? "Camera permission denied"
-                    : "Tap to open camera"}
-                </Text>
+                <Text style={styles.cameraButtonText}>Tap to open camera</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -537,16 +358,7 @@ export default function QuickPhotoScreen() {
                 >
                   {photos.map((photo, index) => (
                     <View key={index} style={styles.photoWrapper}>
-                      <Image
-                        source={{ uri: photo }}
-                        style={styles.photo}
-                        onError={(e) =>
-                          console.log("Image load error:", e.nativeEvent.error)
-                        }
-                        onLoad={() =>
-                          console.log("Image loaded successfully:", photo)
-                        }
-                      />
+                      <Image source={{ uri: photo }} style={styles.photo} />
                       <TouchableOpacity
                         style={styles.removePhotoButton}
                         onPress={() => removePhoto(index)}
@@ -585,7 +397,6 @@ export default function QuickPhotoScreen() {
                 />
               </View>
 
-              {/* Location Suggestions */}
               {loadingSuggestions ? (
                 <View style={styles.suggestionsLoading}>
                   <ActivityIndicator size="small" color={theme.colors.forest} />
@@ -744,11 +555,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minHeight: 400,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: theme.colors.gray,
-  },
   cameraButton: {
     alignItems: "center",
     justifyContent: "center",
@@ -759,40 +565,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: theme.colors.forest,
     fontWeight: "500",
-  },
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: "black",
-  },
-  camera: {
-    flex: 1,
-  },
-  cameraButtonContainer: {
-    flex: 1,
-    backgroundColor: "transparent",
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "flex-end",
-    paddingBottom: 40,
-  },
-  captureButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  captureButtonInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "white",
-  },
-  closeButton: {
-    position: "absolute",
-    top: 40,
-    right: 20,
   },
   photoSection: {
     marginBottom: 16,
@@ -958,16 +730,6 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     textAlign: "center",
   },
-  cameraOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 40,
-  },
   suggestionsContainer: {
     marginHorizontal: 16,
     backgroundColor: "white",
@@ -1021,45 +783,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.forest,
     marginLeft: 4,
-  },
-  zoomIndicator: {
-    position: "absolute",
-    top: 60,
-    alignSelf: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginTop: 50, // Add margin to avoid overlap with flip button
-  },
-  zoomText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  zoomSliderContainer: {
-    position: "absolute",
-    bottom: 120,
-    left: 20,
-    right: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-    padding: 10,
-    borderRadius: 25,
-  },
-  zoomSlider: {
-    flex: 1,
-    marginHorizontal: 10,
-    height: 40,
-  },
-  flipButton: {
-    position: "absolute",
-    top: 50,
-    left: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 10,
-    borderRadius: 25,
-    zIndex: 1,
   },
 });

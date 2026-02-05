@@ -30,6 +30,7 @@ import {
   State,
 } from "react-native-gesture-handler";
 import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
+import { CameraCapture } from "../components/CameraCapture";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
@@ -71,14 +72,14 @@ export default function SaveLocationScreen() {
     try {
       const suggestions = await LocationService.getLocationSuggestions(
         location.latitude,
-        location.longitude
+        location.longitude,
       );
 
       setLocationSuggestions(suggestions);
 
       // Auto-select first business/POI suggestion if available
       const businessSuggestion = suggestions.find(
-        (s) => s.type === "business" || s.type === "poi"
+        (s) => s.type === "business" || s.type === "poi",
       );
       const firstSuggestion = businessSuggestion || suggestions[0];
 
@@ -96,26 +97,6 @@ export default function SaveLocationScreen() {
     }
   };
 
-  const handlePinchGesture = (event: any) => {
-    "worklet";
-    scale.value = baseScale.value * event.nativeEvent.scale;
-    const zoomValue = Math.min(Math.max(scale.value - 1, 0), 1);
-    runOnJS(setZoom)(zoomValue);
-  };
-
-  const handlePinchStateChange = (event: any) => {
-    "worklet";
-    if (event.nativeEvent.oldState === State.ACTIVE) {
-      if (scale.value < 1) {
-        scale.value = 1;
-        runOnJS(setZoom)(0);
-      }
-      baseScale.value = scale.value;
-    } else if (event.nativeEvent.state === State.BEGAN) {
-      baseScale.value = scale.value;
-    }
-  };
-
   const handleSave = async () => {
     // Check location permission first
     const { status } = await Location.getForegroundPermissionsAsync();
@@ -126,7 +107,7 @@ export default function SaveLocationScreen() {
         Alert.alert(
           "Location Required",
           "Location permission is needed to save this spot.",
-          [{ text: "OK" }]
+          [{ text: "OK" }],
         );
         return;
       }
@@ -140,7 +121,7 @@ export default function SaveLocationScreen() {
     if (!location) {
       Alert.alert(
         "Error",
-        "Location not available. Please enable location services."
+        "Location not available. Please enable location services.",
       );
       return;
     }
@@ -153,7 +134,7 @@ export default function SaveLocationScreen() {
         description.trim(),
         photos,
         category,
-        new Date()
+        new Date(),
       );
 
       // Check if we got a valid saved spot back
@@ -167,7 +148,7 @@ export default function SaveLocationScreen() {
             latitude: savedSpot.location.latitude,
             longitude: savedSpot.location.longitude,
           },
-          true
+          true,
         )) as { name?: string; id?: string } | null;
 
         if (trip?.name && trip?.id) {
@@ -183,7 +164,7 @@ export default function SaveLocationScreen() {
                 text: "OK",
                 onPress: () => router.back(),
               },
-            ]
+            ],
           );
         } else {
           Alert.alert("Success", "Location saved successfully!", [
@@ -212,7 +193,6 @@ export default function SaveLocationScreen() {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.8,
           base64: false,
@@ -264,97 +244,12 @@ export default function SaveLocationScreen() {
 
   if (showCamera) {
     return (
-      <GestureHandlerRootView style={styles.cameraContainer}>
-        <PinchGestureHandler
-          onGestureEvent={handlePinchGesture}
-          onHandlerStateChange={handlePinchStateChange}
-        >
-          <Animated.View style={styles.cameraContainer}>
-            <CameraView
-              key={cameraKey}
-              ref={cameraRef}
-              style={styles.camera}
-              facing={cameraFacing}
-              zoom={zoom}
-            />
-            <View style={styles.cameraOverlay}>
-              <TouchableOpacity
-                style={styles.flipButton}
-                onPress={() => {
-                  setCameraFacing((current) =>
-                    current === "back" ? "front" : "back"
-                  );
-                  // Reset zoom when flipping
-                  setZoom(0);
-                  scale.value = 1;
-                  baseScale.value = 1;
-                }}
-              >
-                <Ionicons name="camera-reverse" size={30} color="white" />
-              </TouchableOpacity>
-              {/* Keep the zoom controls as backup/visual indicator */}
-              <View style={styles.zoomControls}>
-                <TouchableOpacity
-                  style={styles.zoomButton}
-                  onPress={() => {
-                    const newZoom = Math.max(0, zoom - 0.1);
-                    setZoom(newZoom);
-                    scale.value = 1 + newZoom;
-                  }}
-                  disabled={zoom <= 0}
-                >
-                  <Ionicons
-                    name="remove-circle"
-                    size={40}
-                    color={zoom <= 0 ? "rgba(255,255,255,0.3)" : "white"}
-                  />
-                </TouchableOpacity>
-
-                <View style={styles.zoomIndicator}>
-                  <Text style={styles.zoomText}>
-                    {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.zoomButton}
-                  onPress={() => {
-                    const newZoom = Math.min(1, zoom + 0.1);
-                    setZoom(newZoom);
-                    scale.value = 1 + newZoom;
-                  }}
-                  disabled={zoom >= 1}
-                >
-                  <Ionicons
-                    name="add-circle"
-                    size={40}
-                    color={zoom >= 1 ? "rgba(255,255,255,0.3)" : "white"}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.captureButton}
-                onPress={takePicture}
-              >
-                <View style={styles.captureButtonInner} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => {
-                  setCameraKey((prev) => prev + 1);
-                  setZoom(0);
-                  scale.value = 1;
-                  baseScale.value = 1;
-                  setShowCamera(false);
-                }}
-              >
-                <Ionicons name="close" size={30} color="white" />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </PinchGestureHandler>
-      </GestureHandlerRootView>
+      <CameraCapture
+        onCapture={(uri) => {
+          setPhotos((prev) => [...prev, uri]);
+        }}
+        onClose={() => setShowCamera(false)}
+      />
     );
   }
 

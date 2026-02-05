@@ -16,16 +16,10 @@ import {
   View,
 } from "react-native";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { CameraCapture } from "../components/CameraCapture";
 import { theme } from "../constants/theme";
 import { useActivity } from "../contexts/ActivityContext";
 import { useSettings } from "../contexts/SettingsContext";
-import { Camera, CameraView } from "expo-camera";
-import {
-  GestureHandlerRootView,
-  PinchGestureHandler,
-  State,
-} from "react-native-gesture-handler";
-import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 
 type ActivityType =
@@ -79,7 +73,6 @@ export default function TrackActivityScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Add date state
   const [activityDate, setActivityDate] = useState(new Date());
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
@@ -89,15 +82,8 @@ export default function TrackActivityScreen() {
   const [finalDuration, setFinalDuration] = useState(0);
   const [finalSpeed, setFinalSpeed] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
-  
-  // Camera states
   const [showCamera, setShowCamera] = useState(false);
-  const cameraRef = useRef<CameraView>(null);
-  const [cameraKey, setCameraKey] = useState(0);
-  const [zoom, setZoom] = useState(0);
-  const scale = useSharedValue(1);
-  const baseScale = useSharedValue(1);
-  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
+  
   const { checkAndAddToTrip } = useAutoAddToTrip();
 
   useEffect(() => {
@@ -133,7 +119,6 @@ export default function TrackActivityScreen() {
         await Location.getForegroundPermissionsAsync();
 
       if (existingStatus !== "granted") {
-        // Show the permission screen instead of directly requesting
         setShowPermissionScreen(true);
         setManualLoading(false);
         return;
@@ -146,26 +131,6 @@ export default function TrackActivityScreen() {
       Alert.alert("Error", "Failed to start tracking. Please try again.");
     } finally {
       setManualLoading(false);
-    }
-  };
-
-  const handlePinchGesture = (event: any) => {
-    "worklet";
-    scale.value = baseScale.value * event.nativeEvent.scale;
-    const zoomValue = Math.min(Math.max(scale.value - 1, 0), 1);
-    runOnJS(setZoom)(zoomValue);
-  };
-
-  const handlePinchStateChange = (event: any) => {
-    "worklet";
-    if (event.nativeEvent.oldState === State.ACTIVE) {
-      if (scale.value < 1) {
-        scale.value = 1;
-        runOnJS(setZoom)(0);
-      }
-      baseScale.value = scale.value;
-    } else if (event.nativeEvent.state === State.BEGAN) {
-      baseScale.value = scale.value;
     }
   };
 
@@ -244,12 +209,9 @@ export default function TrackActivityScreen() {
     try {
       const name = activityName.trim() || `${selectedActivity} activity`;
 
-      // Get the saved activity from stopTracking
       const savedActivity = await stopTracking(name, activityNotes, photos);
 
-      // Check for auto-add to trip if we have a saved activity and route
       if (savedActivity && currentRoute && currentRoute.length > 0) {
-
         const trip = (await checkAndAddToTrip(
           savedActivity,
           "activity",
@@ -287,7 +249,6 @@ export default function TrackActivityScreen() {
         }
       }
 
-      // Default success if no trip match
       setActivityName("");
       setActivityNotes("");
       setPhotos([]);
@@ -347,32 +308,6 @@ export default function TrackActivityScreen() {
     setShowCamera(true);
   };
 
-  const takePicture = async () => {
-    if (cameraRef.current) {
-      try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
-          base64: false,
-          skipProcessing: true,
-        });
-
-        if (photo && photo.uri) {
-          setPhotos((prevPhotos) => [...prevPhotos, photo.uri]);
-
-          setCameraKey((prev) => prev + 1);
-
-          setTimeout(() => {
-            setShowCamera(false);
-          }, 200);
-        }
-      } catch (error) {
-        console.error("Camera error:", error);
-        Alert.alert("Error", "Failed to take picture");
-        setShowCamera(false);
-      }
-    }
-  };
-
   const handlePickImage = async () => {
     if (!isTracking) {
       Alert.alert("Not Tracking", "Start tracking to add photos");
@@ -423,99 +358,12 @@ export default function TrackActivityScreen() {
 
   if (showCamera) {
     return (
-      <GestureHandlerRootView style={styles.cameraContainer}>
-        <PinchGestureHandler
-          onGestureEvent={handlePinchGesture}
-          onHandlerStateChange={handlePinchStateChange}
-        >
-          <Animated.View style={styles.cameraContainer}>
-            <CameraView
-              key={cameraKey}
-              ref={cameraRef}
-              style={styles.camera}
-              facing={cameraFacing} // Changed from hardcoded "back"
-              zoom={zoom}
-            />
-            <View style={styles.cameraOverlay}>
-              {/* Add flip button */}
-              <TouchableOpacity
-                style={styles.flipButton}
-                onPress={() => {
-                  setCameraFacing((current) =>
-                    current === "back" ? "front" : "back"
-                  );
-                  // Reset zoom when flipping
-                  setZoom(0);
-                  scale.value = 1;
-                  baseScale.value = 1;
-                }}
-              >
-                <Ionicons name="camera-reverse" size={30} color="white" />
-              </TouchableOpacity>
-
-              {/* Keep the zoom controls as backup/visual indicator */}
-              <View style={styles.zoomControls}>
-                <TouchableOpacity
-                  style={styles.zoomButton}
-                  onPress={() => {
-                    const newZoom = Math.max(0, zoom - 0.1);
-                    setZoom(newZoom);
-                    scale.value = 1 + newZoom;
-                  }}
-                  disabled={zoom <= 0}
-                >
-                  <Ionicons
-                    name="remove-circle"
-                    size={40}
-                    color={zoom <= 0 ? "rgba(255,255,255,0.3)" : "white"}
-                  />
-                </TouchableOpacity>
-
-                <View style={styles.zoomIndicator}>
-                  <Text style={styles.zoomText}>
-                    {zoom === 0 ? "1.0x" : `${(1 + zoom * 4).toFixed(1)}x`}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.zoomButton}
-                  onPress={() => {
-                    const newZoom = Math.min(1, zoom + 0.1);
-                    setZoom(newZoom);
-                    scale.value = 1 + newZoom;
-                  }}
-                  disabled={zoom >= 1}
-                >
-                  <Ionicons
-                    name="add-circle"
-                    size={40}
-                    color={zoom >= 1 ? "rgba(255,255,255,0.3)" : "white"}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.captureButton}
-                onPress={takePicture}
-              >
-                <View style={styles.captureButtonInner} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => {
-                  setCameraKey((prev) => prev + 1);
-                  setZoom(0);
-                  scale.value = 1;
-                  baseScale.value = 1;
-                  setShowCamera(false);
-                }}
-              >
-                <Ionicons name="close" size={30} color="white" />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </PinchGestureHandler>
-      </GestureHandlerRootView>
+      <CameraCapture
+        onCapture={(uri) => {
+          setPhotos((prev) => [...prev, uri]);
+        }}
+        onClose={() => setShowCamera(false)}
+      />
     );
   }
 
@@ -1100,13 +948,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
   },
-  permissionSkipButton: {
-    padding: 10,
-  },
-  permissionSkipText: {
-    color: theme.colors.gray,
-    fontSize: 14,
-  },
   header: {
     padding: 20,
     backgroundColor: "white",
@@ -1559,82 +1400,5 @@ const styles = StyleSheet.create({
     right: -6,
     backgroundColor: theme.colors.burntOrange,
     borderRadius: 10,
-  },
-  // Camera styles
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: "black",
-  },
-  camera: {
-    flex: 1,
-  },
-  cameraOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 40,
-  },
-  captureButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  captureButtonInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "white",
-  },
-  closeButton: {
-    position: "absolute",
-    top: 50,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 10,
-    borderRadius: 25,
-    zIndex: 1,
-  },
-  zoomControls: {
-    position: "absolute",
-    bottom: 120,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  zoomButton: {
-    padding: 10,
-  },
-  zoomIndicator: {
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginHorizontal: 20,
-    minWidth: 70,
-    alignItems: "center",
-  },
-  zoomText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  flipButton: {
-    position: "absolute",
-    top: 50,
-    left: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 10,
-    borderRadius: 25,
-    zIndex: 1,
   },
 });
