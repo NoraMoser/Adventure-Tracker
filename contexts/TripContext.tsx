@@ -828,7 +828,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       await loadTrips();
-      Alert.alert("Success", "Added to trip!");
+      
     } catch (error) {
       console.error("Error adding to trip:", error);
       Alert.alert("Error", "Failed to add item to trip");

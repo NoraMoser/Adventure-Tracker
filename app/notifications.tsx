@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   FlatList,
   RefreshControl,
@@ -49,6 +49,7 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -56,6 +57,42 @@ export default function NotificationsScreen() {
       return setupRealtimeSubscription();
     }
   }, [user]);
+
+  // Auto-mark notifications as read after viewing
+  useEffect(() => {
+    // Clear any existing timeout
+    if (markAsReadTimeoutRef.current) {
+      clearTimeout(markAsReadTimeoutRef.current);
+    }
+
+    // Only proceed if we have unread notifications
+    const unreadNotifs = notifications.filter((n) => !n.read);
+    if (unreadNotifs.length === 0 || !user) return;
+
+    // Mark as read after a short delay (1.5s) so user can see what's new
+    markAsReadTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Update in database
+        await supabase
+          .from("notifications")
+          .update({ read: true })
+          .eq("user_id", user.id)
+          .eq("read", false);
+
+        // Update local state
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      } catch (err) {
+        console.error("Error auto-marking notifications as read:", err);
+      }
+    }, 1500);
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (markAsReadTimeoutRef.current) {
+        clearTimeout(markAsReadTimeoutRef.current);
+      }
+    };
+  }, [notifications.length, user]);
 
   const loadNotifications = async () => {
     if (!user) return;
@@ -183,6 +220,11 @@ export default function NotificationsScreen() {
 
   const markAllAsRead = async () => {
     if (!user) return;
+
+    // Clear the auto-mark timeout since we're doing it manually
+    if (markAsReadTimeoutRef.current) {
+      clearTimeout(markAsReadTimeoutRef.current);
+    }
 
     try {
       // Update in database
