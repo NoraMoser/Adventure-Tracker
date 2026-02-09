@@ -16,13 +16,15 @@ import {
 import { FeedItemCard } from "../components/FeedItemCard";
 import { UserAvatar } from "../components/UserAvatar";
 import { theme } from "../constants/theme";
-import { useFriends, FeedPost } from "../contexts/FriendsContext";
+import { useFriends, FeedPost, LikeInfo } from "../contexts/FriendsContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useWishlist } from "../contexts/WishlistContext";
+import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 
 export default function FriendsFeedScreen() {
   const router = useRouter();
+  const { profile } = useAuth();
   const {
     feed,
     friends,
@@ -65,16 +67,22 @@ export default function FriendsFeedScreen() {
     }
 
     // If viewing a specific friend's feed, also update local state
-    if (selectedFriendId && currentUserId) {
+    if (selectedFriendId && currentUserId && profile) {
       setSelectedFriendFeed((prev) =>
         prev.map((post) => {
           if (post.id === itemId) {
             if (shouldLike) {
+              const newLikeInfo: LikeInfo = {
+                userId: currentUserId,
+                userName: profile.display_name || profile.username || "You",
+                avatar: profile.avatar,
+                profile_picture: profile.profile_picture,
+              };
               return {
                 ...post,
                 data: {
                   ...post.data,
-                  likes: [...post.data.likes, currentUserId],
+                  likes: [...post.data.likes, newLikeInfo],
                 },
               };
             } else {
@@ -83,7 +91,7 @@ export default function FriendsFeedScreen() {
                 data: {
                   ...post.data,
                   likes: post.data.likes.filter(
-                    (id: string) => id !== currentUserId
+                    (like: LikeInfo) => like.userId !== currentUserId
                   ),
                 },
               };
@@ -229,6 +237,24 @@ export default function FriendsFeedScreen() {
         .select("location_id, user_id")
         .in("location_id", locationIds);
 
+      // Collect all liker user IDs to fetch their profiles
+      const likerUserIds = new Set<string>();
+      activityLikes?.forEach((like) => likerUserIds.add(like.user_id));
+      locationLikes?.forEach((like) => likerUserIds.add(like.user_id));
+
+      // Fetch liker profiles
+      let likerProfileMap: Record<string, any> = {};
+      if (likerUserIds.size > 0) {
+        const { data: likerProfiles } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar, profile_picture")
+          .in("id", Array.from(likerUserIds));
+
+        likerProfiles?.forEach((p) => {
+          likerProfileMap[p.id] = p;
+        });
+      }
+
       const { data: activityComments } = await supabase
         .from("comments")
         .select(
@@ -245,18 +271,31 @@ export default function FriendsFeedScreen() {
         .in("location_id", locationIds)
         .order("created_at", { ascending: false });
 
-      const activityLikesMap: Record<string, string[]> = {};
+      // Create likes maps with profile info
+      const activityLikesMap: Record<string, LikeInfo[]> = {};
       activityLikes?.forEach((like) => {
         if (!activityLikesMap[like.activity_id])
           activityLikesMap[like.activity_id] = [];
-        activityLikesMap[like.activity_id].push(like.user_id);
+        const likerProfile = likerProfileMap[like.user_id];
+        activityLikesMap[like.activity_id].push({
+          userId: like.user_id,
+          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          avatar: likerProfile?.avatar,
+          profile_picture: likerProfile?.profile_picture,
+        });
       });
 
-      const locationLikesMap: Record<string, string[]> = {};
+      const locationLikesMap: Record<string, LikeInfo[]> = {};
       locationLikes?.forEach((like) => {
         if (!locationLikesMap[like.location_id])
           locationLikesMap[like.location_id] = [];
-        locationLikesMap[like.location_id].push(like.user_id);
+        const likerProfile = likerProfileMap[like.user_id];
+        locationLikesMap[like.location_id].push({
+          userId: like.user_id,
+          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          avatar: likerProfile?.avatar,
+          profile_picture: likerProfile?.profile_picture,
+        });
       });
 
       const activityCommentsMap: Record<string, any[]> = {};

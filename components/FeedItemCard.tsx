@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,13 @@ import {
   generateMiniMapHTML,
   generateLocationMiniMapHTML,
 } from "../utils/mapHelpers";
+
+interface LikeInfo {
+  userId: string;
+  userName: string;
+  avatar?: string;
+  profile_picture?: string;
+}
 
 interface FeedItemCardProps {
   item: any;
@@ -83,9 +91,18 @@ export function FeedItemCard({
     id: string;
     userName: string;
   } | null>(null);
+  const [showLikesModal, setShowLikesModal] = useState(false);
 
-  const isLiked = item.data.likes.includes(currentUserId);
-  const likesCount = item.data.likes.length;
+  // Handle both old format (string[]) and new format (LikeInfo[])
+  const likes: LikeInfo[] = item.data.likes.map((like: string | LikeInfo) => {
+    if (typeof like === "string") {
+      return { userId: like, userName: "User" };
+    }
+    return like;
+  });
+
+  const isLiked = likes.some((like) => like.userId === currentUserId);
+  const likesCount = likes.length;
   const commentsCount = item.data.comments.length;
 
   const formatItemDate = () => {
@@ -97,6 +114,38 @@ export function FeedItemCard({
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     }
     return null;
+  };
+
+  const getLikedByText = () => {
+    if (likesCount === 0) return null;
+
+    // Filter out current user for display
+    const otherLikes = likes.filter((like) => like.userId !== currentUserId);
+    const currentUserLiked = isLiked;
+
+    if (likesCount === 1) {
+      if (currentUserLiked) {
+        return "You liked this";
+      }
+      return `${likes[0].userName} liked this`;
+    }
+
+    if (likesCount === 2) {
+      if (currentUserLiked && otherLikes.length === 1) {
+        return `You and ${otherLikes[0].userName} liked this`;
+      }
+      return `${likes[0].userName} and ${likes[1].userName} liked this`;
+    }
+
+    // 3 or more likes
+    if (currentUserLiked) {
+      if (otherLikes.length === 1) {
+        return `You and ${otherLikes[0].userName} liked this`;
+      }
+      return `You, ${otherLikes[0].userName} and ${otherLikes.length - 1} others liked this`;
+    }
+
+    return `${likes[0].userName}, ${likes[1].userName} and ${likesCount - 2} others liked this`;
   };
 
   const renderActivityContent = (activity: any) => (
@@ -303,6 +352,8 @@ export function FeedItemCard({
   const getReplies = (commentId: string) =>
     item.data.comments.filter((c: any) => c.replyTo === commentId);
 
+  const likedByText = getLikedByText();
+
   return (
     <View style={styles.feedCard}>
       <View style={styles.cardHeader}>
@@ -396,10 +447,48 @@ export function FeedItemCard({
         {item.type === "achievement" && renderAchievementContent(item.data)}
       </View>
 
+      {/* Liked By Section */}
+      {likedByText && (
+        <TouchableOpacity
+          style={styles.likedBySection}
+          onPress={() => setShowLikesModal(true)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.likedByAvatars}>
+            {likes.slice(0, 3).map((like, index) => (
+              <View
+                key={like.userId}
+                style={[
+                  styles.likedByAvatar,
+                  { marginLeft: index > 0 ? -8 : 0, zIndex: 3 - index },
+                ]}
+              >
+                {like.avatar || like.profile_picture ? (
+                  <Image
+                    source={{ uri: like.avatar || like.profile_picture }}
+                    style={styles.likedByAvatarImage}
+                  />
+                ) : (
+                  <View style={styles.likedByAvatarPlaceholder}>
+                    <Text style={styles.likedByAvatarText}>
+                      {like.userName?.charAt(0)?.toUpperCase() || "?"}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+          <Text style={styles.likedByText}>{likedByText}</Text>
+        </TouchableOpacity>
+      )}
+
       <View style={styles.cardActions}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => onLike(item.id, !isLiked)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onLike(item.id, !isLiked);
+          }}
         >
           <Ionicons
             name={isLiked ? "heart" : "heart-outline"}
@@ -640,6 +729,50 @@ export function FeedItemCard({
           </KeyboardAvoidingView>
         </View>
       )}
+
+      {/* Likes Modal */}
+      <Modal
+        visible={showLikesModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowLikesModal(false)}
+      >
+        <View style={styles.likesModal}>
+          <View style={styles.likesModalHeader}>
+            <Text style={styles.likesModalTitle}>Likes</Text>
+            <TouchableOpacity
+              onPress={() => setShowLikesModal(false)}
+              style={styles.likesModalClose}
+            >
+              <Ionicons name="close" size={24} color={theme.colors.navy} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.likesModalList}>
+            {likes.map((like) => (
+              <View key={like.userId} style={styles.likesModalItem}>
+                <View style={styles.likesModalAvatar}>
+                  {like.avatar || like.profile_picture ? (
+                    <Image
+                      source={{ uri: like.avatar || like.profile_picture }}
+                      style={styles.likesModalAvatarImage}
+                    />
+                  ) : (
+                    <View style={styles.likesModalAvatarPlaceholder}>
+                      <Text style={styles.likesModalAvatarText}>
+                        {like.userName?.charAt(0)?.toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.likesModalUserName}>
+                  {like.userId === currentUserId ? "You" : like.userName}
+                </Text>
+                <Ionicons name="heart" size={16} color="#FF4757" />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -928,6 +1061,48 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  // Liked By Section
+  likedBySection: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderGray,
+  },
+  likedByAvatars: {
+    flexDirection: "row",
+    marginRight: 8,
+  },
+  likedByAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "white",
+    overflow: "hidden",
+  },
+  likedByAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  likedByAvatarPlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: theme.colors.forest,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  likedByAvatarText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  likedByText: {
+    flex: 1,
+    fontSize: 13,
+    color: theme.colors.gray,
+  },
   cardActions: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -1168,5 +1343,66 @@ const styles = StyleSheet.create({
   },
   sendCommentButtonDisabled: {
     backgroundColor: theme.colors.borderGray,
+  },
+
+  // Likes Modal
+  likesModal: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+  likesModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  likesModalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: theme.colors.navy,
+  },
+  likesModalClose: {
+    padding: 4,
+  },
+  likesModalList: {
+    flex: 1,
+  },
+  likesModalItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  likesModalAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
+    overflow: "hidden",
+  },
+  likesModalAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  likesModalAvatarPlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: theme.colors.forest,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  likesModalAvatarText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  likesModalUserName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "500",
+    color: theme.colors.navy,
   },
 });

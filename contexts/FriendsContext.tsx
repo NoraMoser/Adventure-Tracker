@@ -46,6 +46,13 @@ export interface FeedComment {
   replyToUser?: string;
 }
 
+export interface LikeInfo {
+  userId: string;
+  userName: string;
+  avatar?: string;
+  profile_picture?: string;
+}
+
 export interface FeedPost {
   id: string;
   type: "activity" | "location" | "trip";
@@ -73,7 +80,7 @@ export interface FeedPost {
     achievementIcon?: string;
     sharedBy: Friend;
     sharedAt: Date;
-    likes: string[];
+    likes: LikeInfo[];
     comments: FeedComment[];
     // Trip-specific fields
     start_date?: Date;
@@ -814,6 +821,25 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .select("trip_id, user_id")
         .in("trip_id", tripIds);
 
+      // Collect all liker user IDs to fetch their profiles
+      const likerUserIds = new Set<string>();
+      activityLikes?.forEach((like) => likerUserIds.add(like.user_id));
+      locationLikes?.forEach((like) => likerUserIds.add(like.user_id));
+      tripLikes?.forEach((like) => likerUserIds.add(like.user_id));
+
+      // Fetch liker profiles
+      let likerProfileMap: Record<string, any> = {};
+      if (likerUserIds.size > 0) {
+        const { data: likerProfiles } = await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar, profile_picture")
+          .in("id", Array.from(likerUserIds));
+
+        likerProfiles?.forEach((p) => {
+          likerProfileMap[p.id] = p;
+        });
+      }
+
       // Load comments for all activities, locations, and trips
       const { data: activityComments } = await supabase
         .from("comments")
@@ -839,29 +865,47 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         .in("trip_id", tripIds)
         .order("created_at", { ascending: true });
 
-      // Create lookup maps for likes
-      const activityLikesMap: Record<string, string[]> = {};
+      // Create lookup maps for likes WITH profile info
+      const activityLikesMap: Record<string, LikeInfo[]> = {};
       activityLikes?.forEach((like) => {
         if (!activityLikesMap[like.activity_id]) {
           activityLikesMap[like.activity_id] = [];
         }
-        activityLikesMap[like.activity_id].push(like.user_id);
+        const likerProfile = likerProfileMap[like.user_id];
+        activityLikesMap[like.activity_id].push({
+          userId: like.user_id,
+          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          avatar: likerProfile?.avatar,
+          profile_picture: likerProfile?.profile_picture,
+        });
       });
 
-      const locationLikesMap: Record<string, string[]> = {};
+      const locationLikesMap: Record<string, LikeInfo[]> = {};
       locationLikes?.forEach((like) => {
         if (!locationLikesMap[like.location_id]) {
           locationLikesMap[like.location_id] = [];
         }
-        locationLikesMap[like.location_id].push(like.user_id);
+        const likerProfile = likerProfileMap[like.user_id];
+        locationLikesMap[like.location_id].push({
+          userId: like.user_id,
+          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          avatar: likerProfile?.avatar,
+          profile_picture: likerProfile?.profile_picture,
+        });
       });
 
-      const tripLikesMap: Record<string, string[]> = {};
+      const tripLikesMap: Record<string, LikeInfo[]> = {};
       tripLikes?.forEach((like) => {
         if (!tripLikesMap[like.trip_id]) {
           tripLikesMap[like.trip_id] = [];
         }
-        tripLikesMap[like.trip_id].push(like.user_id);
+        const likerProfile = likerProfileMap[like.user_id];
+        tripLikesMap[like.trip_id].push({
+          userId: like.user_id,
+          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          avatar: likerProfile?.avatar,
+          profile_picture: likerProfile?.profile_picture,
+        });
       });
 
       // Create lookup maps for comments
@@ -1056,20 +1100,21 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
         if (insertResult.error) throw insertResult.error;
       }
 
-      // Just update UI - let the database trigger handle notifications
-      setFeed((prev) => {
-        console.log("Updating feed for itemId:", itemId);
-        console.log("Current feed ids:", prev.map((p) => p.id));
+      // Create the like info with current user's profile
+      const newLikeInfo: LikeInfo = {
+        userId: user.id,
+        userName: profile.display_name || profile.username || "You",
+        avatar: profile.avatar,
+        profile_picture: profile.profile_picture,
+      };
 
+      // Update UI with full profile info
+      setFeed((prev) => {
         return prev.map((post) => {
-          if (post.id === itemId) {
-            console.log("Current likes:", post.data.likes);
-            console.log("Adding user:", user.id);
-          }
           return post.id === itemId
             ? {
                 ...post,
-                data: { ...post.data, likes: [...post.data.likes, user.id] },
+                data: { ...post.data, likes: [...post.data.likes, newLikeInfo] },
               }
             : post;
         });
@@ -1109,7 +1154,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
 
       // No notification for unlikes
 
-      // Update local feed state
+      // Update local feed state - filter by userId
       setFeed((prev) =>
         prev.map((post) =>
           post.id === itemId
@@ -1117,7 +1162,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
                 ...post,
                 data: {
                   ...post.data,
-                  likes: post.data.likes.filter((id) => id !== user.id),
+                  likes: post.data.likes.filter((like) => like.userId !== user.id),
                 },
               }
             : post
