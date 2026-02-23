@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useState, useRef } from "react";
 import {
   Alert,
@@ -34,12 +34,37 @@ import { CameraCapture } from "../components/CameraCapture";
 
 export default function SaveLocationScreen() {
   const router = useRouter();
-  const { location, saveCurrentLocation, getLocation } = useLocation();
+  const params = useLocalSearchParams<{
+    prefillName?: string;
+    prefillLat?: string;
+    prefillLng?: string;
+    prefillCategory?: string;
+    prefillDescription?: string;
+  }>();
+
+  const {
+    location: gpsLocation,
+    saveCurrentLocation,
+    getLocation,
+  } = useLocation();
   const { checkAndAddToTrip } = useAutoAddToTrip();
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<CategoryType>("other");
+  // Local location state that can be overridden by prefill
+  const [localLocation, setLocalLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
+  // Use local if set (from prefill), otherwise GPS
+  const location = localLocation || gpsLocation;
+
+  const [name, setName] = useState(params.prefillName || "");
+  const [description, setDescription] = useState(
+    params.prefillDescription || "",
+  );
+  const [category, setCategory] = useState<CategoryType>(
+    (params.prefillCategory as CategoryType) || "other",
+  );
   const [saving, setSaving] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
 
@@ -64,6 +89,16 @@ export default function SaveLocationScreen() {
       fetchLocationSuggestions();
     }
   }, [location]);
+
+  // Handle prefilled location from "I Went Here Too"
+  useEffect(() => {
+    if (params.prefillLat && params.prefillLng) {
+      setLocalLocation({
+        latitude: parseFloat(params.prefillLat),
+        longitude: parseFloat(params.prefillLng),
+      });
+    }
+  }, [params.prefillLat, params.prefillLng]);
 
   const fetchLocationSuggestions = async () => {
     if (!location) return;
@@ -281,8 +316,14 @@ export default function SaveLocationScreen() {
               <TouchableOpacity
                 style={styles.refreshButton}
                 onPress={async () => {
-                  await getLocation();
-                  fetchLocationSuggestions();
+                  // If we have prefilled location, refetch suggestions for it
+                  if (localLocation) {
+                    fetchLocationSuggestions();
+                  } else {
+                    // Otherwise get fresh GPS location
+                    await getLocation();
+                    fetchLocationSuggestions();
+                  }
                 }}
               >
                 <Ionicons

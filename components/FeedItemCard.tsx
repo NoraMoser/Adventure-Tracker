@@ -37,7 +37,7 @@ interface FeedItemCardProps {
     itemId: string,
     text: string,
     replyToId?: string,
-    replyToUserName?: string
+    replyToUserName?: string,
   ) => void;
   onShare: (item: any) => void;
   onAddToWishlist: (location: any) => void;
@@ -256,6 +256,29 @@ export function FeedItemCard({
           {location.location?.longitude?.toFixed(4)}
         </Text>
       </View>
+
+      {/* ADD THIS: "I Went Here Too" Button - only show if not your own post */}
+      {location.sharedBy?.id !== currentUserId && (
+        <TouchableOpacity
+          style={styles.wentHereButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push({
+              pathname: "/save-location",
+              params: {
+                prefillName: location.name,
+                prefillLat: location.location.latitude.toString(),
+                prefillLng: location.location.longitude.toString(),
+                prefillCategory: location.category || "other",
+                prefillDescription: location.description || "",
+              },
+            });
+          }}
+        >
+          <Ionicons name="add-circle" size={20} color="white" />
+          <Text style={styles.wentHereButtonText}>I Went Here Too!</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -301,7 +324,7 @@ export function FeedItemCard({
               Math.ceil(
                 (new Date(trip.end_date).getTime() -
                   new Date(trip.start_date).getTime()) /
-                  (1000 * 60 * 60 * 24)
+                  (1000 * 60 * 60 * 24),
               )}{" "}
             days
           </Text>
@@ -427,7 +450,7 @@ export function FeedItemCard({
                 html: generateLocationMiniMapHTML(
                   item.data.location.latitude,
                   item.data.location.longitude,
-                  item.data.name
+                  item.data.name,
                 ),
               }}
               style={styles.miniMap}
@@ -1404,5 +1427,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: theme.colors.navy,
+  },
+  wentHereButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.burntOrange,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  wentHereButtonText: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "600",
   },
 });

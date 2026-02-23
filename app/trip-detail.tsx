@@ -260,6 +260,9 @@ export default function TripDetailScreen() {
   const [processedSpots, setProcessedSpots] = useState<any[]>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
+  const [contributorProfiles, setContributorProfiles] = useState<
+    Record<string, any>
+  >({});
 
   // Journal entries state
   const [showJournalPicker, setShowJournalPicker] = useState(false);
@@ -350,6 +353,43 @@ export default function TripDetailScreen() {
       subscribeToMessages();
     }
   }, [trip?.id, canAccessChat, activeTab]);
+  // Add this useEffect after your existing useEffects
+  useEffect(() => {
+    if (trip && trip.items) {
+      loadContributorProfiles();
+    }
+  }, [trip?.id, trip?.items]);
+
+  const loadContributorProfiles = async () => {
+    if (!trip) return;
+
+    // Get all unique added_by user IDs from trip items
+    const contributorIds = [
+      ...new Set(
+        trip.items.map((item) => item.added_by).filter((id) => id), // Remove nulls
+      ),
+    ];
+
+    if (contributorIds.length === 0) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar, profile_picture")
+        .in("id", contributorIds);
+
+      if (error) throw error;
+
+      const profilesMap: Record<string, any> = {};
+      (data || []).forEach((profile) => {
+        profilesMap[profile.id] = profile;
+      });
+
+      setContributorProfiles(profilesMap);
+    } catch (error) {
+      console.error("Error loading contributor profiles:", error);
+    }
+  };
 
   // Refresh journal entries on focus
   useFocusEffect(
@@ -581,48 +621,192 @@ export default function TripDetailScreen() {
 
     setLoadingWeather(true);
 
-    let lat = 47.6062;
-    let lon = -122.3321;
+    try {
+      // Combine all items with dates and locations
+      const allItemsWithDates = [
+        ...tripActivities.map((activity) => ({
+          date: activity.displayDate,
+          location: activity.route?.[0]
+            ? {
+                latitude: activity.route[0].latitude,
+                longitude: activity.route[0].longitude,
+              }
+            : null,
+          type: "activity" as const,
+          timestamp: new Date(activity.displayDate).getTime(),
+        })),
+        ...processedSpots.map((spot) => ({
+          date: spot.displayDate,
+          location: spot.location,
+          type: "spot" as const,
+          timestamp: new Date(spot.displayDate).getTime(),
+        })),
+      ].filter((item) => item.date && item.location);
 
-    const firstSpot = processedSpots.find((spot) => spot.location);
-    const firstActivity = tripActivities.find(
-      (activity) => activity.route?.length > 0,
-    );
+      // Sort by date
+      allItemsWithDates.sort((a, b) => a.timestamp - b.timestamp);
 
-    if (firstSpot?.location) {
-      lat = firstSpot.location.latitude;
-      lon = firstSpot.location.longitude;
-    } else if (firstActivity?.route) {
-      lat = firstActivity.route[0].latitude;
-      lon = firstActivity.route[0].longitude;
+      // Create a map of date -> best location for that day
+      const dateToLocation: Record<
+        string,
+        { latitude: number; longitude: number }
+      > = {};
+
+      allItemsWithDates.forEach((item) => {
+        const dateStr = new Date(item.date).toISOString().split("T")[0];
+        const existing = dateToLocation[dateStr];
+
+        if (!existing) {
+          // First location for this day
+          dateToLocation[dateStr] = item.location!;
+        } else {
+          // Multiple locations on same day - pick the best one:
+          // 1. Prefer activities over spots (activities = where you were doing things)
+          // 2. Prefer later timestamps (destination over departure)
+          const existingItem = allItemsWithDates.find(
+            (i) =>
+              i.location === existing &&
+              new Date(i.date).toISOString().split("T")[0] === dateStr,
+          );
+
+          if (item.type === "activity" && existingItem?.type === "spot") {
+            // Activity beats spot
+            dateToLocation[dateStr] = item.location!;
+          } else if (
+            item.type === existingItem?.type &&
+            item.timestamp > existingItem.timestamp
+          ) {
+            // Same type, but later in the day
+            dateToLocation[dateStr] = item.location!;
+          }
+          // Otherwise keep existing
+        }
+      });
+
+      // Group consecutive days at the same location into segments
+      const segments: Array<{
+        startDate: Date;
+        endDate: Date;
+        location: { latitude: number; longitude: number };
+      }> = [];
+
+      const tripStart =
+        trip.start_date instanceof Date
+          ? trip.start_date
+          : new Date(trip.start_date);
+      const tripEnd =
+        trip.end_date instanceof Date ? trip.end_date : new Date(trip.end_date);
+
+      let currentDate = new Date(tripStart);
+      let segmentStart = new Date(tripStart);
+      let currentLocation: { latitude: number; longitude: number } | null =
+        null;
+
+      // Default to first activity/spot location (most likely the destination)
+      const defaultLocation = allItemsWithDates.find(
+        (item) => item.type === "activity",
+      )?.location ||
+        allItemsWithDates[0]?.location || {
+          latitude: 47.6062,
+          longitude: -122.3321,
+        };
+
+      while (currentDate <= tripEnd) {
+        const dateStr = currentDate.toISOString().split("T")[0];
+        const dayLocation =
+          dateToLocation[dateStr] || currentLocation || defaultLocation;
+
+        // Check if location changed significantly (more than ~50km = ~0.5 degrees)
+        const locationChanged =
+          currentLocation &&
+          (Math.abs(currentLocation.latitude - dayLocation.latitude) > 0.5 ||
+            Math.abs(currentLocation.longitude - dayLocation.longitude) > 0.5);
+
+        if (locationChanged) {
+          // Save previous segment
+          const prevDay = new Date(currentDate);
+          prevDay.setDate(prevDay.getDate() - 1);
+          segments.push({
+            startDate: segmentStart,
+            endDate: prevDay,
+            location: currentLocation!,
+          });
+          segmentStart = new Date(currentDate);
+        }
+
+        currentLocation = dayLocation;
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Add final segment
+      if (currentLocation) {
+        segments.push({
+          startDate: segmentStart,
+          endDate: tripEnd,
+          location: currentLocation,
+        });
+      }
+
+      console.log(
+        "📍 Weather segments:",
+        segments.map((s) => ({
+          start: s.startDate.toISOString().split("T")[0],
+          end: s.endDate.toISOString().split("T")[0],
+          lat: s.location.latitude.toFixed(2),
+          lon: s.location.longitude.toFixed(2),
+        })),
+      );
+
+      // Fetch weather for each segment
+      const weatherPromises = segments.map((segment) =>
+        getWeatherForLocation(
+          segment.location.latitude,
+          segment.location.longitude,
+          segment.startDate,
+          segment.endDate,
+          useImperial,
+        ),
+      );
+
+      const weatherResults = await Promise.all(weatherPromises);
+
+      // Combine all weather data
+      const combinedWeather = {
+        daily: {
+          time: [] as string[],
+          temperature_2m_max: [] as number[],
+          temperature_2m_min: [] as number[],
+          precipitation_sum: [] as number[],
+          weathercode: [] as number[],
+        },
+      };
+
+      weatherResults.forEach((weather) => {
+        if (weather?.daily) {
+          combinedWeather.daily.time.push(...(weather.daily.time || []));
+          combinedWeather.daily.temperature_2m_max.push(
+            ...(weather.daily.temperature_2m_max || []),
+          );
+          combinedWeather.daily.temperature_2m_min.push(
+            ...(weather.daily.temperature_2m_min || []),
+          );
+          combinedWeather.daily.precipitation_sum.push(
+            ...(weather.daily.precipitation_sum || []),
+          );
+          combinedWeather.daily.weathercode.push(
+            ...(weather.daily.weathercode || []),
+          );
+        }
+      });
+
+      setWeatherData(combinedWeather);
+    } catch (error) {
+      console.error("Error loading weather:", error);
+      setWeatherData(null);
+    } finally {
+      setLoadingWeather(false);
     }
-
-    const weather = await getWeatherForLocation(
-      lat,
-      lon,
-      trip.start_date,
-      trip.end_date,
-      useImperial,
-    );
-    setWeatherData(weather);
-    setLoadingWeather(false);
   };
-
-  if (!trip) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Trip not found</Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   const formatDate = (date: Date) => {
     const d = date instanceof Date ? date : new Date(date);
@@ -1029,6 +1213,15 @@ export default function TripDetailScreen() {
                         ? ` • ${formatDuration(activity.duration)}`
                         : ""}
                     </Text>
+                    {/* ADD THIS */}
+                    <ContributorBadge
+                      userId={
+                        trip.items.find(
+                          (item: any) => item.id === activity.tripItemId,
+                        )?.added_by
+                      }
+                    />
+
                     {activity.photos && activity.photos.length > 1 && (
                       <Text style={styles.photoCount}>
                         📸 {activity.photos.length} photos
@@ -1098,6 +1291,14 @@ export default function TripDetailScreen() {
                             ? ` • ${new Date(spot.displayDate).toLocaleDateString()}`
                             : ""}
                       </Text>
+                      <ContributorBadge
+                        userId={
+                          trip.items.find(
+                            (item: any) => item.id === spot.tripItemId,
+                          )?.added_by
+                        }
+                      />
+
                       {spot.description && (
                         <Text style={styles.itemDescription} numberOfLines={1}>
                           {spot.description}
@@ -1202,6 +1403,8 @@ export default function TripDetailScreen() {
                       {new Date(entry.created_at).toLocaleDateString()}
                       {entry.weather && ` • ${entry.weather}`}
                     </Text>
+                    <ContributorBadge userId={entry.user_id} />
+
                     <Text style={styles.journalPreview} numberOfLines={2}>
                       {entry.content}
                     </Text>
@@ -1815,6 +2018,27 @@ export default function TripDetailScreen() {
           </View>
         </View>
       </Modal>
+    );
+  };
+
+  const ContributorBadge = ({ userId }: { userId?: string }) => {
+    if (!userId || !contributorProfiles[userId]) return null;
+
+    const profile = contributorProfiles[userId];
+    const isCurrentUser = userId === user?.id;
+    const displayName = isCurrentUser
+      ? "You"
+      : profile.display_name || profile.username || "Unknown";
+
+    return (
+      <View style={styles.contributorBadge}>
+        <Ionicons
+          name={isCurrentUser ? "person" : "person-outline"}
+          size={12}
+          color={theme.colors.gray}
+        />
+        <Text style={styles.contributorText}>{displayName}</Text>
+      </View>
     );
   };
 
@@ -2831,5 +3055,21 @@ const styles = StyleSheet.create({
     color: theme.colors.gray,
     textAlign: "center",
     flex: 1,
+  },
+  contributorBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "10",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    gap: 4,
+  },
+  contributorText: {
+    fontSize: 11,
+    color: theme.colors.gray,
+    fontWeight: "500",
   },
 });
