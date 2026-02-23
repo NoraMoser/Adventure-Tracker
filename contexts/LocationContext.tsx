@@ -11,6 +11,12 @@ import { supabase } from "../lib/supabase";
 import { PhotoService } from "../services/photoService";
 import { useAuth } from "./AuthContext";
 import * as MediaLibrary from "expo-media-library";
+import { Visit } from "../types/visits";
+import { Alert } from "react-native"; // ADD THIS LINE
+
+const generateId = () => {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+};
 
 interface LocationCoords {
   latitude: number;
@@ -21,12 +27,15 @@ interface SavedSpot {
   id: string;
   name: string;
   location: LocationCoords;
-  locationDate: Date; // When the location was visited
-  photos?: string[];
-  timestamp: Date; // When saved to DB
-  description?: string;
+  visits?: Visit[]; // NEW - replaces single locationDate
+  timestamp: Date; // When first saved to DB
+  description?: string; // Overall description
   category: CategoryType;
-  rating?: number;
+  rating?: number; // Overall rating
+
+  // DEPRECATED - keep for backward compatibility during transition
+  locationDate?: Date;
+  photos?: string[];
 }
 
 interface LocationContextType {
@@ -38,7 +47,7 @@ interface LocationContextType {
     description?: string,
     photos?: string[],
     category?: CategoryType,
-    locationDate?: Date
+    locationDate?: Date,
   ) => Promise<SavedSpot | null>; // Change return type
   saveManualLocation: (
     name: string,
@@ -46,7 +55,7 @@ interface LocationContextType {
     description?: string,
     photos?: string[],
     category?: CategoryType,
-    locationDate?: Date
+    locationDate?: Date,
   ) => Promise<void>;
   updateSpot: (spotId: string, updatedSpot: SavedSpot) => Promise<void>;
   addPhotoToSpot: (spotId: string, photoUri: string) => Promise<void>;
@@ -55,12 +64,19 @@ interface LocationContextType {
   error: string | null;
   refreshSpots: () => Promise<void>;
   migrateLocalPhotosToSupabase: () => Promise<number | undefined>;
+  addVisitToSpot: (
+    spotId: string,
+    visitDate: Date,
+    photos?: string[],
+    notes?: string,
+  ) => Promise<SavedSpot | null>;
+  deleteVisit: (spotId: string, visitId: string) => Promise<void>;
 }
 
 export type { SavedSpot };
 
 const LocationContext = createContext<LocationContextType | undefined>(
-  undefined
+  undefined,
 );
 
 export const LocationProvider: React.FC<{ children: ReactNode }> = ({
@@ -111,7 +127,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         },
         (payload) => {
           loadSavedSpots();
-        }
+        },
       )
       .subscribe();
 
@@ -134,8 +150,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         .from("locations")
         .select("*")
         .eq("user_id", user.id)
-        .order("location_date", { ascending: false }) // Order by location date
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false }); // We'll sort by visit dates in memory
 
       if (fetchError) {
         console.error("Supabase error loading locations:", fetchError);
@@ -143,34 +158,79 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       if (data && data.length > 0) {
-        const transformedSpots: SavedSpot[] = data.map((spot) => ({
-          id: spot.id,
-          name: spot.name,
-          location: {
-            latitude: spot.latitude,
-            longitude: spot.longitude,
-          },
-          locationDate: spot.location_date
-            ? new Date(
-                spot.location_date.endsWith?.("Z")
-                  ? spot.location_date
-                  : spot.location_date + "Z"
-              )
-            : new Date(spot.created_at),
-          photos: spot.photos || [],
-          timestamp: new Date(spot.created_at),
-          description: spot.description,
-          category: (spot.category as CategoryType) || "other",
-          rating: spot.rating,
-        }));
+        const transformedSpots: SavedSpot[] = data.map((spot) => {
+          // Handle visits - either from new visits column or migrate from old fields
+          let visits: Visit[] = [];
+
+          if (
+            spot.visits &&
+            Array.isArray(spot.visits) &&
+            spot.visits.length > 0
+          ) {
+            // New format - transform JSONB visits to Visit objects
+            visits = spot.visits.map((v: any) => ({
+              id: v.id,
+              date: new Date(v.date),
+              photos: v.photos || [],
+              notes: v.notes || undefined,
+            }));
+          } else {
+            // Old format - create single visit from old fields
+            visits = [
+              {
+                id: `legacy-${spot.id}`,
+                date: spot.location_date
+                  ? new Date(spot.location_date)
+                  : new Date(spot.created_at),
+                photos: spot.photos || [],
+                notes: undefined,
+              },
+            ];
+          }
+
+          return {
+            id: spot.id,
+            name: spot.name,
+            location: {
+              latitude: spot.latitude,
+              longitude: spot.longitude,
+            },
+            visits,
+            timestamp: new Date(spot.created_at),
+            description: spot.description,
+            category: (spot.category as CategoryType) || "other",
+            rating: spot.rating,
+
+            // Keep deprecated fields for fallback
+            locationDate: spot.location_date
+              ? new Date(spot.location_date)
+              : new Date(spot.created_at),
+            photos: spot.photos || [],
+          };
+        });
+
+        // Sort by most recent visit date
+        transformedSpots.sort((a, b) => {
+          const aLatest =
+            a.visits.length > 0
+              ? Math.max(...a.visits.map((v) => v.date.getTime()))
+              : a.timestamp.getTime();
+          const bLatest =
+            b.visits.length > 0
+              ? Math.max(...b.visits.map((v) => v.date.getTime()))
+              : b.timestamp.getTime();
+          return bLatest - aLatest;
+        });
+
         setSavedSpots(transformedSpots);
 
         const needsMigration = transformedSpots.some((spot) =>
-          spot.photos?.some((photo) => !photo.startsWith("http"))
+          spot.visits.some((visit) =>
+            visit.photos.some((photo) => !photo.startsWith("http")),
+          ),
         );
 
         if (needsMigration) {
-          // Don't await this - let it run in background
           migrateLocalPhotosToSupabase().then((count) => {
             if (count && count > 0) {
               console.log(`Auto-migrated ${count} photos`);
@@ -223,7 +283,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const processPhotosForUpload = async (
-    photos: string[]
+    photos: string[],
   ): Promise<string[]> => {
     if (!photos || photos.length === 0 || !user) return [];
 
@@ -239,7 +299,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
         const uploadedUrl = await PhotoService.uploadPhoto(
           photo,
           "location-photos",
-          user.id
+          user.id,
         );
         if (uploadedUrl) {
           finalUrls.push(uploadedUrl);
@@ -254,7 +314,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const saveSpot = async (
-    spot: Omit<SavedSpot, "id" | "timestamp"> & { locationDate?: Date }
+    spot: Omit<SavedSpot, "id" | "timestamp"> & { locationDate?: Date },
   ): Promise<SavedSpot | null> => {
     if (!user) {
       setError("Please sign in to save locations");
@@ -270,19 +330,30 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     }
 
     try {
+      // Upload photos
       const photoUrls = await processPhotosForUpload(spot.photos || []);
+
+      // Create the first visit
+      const firstVisit = {
+        id: generateId(),
+        date: (spot.locationDate || new Date()).toISOString(),
+        photos: photoUrls,
+        notes: null,
+      };
 
       const { data, error: insertError } = await supabase
         .from("locations")
         .insert({
           user_id: user.id,
           name: spot.name,
-          location_date: (spot.locationDate || new Date()).toISOString(),
           latitude: spot.location.latitude,
           longitude: spot.location.longitude,
           description: spot.description || null,
           category: spot.category || "other",
           rating: spot.rating || null,
+          visits: [firstVisit], // NEW - save as visits array
+          // Keep old fields for backward compatibility
+          location_date: firstVisit.date,
           photos: photoUrls,
         })
         .select()
@@ -298,14 +369,21 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             latitude: data.latitude,
             longitude: data.longitude,
           },
-          locationDate: data.location_date
-            ? new Date(data.location_date)
-            : new Date(),
-          photos: data.photos || [],
+          visits: [
+            {
+              id: firstVisit.id,
+              date: new Date(firstVisit.date),
+              photos: photoUrls,
+              notes: undefined,
+            },
+          ],
           timestamp: new Date(data.created_at),
           description: data.description,
           category: (data.category as CategoryType) || "other",
           rating: data.rating,
+          // Deprecated fields
+          locationDate: new Date(firstVisit.date),
+          photos: photoUrls,
         };
 
         setSavedSpots((prev) => [newSpot, ...prev]);
@@ -318,6 +396,261 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       console.error("Error saving spot:", error);
       setError("Failed to save location");
       throw error;
+    }
+  };
+
+  const addVisitToSpot = async (
+    spotId: string,
+    visitDate: Date,
+    photos: string[] = [],
+    notes?: string,
+  ): Promise<SavedSpot | null> => {
+    console.log("🔵 addVisitToSpot called:", {
+      spotId,
+      visitDate,
+      photosCount: photos.length,
+    });
+
+    if (!user) {
+      setError("Please sign in to add visits");
+      return null;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const spot = savedSpots.find((s) => s.id === spotId);
+      if (!spot) {
+        setError("Spot not found");
+        return null;
+      }
+
+      // Upload photos
+      const photoUrls = await processPhotosForUpload(photos);
+
+      // Create new visit
+      const newVisit = {
+        id: generateId(),
+        date: visitDate.toISOString(),
+        photos: photoUrls,
+        notes: notes || null,
+      };
+
+      // Combine with existing visits
+      const existingVisits = spot.visits.map((v) => ({
+        id: v.id,
+        date: v.date.toISOString(),
+        photos: v.photos,
+        notes: v.notes || null,
+      }));
+
+      const updatedVisits = [...existingVisits, newVisit];
+      console.log("📋 Total visits after adding:", updatedVisits.length);
+
+      // Update database
+      const { error: updateError } = await supabase
+        .from("locations")
+        .update({
+          visits: updatedVisits,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", spotId)
+        .eq("user_id", user.id);
+
+      if (updateError) {
+        console.log("❌ Database update error:", updateError);
+        throw updateError;
+      }
+      console.log("✅ Database updated successfully");
+
+      // SYNC TO TRIP ITEMS - Update all trip items that reference this spot
+      console.log("🔍 Looking for trip items with spotId:", spotId);
+
+      const { data: tripItems, error: tripItemsError } = await supabase
+        .from("trip_items")
+        .select("id, data")
+        .eq("type", "spot")
+        .eq("data->>id", spotId);
+      console.log("🎯 Found trip items:", tripItems?.length || 0);
+
+      if (tripItems) {
+        console.log(
+          "Trip items details:",
+          tripItems.map((ti) => ({
+            id: ti.id,
+            spotName: ti.data.name,
+            currentVisitsCount: ti.data.visits?.length || 0,
+          })),
+        );
+      }
+
+      if (!tripItemsError && tripItems && tripItems.length > 0) {
+        console.log("🔄 Updating", tripItems.length, "trip items...");
+
+        // Update each trip item with new visits data
+        for (const tripItem of tripItems) {
+          const updatedData = {
+            ...tripItem.data,
+            visits: updatedVisits, // Add the updated visits array
+          };
+
+          console.log(
+            "Updating trip item:",
+            tripItem.id,
+            "with",
+            updatedVisits.length,
+            "visits",
+          );
+
+          const { error: tripUpdateError } = await supabase
+            .from("trip_items")
+            .update({ data: updatedData })
+            .eq("id", tripItem.id);
+
+          if (tripUpdateError) {
+            console.log("❌ Trip item update error:", tripUpdateError);
+          } else {
+            console.log("✅ Trip item updated:", tripItem.id);
+          }
+        }
+      }
+
+      // Create the updated spot object
+      const updatedSpot = {
+        ...spot,
+        visits: [
+          ...spot.visits,
+          {
+            id: newVisit.id,
+            date: new Date(newVisit.date),
+            photos: photoUrls,
+            notes: notes,
+          },
+        ],
+      };
+
+      // Update local state
+      setSavedSpots((prev) =>
+        prev.map((s) => (s.id === spotId ? updatedSpot : s)),
+      );
+      console.log(
+        "✅ Local state updated, returning spot with",
+        updatedSpot.visits.length,
+        "visits",
+      );
+
+      return updatedSpot;
+    } catch (err) {
+      console.error("Error adding visit to spot:", err);
+      setError("Failed to add visit");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteVisit = async (spotId: string, visitId: string) => {
+    if (!user) {
+      setError("Please sign in to delete visits");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const spot = savedSpots.find((s) => s.id === spotId);
+      if (!spot) {
+        setError("Spot not found");
+        return;
+      }
+
+      console.log("🗑️ Deleting visit:", visitId, "from spot:", spotId);
+
+      // Remove the visit from the array
+      const updatedVisits = spot.visits
+        .filter((v) => v.id !== visitId)
+        .map((v) => ({
+          id: v.id,
+          date: v.date.toISOString(),
+          photos: v.photos,
+          notes: v.notes || null,
+        }));
+
+      console.log("📋 Remaining visits:", updatedVisits.length);
+
+      // Don't allow deleting the last visit
+      if (updatedVisits.length === 0) {
+        Alert.alert(
+          "Cannot Delete",
+          "You must keep at least one visit. Delete the entire spot instead if you want to remove it.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Update database
+      const { error: updateError } = await supabase
+        .from("locations")
+        .update({
+          visits: updatedVisits,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", spotId)
+        .eq("user_id", user.id);
+
+      if (updateError) {
+        console.log("❌ Database update error:", updateError);
+        throw updateError;
+      }
+
+      console.log("✅ Database updated successfully");
+
+      // SYNC TO TRIP ITEMS
+      const { data: tripItems, error: tripItemsError } = await supabase
+        .from("trip_items")
+        .select("id, data")
+        .eq("type", "spot")
+        .eq("data->>id", spotId);
+
+      console.log("🎯 Found trip items to update:", tripItems?.length || 0);
+
+      if (!tripItemsError && tripItems && tripItems.length > 0) {
+        for (const tripItem of tripItems) {
+          const updatedData = {
+            ...tripItem.data,
+            visits: updatedVisits,
+          };
+
+          await supabase
+            .from("trip_items")
+            .update({ data: updatedData })
+            .eq("id", tripItem.id);
+
+          console.log("✅ Trip item updated:", tripItem.id);
+        }
+      }
+
+      // Update local state
+      setSavedSpots((prev) =>
+        prev.map((s) =>
+          s.id === spotId
+            ? {
+                ...s,
+                visits: s.visits.filter((v) => v.id !== visitId),
+              }
+            : s,
+        ),
+      );
+
+      console.log("✅ Local state updated");
+    } catch (err) {
+      console.error("❌ Error deleting visit:", err);
+      setError("Failed to delete visit");
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -340,7 +673,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     description: string,
     photos: string[],
     category: CategoryType,
-    locationDate: Date
+    locationDate: Date,
   ): Promise<any> => {
     if (!location) {
       setError("No location available to save");
@@ -386,7 +719,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     description?: string,
     photos?: string[],
     category: CategoryType = "other",
-    locationDate?: Date
+    locationDate?: Date,
   ) => {
     if (!user) {
       setError("Please sign in to save locations");
@@ -426,6 +759,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
       const photoUrls = await processPhotosForUpload(updatedSpot.photos || []);
 
+      // Update in locations table
       const { error: updateError } = await supabase
         .from("locations")
         .update({
@@ -444,10 +778,40 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
       if (updateError) throw updateError;
 
+      // SYNC TO TRIP ITEMS - Update all trip items that reference this spot
+      const { data: tripItems, error: tripItemsError } = await supabase
+        .from("trip_items")
+        .select("id, data")
+        .eq("type", "spot")
+        .eq("data->>id", spotId);
+
+      if (!tripItemsError && tripItems && tripItems.length > 0) {
+        // Update each trip item with new data
+        for (const tripItem of tripItems) {
+          const updatedData = {
+            ...tripItem.data,
+            name: updatedSpot.name,
+            description: updatedSpot.description,
+            category: updatedSpot.category,
+            rating: updatedSpot.rating,
+            photos: photoUrls, // Updated photos sync to trips
+            location: {
+              latitude: updatedSpot.location.latitude,
+              longitude: updatedSpot.location.longitude,
+            },
+          };
+
+          await supabase
+            .from("trip_items")
+            .update({ data: updatedData })
+            .eq("id", tripItem.id);
+        }
+      }
+
       setSavedSpots((prev) =>
         prev.map((spot) =>
-          spot.id === spotId ? { ...updatedSpot, photos: photoUrls } : spot
-        )
+          spot.id === spotId ? { ...updatedSpot, photos: photoUrls } : spot,
+        ),
       );
     } catch (err) {
       console.error("Error updating spot:", err);
@@ -476,7 +840,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
       const photoUrl = await PhotoService.uploadPhoto(
         photoUri,
         "location-photos",
-        user.id
+        user.id,
       );
       if (!photoUrl) {
         throw new Error("Failed to upload photo");
@@ -501,7 +865,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
             return { ...s, photos: updatedPhotos };
           }
           return s;
-        })
+        }),
       );
     } catch (err) {
       console.error("Error adding photo to spot:", err);
@@ -550,7 +914,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
 
         // Check if any photos are still local URIs
         const localPhotos = spot.photos.filter(
-          (photo) => !photo.startsWith("http") && !photo.startsWith("https")
+          (photo) => !photo.startsWith("http") && !photo.startsWith("https"),
         );
 
         if (localPhotos.length > 0) {
@@ -599,6 +963,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({
     error,
     refreshSpots,
     migrateLocalPhotosToSupabase,
+    addVisitToSpot,
+    deleteVisit,
   };
 
   return (

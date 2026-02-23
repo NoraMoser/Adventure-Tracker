@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -24,6 +24,13 @@ import { theme } from "../constants/theme";
 import { SavedSpot, useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { ShareService } from "../services/shareService";
+import { useTrips } from "../contexts/TripContext"; // Add this import at the top
+import { useFocusEffect } from "@react-navigation/native";
+
+const isValidDate = (date: Date): boolean => {
+  return date instanceof Date && !isNaN(date.getTime());
+};
+
 // Filter modal component
 const FilterModal = ({
   visible,
@@ -42,7 +49,7 @@ const FilterModal = ({
 }) => {
   const categoryList = Object.entries(categories) as [
     CategoryType,
-    (typeof categories)[CategoryType]
+    (typeof categories)[CategoryType],
   ][];
 
   return (
@@ -116,7 +123,6 @@ const FilterModal = ({
   );
 };
 
-// Spot Detail Modal Component
 const SpotDetailModal = ({
   visible,
   spot,
@@ -125,6 +131,8 @@ const SpotDetailModal = ({
   onDelete,
   onShare,
   onNavigate,
+  onAddVisit,
+  onDeleteVisit,
 }: {
   visible: boolean;
   spot: SavedSpot | null;
@@ -133,7 +141,11 @@ const SpotDetailModal = ({
   onDelete: (spot: SavedSpot) => void;
   onShare: (spot: SavedSpot) => void;
   onNavigate: (spot: SavedSpot) => void;
+  onAddVisit: (spot: SavedSpot) => void; // NEW
+  onDeleteVisit: (spotId: string, visitId: string) => Promise<void>; // ADD THIS
 }) => {
+  const [expandedVisitId, setExpandedVisitId] = useState<string | null>(null);
+
   if (!spot) return null;
 
   const category = categories[spot.category] || categories.other;
@@ -142,15 +154,14 @@ const SpotDetailModal = ({
     const latDir = lat >= 0 ? "N" : "S";
     const lngDir = lng >= 0 ? "E" : "W";
     return `${Math.abs(lat).toFixed(4)}°${latDir}, ${Math.abs(lng).toFixed(
-      4
+      4,
     )}°${lngDir}`;
   };
 
-  const formatDetailDate = () => {
-    const dateToFormat = spot.locationDate || spot.timestamp;
-    if (!dateToFormat) return "";
+  const formatVisitDate = (date: Date) => {
+    const d = new Date(date);
+    if (!isValidDate(d)) return "Invalid date";
 
-    const d = new Date(dateToFormat);
     return d.toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -158,6 +169,11 @@ const SpotDetailModal = ({
       day: "numeric",
     });
   };
+
+  // Sort visits by date (most recent first)
+  const sortedVisits = [...(spot.visits || [])].sort(
+    (a, b) => b.date.getTime() - a.date.getTime(),
+  );
 
   return (
     <Modal
@@ -197,11 +213,12 @@ const SpotDetailModal = ({
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={detailStyles.name}>{spot.name}</Text>
 
-            {/* Date display in detail modal */}
-            <View style={detailStyles.dateContainer}>
+            {/* Visit count */}
+            <View style={detailStyles.visitCount}>
               <Ionicons name="calendar" size={16} color={theme.colors.forest} />
-              <Text style={detailStyles.dateText}>
-                Visited {formatDetailDate()}
+              <Text style={detailStyles.visitCountText}>
+                Visited {sortedVisits.length}{" "}
+                {sortedVisits.length === 1 ? "time" : "times"}
               </Text>
             </View>
 
@@ -233,22 +250,132 @@ const SpotDetailModal = ({
               </Text>
             </View>
 
-            {spot.photos && spot.photos.length > 0 && (
-              <View style={detailStyles.photosSection}>
-                <Text style={detailStyles.sectionTitle}>Photos</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {spot.photos.map((photo, index) => (
-                    <TouchableImage
-                      key={index}
-                      source={{ uri: photo }}
-                      style={detailStyles.photo}
-                      images={spot.photos}
-                      imageIndex={index}
-                    />
-                  ))}
-                </ScrollView>
+            {/* Visit History Section */}
+            <View style={detailStyles.visitsSection}>
+              <View style={detailStyles.visitsSectionHeader}>
+                <Text style={detailStyles.sectionTitle}>Visit History</Text>
+                <TouchableOpacity
+                  style={detailStyles.addVisitButton}
+                  onPress={() => onAddVisit(spot)}
+                >
+                  <Ionicons
+                    name="add-circle"
+                    size={20}
+                    color={theme.colors.forest}
+                  />
+                  <Text style={detailStyles.addVisitButtonText}>
+                    Add a Visit
+                  </Text>
+                </TouchableOpacity>
               </View>
-            )}
+
+              {sortedVisits.map((visit, index) => (
+                <View key={visit.id} style={detailStyles.visitCard}>
+                  <TouchableOpacity
+                    style={detailStyles.visitHeader}
+                    onPress={() =>
+                      setExpandedVisitId(
+                        expandedVisitId === visit.id ? null : visit.id,
+                      )
+                    }
+                  >
+                    <View style={detailStyles.visitHeaderLeft}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={16}
+                        color={theme.colors.navy}
+                      />
+                      <Text style={detailStyles.visitDate}>
+                        {formatVisitDate(visit.date)}
+                      </Text>
+                      {visit.photos.length > 0 && (
+                        <View style={detailStyles.visitPhotoBadge}>
+                          <Ionicons name="images" size={12} color="white" />
+                          <Text style={detailStyles.visitPhotoBadgeText}>
+                            {visit.photos.length}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Ionicons
+                      name={
+                        expandedVisitId === visit.id
+                          ? "chevron-up"
+                          : "chevron-down"
+                      }
+                      size={20}
+                      color={theme.colors.gray}
+                    />
+                  </TouchableOpacity>
+
+                  {expandedVisitId === visit.id && (
+                    <View style={detailStyles.visitContent}>
+                      {visit.notes && (
+                        <Text style={detailStyles.visitNotes}>
+                          {visit.notes}
+                        </Text>
+                      )}
+                      {visit.photos.length > 0 && (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={detailStyles.visitPhotos}
+                        >
+                          {visit.photos.map((photo, photoIndex) => (
+                            <TouchableImage
+                              key={photoIndex}
+                              source={{ uri: photo }}
+                              style={detailStyles.visitPhoto}
+                              images={visit.photos}
+                              imageIndex={photoIndex}
+                            />
+                          ))}
+                        </ScrollView>
+                      )}
+                      {/* Add Delete Visit Button */}
+                      {sortedVisits.length > 1 && (
+                        <TouchableOpacity
+                          style={detailStyles.deleteVisitButton}
+                          onPress={() => {
+                            Alert.alert(
+                              "Delete Visit",
+                              `Delete visit from ${formatVisitDate(visit.date)}?`,
+                              [
+                                { text: "Cancel", style: "cancel" },
+                                {
+                                  text: "Delete",
+                                  style: "destructive",
+                                  onPress: async () => {
+                                    try {
+                                      await onDeleteVisit(spot.id, visit.id);
+                                      Alert.alert("Success", "Visit deleted");
+                                    } catch (error) {
+                                      Alert.alert(
+                                        "Error",
+                                        "Failed to delete visit",
+                                      );
+                                    }
+                                  },
+                                },
+                              ],
+                            );
+                          }}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={16}
+                            color="#FF4757"
+                          />
+                          <Text style={detailStyles.deleteVisitButtonText}>
+                            Delete Visit
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
 
             <View style={detailStyles.actions}>
               <TouchableOpacity
@@ -312,7 +439,6 @@ const SpotDetailModal = ({
   );
 };
 
-// Update the AnimatedListItem component props
 const AnimatedListItem = ({
   item,
   index,
@@ -350,29 +476,39 @@ const AnimatedListItem = ({
     outputRange: [0, 1],
   });
 
-  const formatLocationDate = () => {
-    const dateToFormat = item.locationDate || item.timestamp;
-    if (!dateToFormat) return "";
+  // Helper to format the latest visit date
+  const formatLatestVisit = () => {
+    if (!item.visits || item.visits.length === 0) {
+      return "No visits recorded";
+    }
 
-    const d = new Date(dateToFormat);
+    // Get most recent visit
+    const latestVisit = item.visits.reduce((latest, visit) =>
+      visit.date > latest.date ? visit : latest,
+    );
+
+    const d = new Date(latestVisit.date);
+
+    if (!isValidDate(d)) {
+      return "Invalid date";
+    }
+
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
 
-    // Create date-only versions (midnight local time)
     const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const todayOnly = new Date(
       today.getFullYear(),
       today.getMonth(),
-      today.getDate()
+      today.getDate(),
     );
     const yesterdayOnly = new Date(
       yesterday.getFullYear(),
       yesterday.getMonth(),
-      yesterday.getDate()
+      yesterday.getDate(),
     );
 
-    // Compare the date-only versions
     if (dateOnly.getTime() === todayOnly.getTime()) {
       return "Today";
     }
@@ -380,7 +516,6 @@ const AnimatedListItem = ({
       return "Yesterday";
     }
 
-    // For older dates, calculate days ago
     const diffTime = todayOnly.getTime() - dateOnly.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
@@ -390,13 +525,15 @@ const AnimatedListItem = ({
       return `${weeks} week${weeks > 1 ? "s" : ""} ago`;
     }
 
-    // Otherwise show date
     return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
     });
   };
+
+  const visitCount = item.visits?.length || 0;
+
   return (
     <Animated.View
       style={[
@@ -409,16 +546,21 @@ const AnimatedListItem = ({
     >
       <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.7}>
         <View style={styles.cardContent}>
-          {/* Date row at the top of the card */}
+          {/* Updated date row to show visit count and latest visit */}
           <View style={styles.dateRow}>
             <Ionicons
               name="calendar-outline"
               size={14}
               color={theme.colors.gray}
             />
-            <Text style={styles.dateText}>{formatLocationDate()}</Text>
+            <Text style={styles.dateText}>
+              {visitCount === 1
+                ? formatLatestVisit()
+                : `Visited ${visitCount} times • Last: ${formatLatestVisit()}`}
+            </Text>
           </View>
 
+          {/* Rest of card stays the same */}
           <View style={styles.cardHeader}>
             <View style={styles.cardLeft}>
               <View
@@ -493,12 +635,23 @@ const AnimatedListItem = ({
             </View>
           </View>
 
-          {item.photos && item.photos.length > 0 && (
-            <View style={styles.photoIndicator}>
-              <Ionicons name="images" size={16} color="white" />
-              <Text style={styles.photoCount}>{item.photos.length}</Text>
-            </View>
-          )}
+          {/* Show total photo count from both visits AND old photos field */}
+          {(() => {
+            const visitPhotos = item.visits
+              ? item.visits.reduce((sum, v) => sum + v.photos.length, 0)
+              : 0;
+            const legacyPhotos = item.photos?.length || 0;
+            const totalPhotos = Math.max(visitPhotos, legacyPhotos);
+
+            return (
+              totalPhotos > 0 && (
+                <View style={styles.photoIndicator}>
+                  <Ionicons name="images" size={16} color="white" />
+                  <Text style={styles.photoCount}>{totalPhotos}</Text>
+                </View>
+              )
+            );
+          })()}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -508,8 +661,17 @@ const AnimatedListItem = ({
 export default function SavedSpotsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ filter?: string }>();
-  const { savedSpots, deleteSpot, updateSpot, location } = useLocation();
+  const {
+    savedSpots,
+    deleteSpot,
+    updateSpot,
+    location,
+    deleteVisit,
+    refreshSpots,
+  } = useLocation();
+
   const { getMapTileUrl } = useSettings();
+  const { refreshTrips } = useTrips(); // ADD THIS LINE
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<
@@ -520,7 +682,7 @@ export default function SavedSpotsScreen() {
     Set<CategoryType>
   >(new Set(Object.keys(categories) as CategoryType[]));
   const [sortBy, setSortBy] = useState<"date" | "visited" | "name" | "rating">(
-    "visited"
+    "visited",
   );
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -539,6 +701,12 @@ export default function SavedSpotsScreen() {
       setShowFilterModal(true);
     }
   }, [params.filter]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshSpots();
+    }, []),
+  );
 
   // Filter and sort spots
   const filteredSpots = useMemo(() => {
@@ -584,6 +752,30 @@ export default function SavedSpotsScreen() {
     return filtered;
   }, [savedSpots, searchQuery, selectedCategories, sortBy, activeFilter]);
 
+  // Temporary debug - add this after the filteredSpots useMemo
+  useEffect(() => {
+    if (savedSpots.length > 0) {
+      console.log("First spot raw data:", {
+        name: savedSpots[0].name,
+        timestamp: savedSpots[0].timestamp,
+        locationDate: savedSpots[0].locationDate,
+        timestampType: typeof savedSpots[0].timestamp,
+        locationDateType: typeof savedSpots[0].locationDate,
+      });
+    }
+  }, [savedSpots]);
+
+  const handleAddVisit = (spot: SavedSpot) => {
+    setShowDetailModal(false);
+    setSelectedSpot(spot);
+    // For now, let's route to a simple screen
+    // We'll create a proper modal next
+    router.push({
+      pathname: "/add-visit",
+      params: { spotId: spot.id, spotName: spot.name },
+    });
+  };
+
   const handleToggleCategory = (category: CategoryType) => {
     const newCategories = new Set(selectedCategories);
     if (newCategories.has(category)) {
@@ -617,7 +809,7 @@ export default function SavedSpotsScreen() {
             setShowDetailModal(false);
           },
         },
-      ]
+      ],
     );
   };
 
@@ -639,7 +831,7 @@ export default function SavedSpotsScreen() {
       await ShareService.openInMaps(
         spot.location.latitude,
         spot.location.longitude,
-        spot.name
+        spot.name,
       );
     } catch (error) {
       Alert.alert("Error", "Failed to open in maps");
@@ -657,7 +849,7 @@ export default function SavedSpotsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleEditSpot = (spot: SavedSpot) => {
+  const handleEditSpot = async (spot: SavedSpot) => {
     setShowDetailModal(false);
     router.push({
       pathname: "/edit-location",
@@ -736,7 +928,7 @@ export default function SavedSpotsScreen() {
               ${filteredSpots
                 .map(
                   (spot) =>
-                    `[${spot.location.latitude}, ${spot.location.longitude}]`
+                    `[${spot.location.latitude}, ${spot.location.longitude}]`,
                 )
                 .join(",")}
             ];
@@ -942,6 +1134,11 @@ export default function SavedSpotsScreen() {
         onDelete={handleDeleteSpot}
         onShare={handleShareSpot}
         onNavigate={handleNavigateToSpot}
+        onAddVisit={handleAddVisit}
+        onDeleteVisit={async (spotId, visitId) => {
+          await deleteVisit(spotId, visitId);
+          await refreshTrips(); // ADD THIS
+        }}
       />
 
       {/* FAB */}
@@ -1515,5 +1712,116 @@ const detailStyles = StyleSheet.create({
     fontWeight: "500",
     marginLeft: 8,
     color: theme.colors.navy,
+  },
+  visitCount: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginTop: 10,
+  },
+  visitCountText: {
+    fontSize: 14,
+    color: theme.colors.forest,
+    marginLeft: 6,
+    fontWeight: "600",
+  },
+  visitsSection: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  visitsSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  addVisitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.forest + "15",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  addVisitButtonText: {
+    color: theme.colors.forest,
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  visitCard: {
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  visitHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+  },
+  visitHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  visitDate: {
+    fontSize: 14,
+    color: theme.colors.navy,
+    fontWeight: "500",
+    marginLeft: 8,
+    flex: 1,
+  },
+  visitPhotoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.navy,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  visitPhotoBadgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  visitContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  visitNotes: {
+    fontSize: 14,
+    color: theme.colors.gray,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  visitPhotos: {
+    marginTop: 10,
+  },
+  visitPhoto: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  deleteVisitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#FF475715",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FF475730",
+    gap: 6,
+  },
+  deleteVisitButtonText: {
+    color: "#FF4757",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

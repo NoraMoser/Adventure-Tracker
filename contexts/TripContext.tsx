@@ -56,14 +56,14 @@ interface TripContextType {
   currentUserId: string | null;
   loading: boolean;
   createTrip: (
-    trip: Omit<Trip, "id" | "created_at" | "items">
+    trip: Omit<Trip, "id" | "created_at" | "items">,
   ) => Promise<Trip>;
   updateTrip: (tripId: string, updates: Partial<Trip>) => Promise<void>;
   deleteTrip: (tripId: string) => Promise<void>;
   addToTrip: (
     tripId: string,
     item: any,
-    type: "activity" | "spot"
+    type: "activity" | "spot",
   ) => Promise<void>;
   removeFromTrip: (tripId: string, tripItemId: string) => Promise<void>;
   tagFriend: (tripId: string, friendId: string) => Promise<void>;
@@ -83,7 +83,7 @@ interface TripContextType {
     lat1: number,
     lon1: number,
     lat2: number,
-    lon2: number
+    lon2: number,
   ) => number;
   fixAllTripPhotos: () => Promise<void>;
   showPendingClusters: () => Promise<void>;
@@ -138,7 +138,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         currentLocation.latitude,
         currentLocation.longitude,
         centerLat,
-        centerLng
+        centerLng,
       );
 
       if (distance > SUGGEST_DISTANCE_KM) {
@@ -201,7 +201,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         },
         (payload) => {
           loadTrips();
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -213,7 +213,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         },
         (payload) => {
           loadTrips();
-        }
+        },
       )
       .subscribe();
 
@@ -271,11 +271,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       if (tagsError) throw tagsError;
 
       // Group tags by trip_id
-      const tagsByTrip = (allTags || []).reduce((acc, tag) => {
-        if (!acc[tag.trip_id]) acc[tag.trip_id] = [];
-        acc[tag.trip_id].push(tag.user_id);
-        return acc;
-      }, {} as Record<string, string[]>);
+      const tagsByTrip = (allTags || []).reduce(
+        (acc, tag) => {
+          if (!acc[tag.trip_id]) acc[tag.trip_id] = [];
+          acc[tag.trip_id].push(tag.user_id);
+          return acc;
+        },
+        {} as Record<string, string[]>,
+      );
 
       // Load trip items
       const { data: items, error: itemsError } = await supabase
@@ -286,39 +289,89 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       if (itemsError) throw itemsError;
 
       // Group items by trip_id
-      const itemsByTrip = (items || []).reduce((acc, item) => {
-        if (!acc[item.trip_id]) acc[item.trip_id] = [];
-        acc[item.trip_id].push({
-          id: item.id,
-          trip_id: item.trip_id,
-          type: item.type as "activity" | "spot",
-          data: item.data,
-          added_at: item.added_at,
-          added_by: item.added_by,
-        });
-        return acc;
-      }, {} as Record<string, TripItem[]>);
+      const itemsByTrip = (items || []).reduce(
+        (acc, item) => {
+          if (!acc[item.trip_id]) acc[item.trip_id] = [];
+          acc[item.trip_id].push({
+            id: item.id,
+            trip_id: item.trip_id,
+            type: item.type as "activity" | "spot",
+            data: item.data,
+            added_at: item.added_at,
+            added_by: item.added_by,
+          });
+          return acc;
+        },
+        {} as Record<string, TripItem[]>,
+      );
 
       // Build complete trip objects
-      const completeTrips = allTrips.map((trip) => ({
-        id: trip.id,
-        name: trip.name,
-        start_date: new Date(trip.start_date),
-        end_date: new Date(trip.end_date),
-        created_by: trip.created_by,
-        auto_generated: trip.auto_generated || false,
-        cover_photo: trip.cover_photo,
-        cover_photo_position: trip.cover_photo_position,
-        tagged_friends: tagsByTrip[trip.id] || [],
-        items: itemsByTrip[trip.id] || [],
-        created_at: trip.created_at,
-        merged_from: trip.merged_from || [],
-        dates_locked: trip.dates_locked || false,
-      }));
+      const completeTrips = allTrips.map((trip) => {
+        console.log("🔷 Loading trip:", trip.name);
+
+        // Transform items to handle visits
+        const transformedItems = (itemsByTrip[trip.id] || []).map((item) => {
+          console.log("  📦 Item type:", item.type, "name:", item.data.name);
+
+          if (item.type === "spot" && item.data.visits) {
+            console.log("    🔍 Raw visits from DB:", item.data.visits);
+
+            // Transform JSONB visits to Visit objects
+            const visits = Array.isArray(item.data.visits)
+              ? item.data.visits.map((v: any) => {
+                  console.log("      🔄 Transforming visit:", v);
+                  return {
+                    id: v.id,
+                    date: new Date(v.date),
+                    photos: v.photos || [],
+                    notes: v.notes || undefined,
+                  };
+                })
+              : [];
+
+            console.log("    ✅ Transformed visits:", visits.length, "visits");
+            console.log(
+              "    📸 Photos in visits:",
+              visits.map((v) => ({
+                id: v.id.substring(0, 8),
+                photoCount: v.photos.length,
+              })),
+            );
+
+            return {
+              ...item,
+              data: {
+                ...item.data,
+                visits,
+              },
+            };
+          }
+          return item;
+        });
+
+        console.log("  ✅ Trip loaded with", transformedItems.length, "items");
+
+        return {
+          id: trip.id,
+          name: trip.name,
+          start_date: new Date(trip.start_date),
+          end_date: new Date(trip.end_date),
+          created_by: trip.created_by,
+          auto_generated: trip.auto_generated || false,
+          cover_photo: trip.cover_photo,
+          cover_photo_position: trip.cover_photo_position,
+          tagged_friends: tagsByTrip[trip.id] || [],
+          items: transformedItems,
+          created_at: trip.created_at,
+          merged_from: trip.merged_from || [],
+          dates_locked: trip.dates_locked || false,
+        };
+      });
 
       // Remove duplicates (in case user is both creator and tagged)
       const uniqueTrips = completeTrips.filter(
-        (trip, index, self) => index === self.findIndex((t) => t.id === trip.id)
+        (trip, index, self) =>
+          index === self.findIndex((t) => t.id === trip.id),
       );
 
       setTrips(uniqueTrips);
@@ -364,7 +417,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
             itemLocation.latitude,
             itemLocation.longitude,
             profile.home_location.latitude,
-            profile.home_location.longitude
+            profile.home_location.longitude,
           );
 
           if (distanceFromHome <= homeRadius) {
@@ -452,7 +505,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
               }
             },
           },
-        ]
+        ],
       );
     });
   };
@@ -471,7 +524,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const createTrip = async (
-    tripData: Omit<Trip, "id" | "created_at" | "items">
+    tripData: Omit<Trip, "id" | "created_at" | "items">,
   ): Promise<Trip> => {
     if (!currentUserId) throw new Error("User not authenticated");
 
@@ -597,8 +650,8 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
                 start_date: updates.start_date || trip.start_date,
                 end_date: updates.end_date || trip.end_date,
               }
-            : trip
-        )
+            : trip,
+        ),
       );
 
       await loadTrips();
@@ -669,7 +722,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
     Alert.alert(
       "Success",
-      `Fixed ${fixedCount} trip items with local photo URLs`
+      `Fixed ${fixedCount} trip items with local photo URLs`,
     );
     await loadTrips();
   };
@@ -677,7 +730,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
   const addToTrip = async (
     tripId: string,
     itemData: any,
-    itemType: "activity" | "spot"
+    itemType: "activity" | "spot",
   ) => {
     if (!currentUserId) return;
 
@@ -693,20 +746,6 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     try {
-      // Check if item already exists in trip
-      const { data: existing } = await supabase
-        .from("trip_items")
-        .select("id")
-        .eq("trip_id", targetTripId)
-        .eq("type", itemType)
-        .eq("data->>id", itemData.id)
-        .single();
-
-      if (existing) {
-        Alert.alert("Already Added", "This item is already in the trip");
-        return;
-      }
-
       let processedItemData = { ...itemData };
 
       // CRITICAL FIX: Fetch the item from database to get proper Supabase URLs
@@ -737,7 +776,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       // Only upload photos if they're still local (shouldn't happen with above fix, but kept as fallback)
       if (processedItemData.photos && processedItemData.photos.length > 0) {
         const hasLocalPhotos = processedItemData.photos.some((p: string) =>
-          p.startsWith("file://")
+          p.startsWith("file://"),
         );
 
         if (hasLocalPhotos) {
@@ -750,7 +789,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
                 const uploadedUrl = await PhotoService.uploadPhoto(
                   photo,
                   itemType === "spot" ? "location-photos" : "activity-photos",
-                  currentUserId
+                  currentUserId,
                 );
                 if (uploadedUrl) {
                   uploadedPhotos.push(uploadedUrl);
@@ -782,20 +821,20 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
           itemDate = processedItemData.activityDate
             ? new Date(processedItemData.activityDate)
             : processedItemData.activity_date
-            ? new Date(processedItemData.activity_date)
-            : processedItemData.startTime
-            ? new Date(processedItemData.startTime)
-            : processedItemData.start_time
-            ? new Date(processedItemData.start_time)
-            : null;
+              ? new Date(processedItemData.activity_date)
+              : processedItemData.startTime
+                ? new Date(processedItemData.startTime)
+                : processedItemData.start_time
+                  ? new Date(processedItemData.start_time)
+                  : null;
         } else if (itemType === "spot") {
           itemDate = processedItemData.locationDate
             ? new Date(processedItemData.locationDate)
             : processedItemData.location_date
-            ? new Date(processedItemData.location_date)
-            : processedItemData.timestamp
-            ? new Date(processedItemData.timestamp)
-            : null;
+              ? new Date(processedItemData.location_date)
+              : processedItemData.timestamp
+                ? new Date(processedItemData.timestamp)
+                : null;
         }
 
         if (itemDate && !isNaN(itemDate.getTime())) {
@@ -828,7 +867,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       await loadTrips();
-      
+      Alert.alert("Success", "Added to trip!");
     } catch (error) {
       console.error("Error adding to trip:", error);
       Alert.alert("Error", "Failed to add item to trip");
@@ -849,7 +888,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       if (trip && !trip.dates_locked) {
         // Get remaining items (excluding the one we just deleted)
         const remainingItems = (trip.items || []).filter(
-          (item) => item.id !== tripItemId
+          (item) => item.id !== tripItemId,
         );
 
         if (remainingItems.length > 0) {
@@ -862,20 +901,20 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
               itemDate = item.data.activityDate
                 ? new Date(item.data.activityDate)
                 : item.data.activity_date
-                ? new Date(item.data.activity_date)
-                : item.data.startTime
-                ? new Date(item.data.startTime)
-                : item.data.start_time
-                ? new Date(item.data.start_time)
-                : null;
+                  ? new Date(item.data.activity_date)
+                  : item.data.startTime
+                    ? new Date(item.data.startTime)
+                    : item.data.start_time
+                      ? new Date(item.data.start_time)
+                      : null;
             } else if (item.type === "spot") {
               itemDate = item.data.locationDate
                 ? new Date(item.data.locationDate)
                 : item.data.location_date
-                ? new Date(item.data.location_date)
-                : item.data.timestamp
-                ? new Date(item.data.timestamp)
-                : null;
+                  ? new Date(item.data.location_date)
+                  : item.data.timestamp
+                    ? new Date(item.data.timestamp)
+                    : null;
             }
 
             if (itemDate && !isNaN(itemDate.getTime())) {
@@ -885,10 +924,10 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
           if (itemDates.length > 0) {
             const earliestDate = new Date(
-              Math.min(...itemDates.map((d) => d.getTime()))
+              Math.min(...itemDates.map((d) => d.getTime())),
             );
             const latestDate = new Date(
-              Math.max(...itemDates.map((d) => d.getTime()))
+              Math.max(...itemDates.map((d) => d.getTime())),
             );
 
             const tripStart = new Date(trip.start_date);
@@ -908,7 +947,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
                   12,
                   0,
                   0,
-                  0
+                  0,
                 );
 
               await updateTrip(tripId, {
@@ -940,8 +979,8 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         prev.map((t) =>
           t.id === tripId
             ? { ...t, tagged_friends: [...(t.tagged_friends || []), friendId] }
-            : t
-        )
+            : t,
+        ),
       );
     } catch (error) {
       console.error("Error tagging friend:", error);
@@ -1008,7 +1047,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     return trips.filter(
       (trip) =>
         trip.tagged_friends?.includes(currentUserId) &&
-        trip.created_by !== currentUserId
+        trip.created_by !== currentUserId,
     );
   };
 
@@ -1055,13 +1094,13 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!currentUserId) return suggestions;
 
     const myAutoTrips = trips.filter(
-      (t) => t.created_by === currentUserId && t.auto_generated
+      (t) => t.created_by === currentUserId && t.auto_generated,
     );
 
     const sharedWithMe = trips.filter(
       (t) =>
         t.tagged_friends?.includes(currentUserId) &&
-        t.created_by !== currentUserId
+        t.created_by !== currentUserId,
     );
 
     for (const autoTrip of myAutoTrips) {
@@ -1145,13 +1184,13 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         for (const cluster of clusters) {
           const clusterStart = new Date(
             Math.min(
-              ...cluster.items.map((i: any) => new Date(i.date).getTime())
-            )
+              ...cluster.items.map((i: any) => new Date(i.date).getTime()),
+            ),
           );
           const clusterEnd = new Date(
             Math.max(
-              ...cluster.items.map((i: any) => new Date(i.date).getTime())
-            )
+              ...cluster.items.map((i: any) => new Date(i.date).getTime()),
+            ),
           );
           const itemDate = new Date(item.date);
 
@@ -1170,7 +1209,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
               const isNearby = cluster.items.some(
                 (ci: any) =>
                   ci.location &&
-                  areLocationsNearby(item.location, ci.location, 50)
+                  areLocationsNearby(item.location, ci.location, 50),
               );
               if (isNearby) {
                 cluster.items.push(item);
@@ -1208,10 +1247,10 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const clusterDates = cluster.items.map((i: any) => new Date(i.date));
         const earliestDate = new Date(
-          Math.min(...clusterDates.map((d) => d.getTime()))
+          Math.min(...clusterDates.map((d) => d.getTime())),
         );
         const latestDate = new Date(
-          Math.max(...clusterDates.map((d) => d.getTime()))
+          Math.max(...clusterDates.map((d) => d.getTime())),
         );
         const daySpan =
           Math.abs(latestDate.getTime() - earliestDate.getTime()) /
@@ -1219,7 +1258,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (daySpan <= 1) {
           const fourteenDaysAgo = new Date(
-            now.getTime() - 14 * 24 * 60 * 60 * 1000
+            now.getTime() - 14 * 24 * 60 * 60 * 1000,
           );
           if (latestDate < fourteenDaysAgo) {
             return false;
@@ -1232,14 +1271,14 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       for (const cluster of validClusters) {
         const dates = cluster.items.map((i: any) => new Date(i.date));
         cluster.startDate = new Date(
-          Math.min(...dates.map((d) => d.getTime()))
+          Math.min(...dates.map((d) => d.getTime())),
         );
         cluster.endDate = new Date(Math.max(...dates.map((d) => d.getTime())));
         cluster.spotCount = cluster.items.filter(
-          (i: any) => i.type === "spot"
+          (i: any) => i.type === "spot",
         ).length;
         cluster.activityCount = cluster.items.filter(
-          (i: any) => i.type === "activity"
+          (i: any) => i.type === "activity",
         ).length;
 
         const daySpan =
@@ -1286,7 +1325,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         Alert.alert(
           "No trips to organize",
-          "All your adventures are already organized into trips!"
+          "All your adventures are already organized into trips!",
         );
       }
     }
@@ -1297,7 +1336,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
     const selectedClusters: TripCluster[] = [];
 
     const checkIfClusterRejected = async (
-      cluster: TripCluster
+      cluster: TripCluster,
     ): Promise<boolean> => {
       if (!currentUserId) return false;
 
@@ -1395,7 +1434,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         `${
           cluster.totalDistance
             ? `🏃 Total distance: ${(cluster.totalDistance / 1000).toFixed(
-                1
+                1,
               )}km\n`
             : ""
         }` +
@@ -1467,7 +1506,7 @@ export const TripProvider: React.FC<{ children: React.ReactNode }> = ({
         await loadTrips();
         Alert.alert(
           "Success",
-          `Created ${selected.length} trip${selected.length > 1 ? "s" : ""}!`
+          `Created ${selected.length} trip${selected.length > 1 ? "s" : ""}!`,
         );
       } catch (error) {
         console.error("Error creating trips:", error);

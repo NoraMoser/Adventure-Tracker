@@ -18,6 +18,7 @@ import {
   getAccuracyThreshold,
   getMovementThresholds,
 } from "../utils/gps";
+import { LocationPoint, ActivityVisit } from '../types/visits';
 
 const LOCATION_TASK_NAME = "explorable-background-location";
 const PENDING_LOCATIONS_KEY = "pending_location_updates";
@@ -32,31 +33,27 @@ export type ActivityType =
   | "climb"
   | "other";
 
-interface LocationPoint {
-  latitude: number;
-  longitude: number;
-  timestamp: number;
-  altitude?: number;
-  accuracy?: number;
-}
-
+// Updated Activity interface  
 interface Activity {
   id: string;
   name: string;
   type: ActivityType;
   startTime: Date;
   endTime: Date;
-  activityDate: Date;
+  visits?: ActivityVisit[];
   duration: number;
   distance: number;
   route: LocationPoint[];
   averageSpeed: number;
   maxSpeed: number;
-  notes?: string;
-  photos?: string[];
+  notes?: string; // Overall notes
   rating?: number;
   isManualEntry?: boolean;
   createdAt: Date;
+  
+  // DEPRECATED - keep for backward compatibility
+  activityDate?: Date;
+  photos?: string[];
 }
 
 interface ActivityContextType {

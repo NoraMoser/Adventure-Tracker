@@ -133,32 +133,38 @@ export default function TripsScreen() {
     let baseTrips =
       viewMode === "my" ? myTrips : viewMode === "shared" ? sharedTrips : trips;
 
-    if (searchQuery.trim() === "") {
-      return baseTrips;
+    // Apply search filter if needed
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase();
+      baseTrips = baseTrips.filter((trip) => {
+        // Search in trip name
+        if (trip.name.toLowerCase().includes(query)) return true;
+
+        // Search in trip dates
+        const dateRange = `${new Date(
+          trip.start_date,
+        ).toLocaleDateString()} - ${new Date(
+          trip.end_date,
+        ).toLocaleDateString()}`;
+        if (dateRange.toLowerCase().includes(query)) return true;
+
+        // Search in trip items
+        if (trip.items) {
+          return trip.items.some((item) => {
+            const itemName = item.data.name || item.data.description || "";
+            return itemName.toLowerCase().includes(query);
+          });
+        }
+
+        return false;
+      });
     }
 
-    const query = searchQuery.toLowerCase();
-    return baseTrips.filter((trip) => {
-      // Search in trip name
-      if (trip.name.toLowerCase().includes(query)) return true;
-
-      // Search in trip dates
-      const dateRange = `${new Date(
-        trip.start_date
-      ).toLocaleDateString()} - ${new Date(
-        trip.end_date
-      ).toLocaleDateString()}`;
-      if (dateRange.toLowerCase().includes(query)) return true;
-
-      // Search in trip items
-      if (trip.items) {
-        return trip.items.some((item) => {
-          const itemName = item.data.name || item.data.description || "";
-          return itemName.toLowerCase().includes(query);
-        });
-      }
-
-      return false;
+    // Sort by start date (most recent first)
+    return baseTrips.sort((a, b) => {
+      const dateA = new Date(a.start_date).getTime();
+      const dateB = new Date(b.start_date).getTime();
+      return dateB - dateA; // Most recent first
     });
   };
 
@@ -187,7 +193,7 @@ export default function TripsScreen() {
             await deleteTrip(autoTrip.id);
             Alert.alert(
               "Success",
-              "Your items have been added to the shared trip"
+              "Your items have been added to the shared trip",
             );
           } catch (error) {
             Alert.alert("Error", "Failed to merge trips");
@@ -492,8 +498,8 @@ export default function TripsScreen() {
             {viewMode === "shared"
               ? "No shared trips yet"
               : viewMode === "my"
-              ? "No trips created yet"
-              : "No trips yet"}
+                ? "No trips created yet"
+                : "No trips yet"}
           </Text>
           <Text style={styles.emptyText}>
             {viewMode === "shared"
