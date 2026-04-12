@@ -2,7 +2,7 @@
   "expo": {
     "name": "explorAble",
     "slug": "explorable",
-    "version": "1.0.46",
+    "version": "1.0.45",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -45,7 +45,7 @@
         "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
-      "versionCode": 47,
+      "versionCode": 48,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -91,15 +91,6 @@
           "cameraPermission": "Allow explorAble to access your camera to capture your adventure moments.",
           "microphonePermission": "Allow explorAble to access your microphone for video recording.",
           "recordAudioAndroid": true
-        }
-      ],
-      [
-        "expo-media-library",
-        {
-          "photosPermission": "Allow explorAble to access your photos to add to your saved spots.",
-          "savePhotosPermission": "Allow explorAble to save photos to your gallery.",
-          "isAccessMediaLocationEnabled": true,
-          "isAudioEnabled": false
         }
       ],
       [
