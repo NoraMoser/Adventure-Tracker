@@ -94,6 +94,10 @@ export default function DashboardScreen() {
     setAuthVersion((v) => v + 1);
   }, [user?.id, session?.user?.id]);
 
+  useEffect(() => {
+  AsyncStorage.removeItem("offlineMode");
+}, []);
+
   // Sidebar animation
   const sidebarAnimation = useRef(new Animated.Value(-width * 0.75)).current;
 

@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ExplorableLogo } from "../../components/Logo";
 import { theme } from "../../constants/theme";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -27,64 +28,64 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
 
-const handleLogin = async () => {
-  if (!email || !password) {
-    Alert.alert("Error", "Please fill in all fields");
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    // Step 1: Sign in
-    setSyncStatus("Signing in...");
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.toLowerCase().trim(),
-      password,
-    });
-
-    if (error) throw error;
-    if (!data.user) throw new Error("Login failed");
-
-    // Step 2: Check if profile exists
-    setSyncStatus("Loading profile...");
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", data.user.id)
-      .single();
-
-    if (!profile) {
-      // First time user - need to complete profile
-      router.replace("/auth/complete-profile");
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
-    
-    // Step 3: Save auth state (optional - Supabase handles this)
-    await AsyncStorage.setItem("isAuthenticated", "true");
-    await AsyncStorage.setItem("userId", data.user.id);
 
-    // Step 4: Navigate - the AuthContext will handle sync
-    setSyncStatus("Redirecting...");
-    
-    setTimeout(() => {
-      router.replace("/");
-    }, 100);
-    
-  } catch (error: any) {
-    console.error("Login error:", error);
-    Alert.alert(
-      "Login Failed",
-      error.message || "Please check your email and password"
-    );
-  } finally {
-    setLoading(false);
-    setSyncStatus("");
-  }
-};
+    try {
+      setLoading(true);
+
+      // Step 1: Sign in
+      setSyncStatus("Signing in...");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password,
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error("Login failed");
+
+      // Step 2: Check if profile exists
+      setSyncStatus("Loading profile...");
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
+        .single();
+
+      if (!profile) {
+        // First time user - need to complete profile
+        router.replace("/auth/complete-profile");
+        return;
+      }
+
+      // Step 3: Save auth state (optional - Supabase handles this)
+      await AsyncStorage.setItem("isAuthenticated", "true");
+      await AsyncStorage.setItem("userId", data.user.id);
+
+      // Step 4: Navigate - the AuthContext will handle sync
+      setSyncStatus("Redirecting...");
+
+      setTimeout(() => {
+        router.replace("/");
+      }, 100);
+    } catch (error: any) {
+      console.error("Login error:", error);
+      Alert.alert(
+        "Login Failed",
+        error.message || "Please check your email and password",
+      );
+    } finally {
+      setLoading(false);
+      setSyncStatus("");
+    }
+  };
+  const { setOfflineMode } = useAuth();
 
   const handleContinueOffline = async () => {
-    await AsyncStorage.setItem("offlineMode", "true");
+    await setOfflineMode(true);
     router.replace("/");
   };
 

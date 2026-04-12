@@ -251,7 +251,7 @@ export default function EditTripScreen() {
           onPress: async () => {
             try {
               await deleteTrip(trip.id);
-              router.back();
+              router.replace('/trips');
             } catch (error) {
               Alert.alert("Error", "Failed to delete trip");
             }

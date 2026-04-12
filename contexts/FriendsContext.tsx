@@ -1069,7 +1069,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const likeItem = async (itemId: string) => {
-    if (!user || !profile) return;
+    if (!user) return;
 
     try {
       const [type, ...idParts] = itemId.split("-");
@@ -1103,9 +1103,9 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
       // Create the like info with current user's profile
       const newLikeInfo: LikeInfo = {
         userId: user.id,
-        userName: profile.display_name || profile.username || "You",
-        avatar: profile.avatar,
-        profile_picture: profile.profile_picture,
+        userName: profile?.display_name || profile?.username || "You",
+        avatar: profile?.avatar,
+        profile_picture: profile?.profile_picture,
       };
 
       // Update UI with full profile info
@@ -1179,7 +1179,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
     replyToCommentId?: string,
     replyToUserName?: string
   ) => {
-    if (!user || !profile) return;
+    if (!user) return;
 
     try {
       const [type, ...idParts] = itemId.split("-");

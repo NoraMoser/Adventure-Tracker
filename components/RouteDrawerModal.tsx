@@ -11,6 +11,7 @@ import {
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { generateRouteDrawerHTML } from "../utils/mapHelpers";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface RouteDrawerModalProps {
   visible: boolean;
@@ -84,7 +85,7 @@ export function RouteDrawerModal({
       animationType="slide"
       presentationStyle="fullScreen"
     >
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.header}>
           <Text style={styles.title}>Draw Your Route</Text>
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -115,7 +116,7 @@ export function RouteDrawerModal({
             <Text style={styles.loadingText}>Loading map...</Text>
           </View>
         )}
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -130,7 +131,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: 16,
-    paddingTop: Platform.OS === "ios" ? 50 : 16,
     backgroundColor: theme.colors.white,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderGray,

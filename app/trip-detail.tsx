@@ -277,6 +277,13 @@ export default function TripDetailScreen() {
 
   const trip = trips.find((t) => t.id === tripId);
 
+  // Navigate if trip is deleted (at the end of the component, in a useEffect)
+  useEffect(() => {
+    if (!trip && tripId) {
+      router.replace("/trips");
+    }
+  }, [trip, tripId]);
+
   // Get journal entries linked to this trip
   const tripJournalEntries = entries.filter((e) => e.trip_id === tripId);
 
@@ -2041,6 +2048,15 @@ export default function TripDetailScreen() {
       </View>
     );
   };
+    if (!trip) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
