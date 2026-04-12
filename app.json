@@ -58,7 +58,10 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION"
       ],
-
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ],
       "softwareKeyboardLayoutMode": "pan",
       "useNextNotificationsApi": true,
       "allowFontScaling": false
