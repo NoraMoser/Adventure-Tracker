@@ -2,7 +2,7 @@
   "expo": {
     "name": "explorAble",
     "slug": "explorable",
-    "version": "1.0.45",
+    "version": "1.0.46",
     "orientation": "portrait",
     "icon": "./assets/adaptive-icon.png",
     "userInterfaceStyle": "light",
@@ -45,7 +45,7 @@
         "backgroundColor": "#F5F5F0"
       },
       "package": "com.moser.explorable",
-      "versionCode": 46,
+      "versionCode": 47,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -57,7 +57,6 @@
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.READ_MEDIA_IMAGES"
       ],
 
       "softwareKeyboardLayoutMode": "pan",
