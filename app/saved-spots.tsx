@@ -24,7 +24,7 @@ import { theme } from "../constants/theme";
 import { SavedSpot, useLocation } from "../contexts/LocationContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { ShareService } from "../services/shareService";
-import { useTrips } from "../contexts/TripContext"; // Add this import at the top
+import { useTrips } from "../contexts/TripContext";
 import { useFocusEffect } from "@react-navigation/native";
 
 const isValidDate = (date: Date): boolean => {
@@ -39,6 +39,8 @@ const FilterModal = ({
   onToggleCategory,
   onClearAll,
   onSelectAll,
+  dateFilter,
+  onDateFilterChange,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -46,6 +48,8 @@ const FilterModal = ({
   onToggleCategory: (category: CategoryType) => void;
   onClearAll: () => void;
   onSelectAll: () => void;
+  dateFilter: 'all' | '7days' | '30days' | '3months' | 'year';
+  onDateFilterChange: (filter: 'all' | '7days' | '30days' | '3months' | 'year') => void;
 }) => {
   const categoryList = Object.entries(categories) as [
     CategoryType,
@@ -62,25 +66,61 @@ const FilterModal = ({
       <View style={filterStyles.overlay}>
         <View style={filterStyles.container}>
           <View style={filterStyles.header}>
-            <Text style={filterStyles.title}>Filter by Category</Text>
+            <Text style={filterStyles.title}>Filters</Text>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={24} color={theme.colors.gray} />
             </TouchableOpacity>
           </View>
 
-          <View style={filterStyles.actions}>
-            <TouchableOpacity
-              onPress={onSelectAll}
-              style={filterStyles.actionButton}
-            >
-              <Text style={filterStyles.actionText}>Select All</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onClearAll}
-              style={filterStyles.actionButton}
-            >
-              <Text style={filterStyles.actionText}>Clear All</Text>
-            </TouchableOpacity>
+          {/* Date Filter Section */}
+          <View style={filterStyles.dateSection}>
+            <Text style={filterStyles.sectionTitle}>Date Range</Text>
+            <View style={filterStyles.dateOptions}>
+              {([
+                { value: 'all', label: 'All Time' },
+                { value: '7days', label: 'Last 7 Days' },
+                { value: '30days', label: 'Last 30 Days' },
+                { value: '3months', label: 'Last 3 Months' },
+                { value: 'year', label: 'Last Year' },
+              ] as const).map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    filterStyles.dateChip,
+                    dateFilter === option.value && filterStyles.dateChipActive,
+                  ]}
+                  onPress={() => onDateFilterChange(option.value)}
+                >
+                  <Text
+                    style={[
+                      filterStyles.dateChipText,
+                      dateFilter === option.value && filterStyles.dateChipTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Category Filter Section */}
+          <View style={filterStyles.categoryHeader}>
+            <Text style={filterStyles.sectionTitle}>Categories</Text>
+            <View style={filterStyles.actions}>
+              <TouchableOpacity
+                onPress={onSelectAll}
+                style={filterStyles.actionButton}
+              >
+                <Text style={filterStyles.actionText}>Select All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onClearAll}
+                style={filterStyles.actionButton}
+              >
+                <Text style={filterStyles.actionText}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView style={filterStyles.list}>
@@ -141,8 +181,8 @@ const SpotDetailModal = ({
   onDelete: (spot: SavedSpot) => void;
   onShare: (spot: SavedSpot) => void;
   onNavigate: (spot: SavedSpot) => void;
-  onAddVisit: (spot: SavedSpot) => void; // NEW
-  onDeleteVisit: (spotId: string, visitId: string) => Promise<void>; // ADD THIS
+  onAddVisit: (spot: SavedSpot) => void;
+  onDeleteVisit: (spotId: string, visitId: string) => Promise<void>;
 }) => {
   const [expandedVisitId, setExpandedVisitId] = useState<string | null>(null);
 
@@ -671,7 +711,7 @@ export default function SavedSpotsScreen() {
   } = useLocation();
 
   const { getMapTileUrl } = useSettings();
-  const { refreshTrips } = useTrips(); // ADD THIS LINE
+  const { refreshTrips } = useTrips();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<
@@ -681,6 +721,7 @@ export default function SavedSpotsScreen() {
   const [selectedCategories, setSelectedCategories] = useState<
     Set<CategoryType>
   >(new Set(Object.keys(categories) as CategoryType[]));
+  const [dateFilter, setDateFilter] = useState<'all' | '7days' | '30days' | '3months' | 'year'>('all');
   const [sortBy, setSortBy] = useState<"date" | "visited" | "name" | "rating">(
     "visited",
   );
@@ -725,7 +766,33 @@ export default function SavedSpotsScreen() {
         matchesActiveFilter = !!(spot.rating && spot.rating >= 4);
       }
 
-      return matchesSearch && matchesCategory && matchesActiveFilter;
+      // Apply date filter
+      let matchesDate = true;
+      if (dateFilter !== 'all') {
+        const now = new Date();
+        const spotDate = new Date(spot.visits && spot.visits.length > 0 
+          ? spot.visits[spot.visits.length - 1].date 
+          : spot.timestamp);
+        
+        const daysSince = Math.floor((now.getTime() - spotDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        switch (dateFilter) {
+          case '7days':
+            matchesDate = daysSince <= 7;
+            break;
+          case '30days':
+            matchesDate = daysSince <= 30;
+            break;
+          case '3months':
+            matchesDate = daysSince <= 90;
+            break;
+          case 'year':
+            matchesDate = daysSince <= 365;
+            break;
+        }
+      }
+
+      return matchesSearch && matchesCategory && matchesActiveFilter && matchesDate;
     });
 
     // Sort
@@ -750,26 +817,11 @@ export default function SavedSpotsScreen() {
     });
 
     return filtered;
-  }, [savedSpots, searchQuery, selectedCategories, sortBy, activeFilter]);
-
-  // Temporary debug - add this after the filteredSpots useMemo
-  useEffect(() => {
-    if (savedSpots.length > 0) {
-      console.log("First spot raw data:", {
-        name: savedSpots[0].name,
-        timestamp: savedSpots[0].timestamp,
-        locationDate: savedSpots[0].locationDate,
-        timestampType: typeof savedSpots[0].timestamp,
-        locationDateType: typeof savedSpots[0].locationDate,
-      });
-    }
-  }, [savedSpots]);
+  }, [savedSpots, searchQuery, selectedCategories, sortBy, activeFilter, dateFilter]);
 
   const handleAddVisit = (spot: SavedSpot) => {
     setShowDetailModal(false);
     setSelectedSpot(spot);
-    // For now, let's route to a simple screen
-    // We'll create a proper modal next
     router.push({
       pathname: "/add-visit",
       params: { spotId: spot.id, spotName: spot.name },
@@ -981,10 +1033,10 @@ export default function SavedSpotsScreen() {
           >
             <Ionicons name="filter" size={20} color={theme.colors.forest} />
             <Text style={styles.filterText}>Filter</Text>
-            {selectedCategories.size < Object.keys(categories).length && (
+            {(selectedCategories.size < Object.keys(categories).length || dateFilter !== 'all') && (
               <View style={styles.filterBadge}>
                 <Text style={styles.filterBadgeText}>
-                  {selectedCategories.size}
+                  {dateFilter !== 'all' ? '!' : selectedCategories.size}
                 </Text>
               </View>
             )}
@@ -1031,20 +1083,42 @@ export default function SavedSpotsScreen() {
             {filteredSpots.length}{" "}
             {filteredSpots.length === 1 ? "location" : "locations"}
           </Text>
-          {activeFilter !== "all" && (
-            <TouchableOpacity
-              style={styles.activeFilterBadge}
-              onPress={() => setActiveFilter("all")}
-            >
-              <Text style={styles.activeFilterText}>
-                {activeFilter === "withPhotos" ? "With Photos" : "Top Rated"}
-              </Text>
-              <Ionicons
-                name="close-circle"
-                size={16}
-                color={theme.colors.forest}
-              />
-            </TouchableOpacity>
+          {(activeFilter !== "all" || dateFilter !== 'all') && (
+            <View style={styles.activeFiltersRow}>
+              {activeFilter !== "all" && (
+                <TouchableOpacity
+                  style={styles.activeFilterBadge}
+                  onPress={() => setActiveFilter("all")}
+                >
+                  <Text style={styles.activeFilterText}>
+                    {activeFilter === "withPhotos" ? "With Photos" : "Top Rated"}
+                  </Text>
+                  <Ionicons
+                    name="close-circle"
+                    size={16}
+                    color={theme.colors.forest}
+                  />
+                </TouchableOpacity>
+              )}
+              {dateFilter !== 'all' && (
+                <TouchableOpacity
+                  style={styles.activeFilterBadge}
+                  onPress={() => setDateFilter('all')}
+                >
+                  <Text style={styles.activeFilterText}>
+                    {dateFilter === '7days' && 'Last 7 Days'}
+                    {dateFilter === '30days' && 'Last 30 Days'}
+                    {dateFilter === '3months' && 'Last 3 Months'}
+                    {dateFilter === 'year' && 'Last Year'}
+                  </Text>
+                  <Ionicons
+                    name="close-circle"
+                    size={16}
+                    color={theme.colors.forest}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </View>
         {searchQuery && (
@@ -1123,6 +1197,8 @@ export default function SavedSpotsScreen() {
         onToggleCategory={handleToggleCategory}
         onClearAll={handleClearAllCategories}
         onSelectAll={handleSelectAllCategories}
+        dateFilter={dateFilter}
+        onDateFilterChange={setDateFilter}
       />
 
       {/* Detail Modal */}
@@ -1137,7 +1213,7 @@ export default function SavedSpotsScreen() {
         onAddVisit={handleAddVisit}
         onDeleteVisit={async (spotId, visitId) => {
           await deleteVisit(spotId, visitId);
-          await refreshTrips(); // ADD THIS
+          await refreshTrips();
         }}
       />
 
@@ -1307,6 +1383,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  activeFiltersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   activeFilterBadge: {
     flexDirection: "row",
@@ -1487,7 +1570,7 @@ const filterStyles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: "70%",
+    maxHeight: "80%",
   },
   header: {
     flexDirection: "row",
@@ -1502,13 +1585,52 @@ const filterStyles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.navy,
   },
+  dateSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderGray,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.navy,
+    marginBottom: 10,
+  },
+  dateOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dateChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: theme.colors.offWhite,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGray,
+  },
+  dateChipActive: {
+    backgroundColor: theme.colors.forest,
+    borderColor: theme.colors.forest,
+  },
+  dateChipText: {
+    fontSize: 13,
+    color: theme.colors.gray,
+  },
+  dateChipTextActive: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  categoryHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 15,
+    paddingBottom: 5,
+  },
   actions: {
     flexDirection: "row",
     justifyContent: "space-around",
-    padding: 15,
-    backgroundColor: theme.colors.offWhite,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderGray,
+    paddingVertical: 10,
   },
   actionButton: {
     paddingHorizontal: 20,

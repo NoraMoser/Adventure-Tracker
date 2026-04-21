@@ -46,6 +46,7 @@ export default function PastActivitiesScreen() {
   const [showMap, setShowMap] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<ActivityType | "all">("all");
+  const [dateFilter, setDateFilter] = useState<'all' | '7days' | '30days' | '3months' | 'year'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<"recent" | "distance" | "duration">(
     "recent"
@@ -82,6 +83,28 @@ export default function PastActivitiesScreen() {
       filtered = filtered.filter((activity) => activity.type === selectedType);
     }
 
+    // Filter by date
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter((activity) => {
+        const activityDate = new Date(activity.activityDate || activity.startTime);
+        const daysSince = Math.floor((now.getTime() - activityDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        switch (dateFilter) {
+          case '7days':
+            return daysSince <= 7;
+          case '30days':
+            return daysSince <= 30;
+          case '3months':
+            return daysSince <= 90;
+          case 'year':
+            return daysSince <= 365;
+          default:
+            return true;
+        }
+      });
+    }
+
     // Sort activities
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
@@ -98,7 +121,7 @@ export default function PastActivitiesScreen() {
     });
 
     return sorted;
-  }, [activities, searchQuery, selectedType, sortBy]);
+  }, [activities, searchQuery, selectedType, sortBy, dateFilter]);
 
   const formatDuration = (seconds: number) => {
     if (!seconds || seconds === 0) {
@@ -669,12 +692,12 @@ export default function PastActivitiesScreen() {
             name="filter"
             size={20}
             color={
-              selectedType !== "all" || sortBy !== "recent"
+              selectedType !== "all" || sortBy !== "recent" || dateFilter !== "all"
                 ? theme.colors.burntOrange
                 : theme.colors.gray
             }
           />
-          {(selectedType !== "all" || sortBy !== "recent") && (
+          {(selectedType !== "all" || sortBy !== "recent" || dateFilter !== "all") && (
             <View style={styles.filterIndicatorDot} />
           )}
         </TouchableOpacity>
@@ -683,6 +706,41 @@ export default function PastActivitiesScreen() {
       {/* Filter Options */}
       {showFilters && (
         <View style={styles.filterContainer}>
+          {/* Date Filter */}
+          <Text style={styles.filterTitle}>Date Range</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+          >
+            {([
+              { value: 'all', label: 'All Time' },
+              { value: '7days', label: 'Last 7 Days' },
+              { value: '30days', label: 'Last 30 Days' },
+              { value: '3months', label: 'Last 3 Months' },
+              { value: 'year', label: 'Last Year' },
+            ] as const).map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.filterChip,
+                  dateFilter === option.value && styles.filterChipActive,
+                ]}
+                onPress={() => setDateFilter(option.value)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    dateFilter === option.value && styles.filterChipTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Activity Type Filter */}
           <Text style={styles.filterTitle}>Activity Type</Text>
           <ScrollView
             horizontal
@@ -847,7 +905,7 @@ export default function PastActivitiesScreen() {
           <Text style={styles.noResultsText}>No activities found</Text>
           {searchQuery !== "" && (
             <Text style={styles.noResultsSubtext}>
-              Try adjusting your search
+              Try adjusting your search or filters
             </Text>
           )}
         </View>
