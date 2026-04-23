@@ -19,7 +19,7 @@ import { theme } from "../constants/theme";
 import { useLocation } from "../contexts/LocationContext";
 import * as ImagePicker from "expo-image-picker";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
-import { useTrips } from "../contexts/TripContext";  // Add this import
+import { useTrips } from "../contexts/TripContext";
 
 
 export default function AddVisitScreen() {
@@ -32,7 +32,7 @@ export default function AddVisitScreen() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-    const { refreshTrips } = useTrips();  // Add this
+  const { refreshTrips } = useTrips();
 
 
   const handleSave = async () => {
@@ -43,6 +43,8 @@ export default function AddVisitScreen() {
 
     setSaving(true);
     try {
+      console.log("💾 Starting visit save...");
+      
       // Get the updated spot directly from addVisitToSpot
       const updatedSpot = await addVisitToSpot(
         params.spotId,
@@ -50,6 +52,11 @@ export default function AddVisitScreen() {
         photos,
         notes || undefined,
       );
+
+      // Wait for database sync to complete before refreshing trips
+      // This ensures the trip_items updates have time to propagate
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       await refreshTrips();
 
       if (updatedSpot) {
@@ -77,7 +84,6 @@ export default function AddVisitScreen() {
         ]);
       }
     } catch (error) {
-      console.error("Error adding visit:", error);
       Alert.alert("Error", "Failed to log visit");
     } finally {
       setSaving(false);

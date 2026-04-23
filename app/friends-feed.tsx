@@ -91,14 +91,14 @@ export default function FriendsFeedScreen() {
                 data: {
                   ...post.data,
                   likes: post.data.likes.filter(
-                    (like: LikeInfo) => like.userId !== currentUserId
+                    (like: LikeInfo) => like.userId !== currentUserId,
                   ),
                 },
               };
             }
           }
           return post;
-        })
+        }),
       );
     }
   };
@@ -107,7 +107,7 @@ export default function FriendsFeedScreen() {
     itemId: string,
     text: string,
     replyToId?: string,
-    replyToUserName?: string
+    replyToUserName?: string,
   ) => {
     addComment(itemId, text, replyToId, replyToUserName);
 
@@ -135,7 +135,7 @@ export default function FriendsFeedScreen() {
             };
           }
           return post;
-        })
+        }),
       );
     }
   };
@@ -150,7 +150,8 @@ export default function FriendsFeedScreen() {
         item.location &&
         Math.abs(item.location.latitude - location.location.latitude) <
           0.0001 &&
-        Math.abs(item.location.longitude - location.location.longitude) < 0.0001
+        Math.abs(item.location.longitude - location.location.longitude) <
+          0.0001,
     );
 
     if (wishlistItem) {
@@ -173,7 +174,8 @@ export default function FriendsFeedScreen() {
         item.location &&
         Math.abs(item.location.latitude - location.location.latitude) <
           0.0001 &&
-        Math.abs(item.location.longitude - location.location.longitude) < 0.0001
+        Math.abs(item.location.longitude - location.location.longitude) <
+          0.0001,
     );
   };
 
@@ -258,7 +260,7 @@ export default function FriendsFeedScreen() {
       const { data: activityComments } = await supabase
         .from("comments")
         .select(
-          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)",
         )
         .in("activity_id", activityIds)
         .order("created_at", { ascending: false });
@@ -266,7 +268,7 @@ export default function FriendsFeedScreen() {
       const { data: locationComments } = await supabase
         .from("comments")
         .select(
-          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)"
+          "*, user:profiles!comments_user_id_fkey(id, username, display_name, avatar)",
         )
         .in("location_id", locationIds)
         .order("created_at", { ascending: false });
@@ -279,7 +281,8 @@ export default function FriendsFeedScreen() {
         const likerProfile = likerProfileMap[like.user_id];
         activityLikesMap[like.activity_id].push({
           userId: like.user_id,
-          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          userName:
+            likerProfile?.display_name || likerProfile?.username || "User",
           avatar: likerProfile?.avatar,
           profile_picture: likerProfile?.profile_picture,
         });
@@ -292,7 +295,8 @@ export default function FriendsFeedScreen() {
         const likerProfile = likerProfileMap[like.user_id];
         locationLikesMap[like.location_id].push({
           userId: like.user_id,
-          userName: likerProfile?.display_name || likerProfile?.username || "User",
+          userName:
+            likerProfile?.display_name || likerProfile?.username || "User",
           avatar: likerProfile?.avatar,
           profile_picture: likerProfile?.profile_picture,
         });
@@ -356,6 +360,7 @@ export default function FriendsFeedScreen() {
             ? new Date(activity.activity_date)
             : undefined,
           notes: activity.notes,
+          photos: activity.photos || [],
           route: activity.route || [],
           sharedBy: friendData,
           sharedAt: new Date(activity.created_at || activity.start_time),
@@ -364,29 +369,54 @@ export default function FriendsFeedScreen() {
         },
       }));
 
-      const locationPosts: FeedPost[] = (locations || []).map((location) => ({
-        id: `location-${location.id}`,
-        type: "location" as const,
-        timestamp: new Date(location.created_at),
-        data: {
-          id: location.id,
-          name: location.name,
-          location: {
-            latitude: location.latitude,
-            longitude: location.longitude,
+      const locationPosts: FeedPost[] = (locations || []).map((location) => {
+        // Transform visits from database format
+        const visits =
+          location.visits &&
+          Array.isArray(location.visits) &&
+          location.visits.length > 0
+            ? location.visits.map((v: any) => ({
+                id: v.id,
+                date: new Date(v.date),
+                photos: v.photos || [],
+                notes: v.notes || undefined,
+              }))
+            : [
+                {
+                  id: `legacy-${location.id}`,
+                  date: location.location_date
+                    ? new Date(location.location_date)
+                    : new Date(location.created_at),
+                  photos: location.photos || [],
+                  notes: undefined,
+                },
+              ];
+
+        return {
+          id: `location-${location.id}`,
+          type: "location" as const,
+          timestamp: new Date(location.created_at),
+          data: {
+            id: location.id,
+            name: location.name,
+            location: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+            },
+            locationDate: location.location_date
+              ? new Date(location.location_date)
+              : undefined,
+            description: location.description,
+            photos: location.photos || [],
+            visits: visits, // ✅ ADD THIS LINE - Include visits data
+            category: location.category,
+            sharedBy: friendData,
+            sharedAt: new Date(location.created_at),
+            likes: locationLikesMap[location.id] || [],
+            comments: locationCommentsMap[location.id] || [],
           },
-          locationDate: location.location_date
-            ? new Date(location.location_date)
-            : undefined,
-          description: location.description,
-          photos: location.photos || [],
-          category: location.category,
-          sharedBy: friendData,
-          sharedAt: new Date(location.created_at),
-          likes: locationLikesMap[location.id] || [],
-          comments: locationCommentsMap[location.id] || [],
-        },
-      }));
+        };
+      });
 
       const tripPosts: FeedPost[] = (trips || []).map((trip) => ({
         id: `trip-${trip.id}`,
@@ -403,7 +433,7 @@ export default function FriendsFeedScreen() {
             type: item.type,
             name: item.data?.name || "Item",
             date: new Date(
-              item.data?.start_time || item.data?.created_at || trip.start_date
+              item.data?.start_time || item.data?.created_at || trip.start_date,
             ),
           })),
           sharedBy: friendData,
@@ -414,7 +444,7 @@ export default function FriendsFeedScreen() {
       }));
 
       const allPosts = [...activityPosts, ...locationPosts, ...tripPosts].sort(
-        (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+        (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
       );
 
       setSelectedFriendFeed(allPosts);
@@ -595,10 +625,10 @@ export default function FriendsFeedScreen() {
               {tab === "all"
                 ? "All"
                 : tab === "activities"
-                ? "Activities"
-                : tab === "locations"
-                ? "Places"
-                : "Trips"}
+                  ? "Activities"
+                  : tab === "locations"
+                    ? "Places"
+                    : "Trips"}
             </Text>
           </TouchableOpacity>
         ))}

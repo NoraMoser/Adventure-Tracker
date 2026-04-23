@@ -977,6 +977,7 @@ export const FriendsProvider: React.FC<{ children: ReactNode }> = ({
           startTime: new Date(activity.start_time),
           notes: activity.notes,
           route: activity.route || [],
+          photos: activity.photos || [],
           sharedBy: {
             id: activity.user_id,
             username: profileMap[activity.user_id]?.username || "",

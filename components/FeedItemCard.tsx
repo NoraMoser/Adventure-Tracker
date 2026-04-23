@@ -148,139 +148,243 @@ export function FeedItemCard({
     return `${likes[0].userName}, ${likes[1].userName} and ${likesCount - 2} others liked this`;
   };
 
-  const renderActivityContent = (activity: any) => (
-    <View style={styles.activityContent}>
-      {activity.activityDate && (
-        <View style={styles.dateBadge}>
-          <Ionicons name="calendar" size={14} color={theme.colors.forest} />
-          <Text style={styles.dateBadgeText}>
-            Activity on{" "}
-            {new Date(activity.activityDate).toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            })}
-          </Text>
-        </View>
-      )}
+  const renderActivityContent = (activity: any) => {
+    console.log("🎯 Activity data:", {
+      name: activity.name,
+      hasPhotos: !!activity.photos,
+      photosCount: activity.photos?.length,
+    });
 
-      <View style={styles.activityStats}>
-        <View style={styles.statItem}>
-          <Ionicons name="navigate" size={16} color={theme.colors.forest} />
-          <Text style={styles.statText}>
-            {formatDistance(activity.distance)}
-          </Text>
-        </View>
-        <View style={styles.statItem}>
-          <Ionicons name="time" size={16} color={theme.colors.forest} />
-          <Text style={styles.statText}>
-            {Math.round(activity.duration / 60)}min
-          </Text>
-        </View>
-        <View style={styles.statItem}>
-          <Ionicons name="speedometer" size={16} color={theme.colors.forest} />
-          <Text style={styles.statText}>
-            {formatSpeed(activity.averageSpeed)}
-          </Text>
-        </View>
-      </View>
-      {activity.notes && <Text style={styles.notes}>{activity.notes}</Text>}
-    </View>
-  );
-
-  const renderLocationContent = (location: any) => (
-    <View style={styles.locationContent}>
-      <View style={styles.locationHeader}>
-        <View style={styles.locationTitleSection}>
-          <Text style={styles.locationName}>{location.name}</Text>
-          {location.locationDate && (
-            <Text style={styles.locationDate}>
-              Visited{" "}
-              {new Date(location.locationDate).toLocaleDateString("en-US", {
+    return (
+      <View style={styles.activityContent}>
+        {activity.activityDate && (
+          <View style={styles.dateBadge}>
+            <Ionicons name="calendar" size={14} color={theme.colors.forest} />
+            <Text style={styles.dateBadgeText}>
+              Activity on{" "}
+              {new Date(activity.activityDate).toLocaleDateString("en-US", {
+                weekday: "short",
                 month: "short",
                 day: "numeric",
-                year:
-                  new Date(location.locationDate).getFullYear() !==
-                  new Date().getFullYear()
-                    ? "numeric"
-                    : undefined,
               })}
             </Text>
-          )}
-        </View>
-        <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onAddToWishlist(location);
-          }}
-          style={styles.wishlistButton}
-        >
-          <View style={styles.wishlistIconContainer}>
+          </View>
+        )}
+
+        <View style={styles.activityStats}>
+          <View style={styles.statItem}>
+            <Ionicons name="navigate" size={16} color={theme.colors.forest} />
+            <Text style={styles.statText}>
+              {formatDistance(activity.distance)}
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="time" size={16} color={theme.colors.forest} />
+            <Text style={styles.statText}>
+              {Math.round(activity.duration / 60)}min
+            </Text>
+          </View>
+          <View style={styles.statItem}>
             <Ionicons
-              name={isInWishlist ? "heart-circle" : "heart-circle-outline"}
-              size={28}
-              color={isInWishlist ? "#9C27B0" : theme.colors.gray}
+              name="speedometer"
+              size={16}
+              color={theme.colors.forest}
             />
-            {!isInWishlist && (
-              <View style={styles.wishlistPlusSign}>
-                <Ionicons name="add" size={12} color="white" />
-              </View>
+            <Text style={styles.statText}>
+              {formatSpeed(activity.averageSpeed)}
+            </Text>
+          </View>
+        </View>
+        {activity.notes && <Text style={styles.notes}>{activity.notes}</Text>}
+
+        {/* Activity photos */}
+        {activity.photos && activity.photos.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.photoScroll}
+          >
+            {activity.photos.map((photo: string, index: number) => (
+              <TouchableImage
+                key={index}
+                source={{ uri: photo }}
+                style={styles.locationPhoto}
+                images={activity.photos}
+                imageIndex={index}
+              />
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    );
+  };
+
+  const renderLocationContent = (location: any) => {
+    // Debug logging to see what data we're getting
+    console.log("🔍 Location data:", {
+      name: location.name,
+      hasVisits: !!location.visits,
+      visitsCount: location.visits?.length,
+      hasOldPhotos: !!location.photos,
+      oldPhotosCount: location.photos?.length,
+    });
+
+    return (
+      <View style={styles.locationContent}>
+        <View style={styles.locationHeader}>
+          <View style={styles.locationTitleSection}>
+            <Text style={styles.locationName}>{location.name}</Text>
+            {location.locationDate && (
+              <Text style={styles.locationDate}>
+                Visited{" "}
+                {new Date(location.locationDate).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year:
+                    new Date(location.locationDate).getFullYear() !==
+                    new Date().getFullYear()
+                      ? "numeric"
+                      : undefined,
+                })}
+              </Text>
             )}
           </View>
-        </TouchableOpacity>
-      </View>
-      {location.description && (
-        <Text style={styles.locationDescription}>{location.description}</Text>
-      )}
-      {location.photos && location.photos.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.photoScroll}
-        >
-          {location.photos.slice(0, 3).map((photo: string, index: number) => (
-            <TouchableImage
-              key={index}
-              source={{ uri: photo }}
-              style={styles.locationPhoto}
-              images={location.photos}
-              imageIndex={index}
-            />
-          ))}
-        </ScrollView>
-      )}
-      <View style={styles.locationCoords}>
-        <Ionicons name="location" size={14} color={theme.colors.burntOrange} />
-        <Text style={styles.coordsText}>
-          {location.location?.latitude?.toFixed(4)},{" "}
-          {location.location?.longitude?.toFixed(4)}
-        </Text>
-      </View>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onAddToWishlist(location);
+            }}
+            style={styles.wishlistButton}
+          >
+            <View style={styles.wishlistIconContainer}>
+              <Ionicons
+                name={isInWishlist ? "heart-circle" : "heart-circle-outline"}
+                size={28}
+                color={isInWishlist ? "#9C27B0" : theme.colors.gray}
+              />
+              {!isInWishlist && (
+                <View style={styles.wishlistPlusSign}>
+                  <Ionicons name="add" size={12} color="white" />
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+        {location.description && (
+          <Text style={styles.locationDescription}>{location.description}</Text>
+        )}
 
-      {/* ADD THIS: "I Went Here Too" Button - only show if not your own post */}
-      {location.sharedBy?.id !== currentUserId && (
-        <TouchableOpacity
-          style={styles.wentHereButton}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push({
-              pathname: "/save-location",
-              params: {
-                prefillName: location.name,
-                prefillLat: location.location.latitude.toString(),
-                prefillLng: location.location.longitude.toString(),
-                prefillCategory: location.category || "other",
-                prefillDescription: location.description || "",
-              },
-            });
-          }}
-        >
-          <Ionicons name="add-circle" size={20} color="white" />
-          <Text style={styles.wentHereButtonText}>I Went Here Too!</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+        {/* Display all visits with their photos, or fallback to old photos field */}
+        {location.visits && location.visits.length > 0 ? (
+          <View style={styles.visitsContainer}>
+            {location.visits.map((visit: any, visitIndex: number) => (
+              <View key={visit.id} style={styles.visitSection}>
+                {/* Visit date header */}
+                <View style={styles.visitHeader}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={14}
+                    color={theme.colors.forest}
+                  />
+                  <Text style={styles.visitDate}>
+                    {new Date(visit.date).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      year:
+                        new Date(visit.date).getFullYear() !==
+                        new Date().getFullYear()
+                          ? "numeric"
+                          : undefined,
+                    })}
+                  </Text>
+                </View>
+
+                {/* Visit notes if present */}
+                {visit.notes && (
+                  <Text style={styles.visitNotes}>{visit.notes}</Text>
+                )}
+
+                {/* Visit photos */}
+                {visit.photos && visit.photos.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.photoScroll}
+                  >
+                    {visit.photos.map((photo: string, photoIndex: number) => (
+                      <TouchableImage
+                        key={photoIndex}
+                        source={{ uri: photo }}
+                        style={styles.locationPhoto}
+                        images={visit.photos}
+                        imageIndex={photoIndex}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+            ))}
+          </View>
+        ) : (
+          // Fallback: Show old photos field if visits array doesn't exist or is empty
+          location.photos &&
+          location.photos.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.photoScroll}
+            >
+              {location.photos.map((photo: string, index: number) => (
+                <TouchableImage
+                  key={index}
+                  source={{ uri: photo }}
+                  style={styles.locationPhoto}
+                  images={location.photos}
+                  imageIndex={index}
+                />
+              ))}
+            </ScrollView>
+          )
+        )}
+
+        <View style={styles.locationCoords}>
+          <Ionicons
+            name="location"
+            size={14}
+            color={theme.colors.burntOrange}
+          />
+          <Text style={styles.coordsText}>
+            {location.location?.latitude?.toFixed(4)},{" "}
+            {location.location?.longitude?.toFixed(4)}
+          </Text>
+        </View>
+
+        {/* "I Went Here Too" Button - only show if not your own post */}
+        {location.sharedBy?.id !== currentUserId && (
+          <TouchableOpacity
+            style={styles.wentHereButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push({
+                pathname: "/save-location",
+                params: {
+                  prefillName: location.name,
+                  prefillLat: location.location.latitude.toString(),
+                  prefillLng: location.location.longitude.toString(),
+                  prefillCategory: location.category || "other",
+                  prefillDescription: location.description || "",
+                },
+              });
+            }}
+          >
+            <Ionicons name="add-circle" size={20} color="white" />
+            <Text style={styles.wentHereButtonText}>I Went Here Too!</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const renderTripContent = (trip: any) => (
     <View style={styles.tripContent}>
@@ -1443,5 +1547,32 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 15,
     fontWeight: "600",
+  },
+  // Visit styles
+  visitsContainer: {
+    marginTop: 10,
+  },
+  visitSection: {
+    marginBottom: 15,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.forest + "30",
+    paddingLeft: 10,
+  },
+  visitHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  visitDate: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: theme.colors.forest,
+    marginLeft: 6,
+  },
+  visitNotes: {
+    fontSize: 13,
+    color: theme.colors.gray,
+    fontStyle: "italic",
+    marginBottom: 8,
   },
 });
