@@ -41,6 +41,31 @@ const ACTIVITY_TYPES = [
   { type: "other" as ActivityType, label: "Other", icon: "fitness" },
 ];
 
+const getCurrentWeather = async (lat: number, lon: number, useImperial: boolean = false) => {
+  try {
+    const tempUnit = useImperial ? "fahrenheit" : "celsius";
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&timezone=auto&temperature_unit=${tempUnit}`;
+    
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.log("Weather not available");
+    return null;
+  }
+};
+
+const getWeatherIcon = (code: number) => {
+  if (code === 0) return "sunny";
+  if (code <= 3) return "partly-sunny";
+  if (code <= 48) return "cloudy";
+  if (code <= 67) return "rainy";
+  if (code <= 77) return "snow";
+  if (code >= 95) return "thunderstorm";
+  return "cloudy";
+};
+
 export default function TrackActivityScreen() {
   const router = useRouter();
   const { formatDistance, formatSpeed, settings } = useSettings();
@@ -83,8 +108,10 @@ export default function TrackActivityScreen() {
   const [finalSpeed, setFinalSpeed] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
   const [showCamera, setShowCamera] = useState(false);
+  const [currentWeather, setCurrentWeather] = useState<any>(null);
   
   const { checkAndAddToTrip } = useAutoAddToTrip();
+  const useImperial = settings?.units === "imperial";
 
   useEffect(() => {
     if (loading || manualLoading) {
@@ -111,6 +138,17 @@ export default function TrackActivityScreen() {
       Alert.alert("Error", error);
     }
   }, [error]);
+
+  // Fetch weather when tracking starts
+  useEffect(() => {
+    if (isTracking && currentLocation && !currentWeather) {
+      getCurrentWeather(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        useImperial
+      ).then(setCurrentWeather);
+    }
+  }, [isTracking, currentLocation?.latitude, currentLocation?.longitude]);
 
   const handleStart = async () => {
     try {
@@ -702,6 +740,41 @@ export default function TrackActivityScreen() {
             )}
           </View>
 
+          {/* Route Info & Environment */}
+          <View style={styles.infoSection}>
+            <View style={styles.routeInfoBanner}>
+              <Ionicons name="map-outline" size={20} color={theme.colors.forest} />
+              <Text style={styles.routeInfoText}>
+                Route accuracy depends on GPS signal. Edit afterwards to fine-tune your path.
+              </Text>
+            </View>
+
+            <View style={styles.environmentalRow}>
+              {currentWeather && (
+                <View style={styles.envCard}>
+                  <Ionicons 
+                    name={getWeatherIcon(currentWeather.current?.weathercode) as any}
+                    size={20} 
+                    color={theme.colors.burntOrange} 
+                  />
+                  <Text style={styles.envValue}>
+                    {Math.round(currentWeather.current?.temperature_2m || 0)}°
+                  </Text>
+                </View>
+              )}
+              
+              <View style={styles.envCard}>
+                <Ionicons name="time-outline" size={20} color={theme.colors.navy} />
+                <Text style={styles.envValue}>
+                  {new Date().toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit' 
+                  })}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           <View style={styles.gpsStatus}>
             <View
               style={[
@@ -1066,6 +1139,45 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: "bold",
+    color: theme.colors.navy,
+  },
+  infoSection: {
+    gap: 8,
+    marginBottom: 10,
+  },
+  routeInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.forest + '10',
+    padding: 10,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.forest,
+  },
+  routeInfoText: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.colors.navy,
+    lineHeight: 20,
+    marginLeft: 8,
+  },
+  environmentalRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  envCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.forest + '05',
+    padding: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  envValue: {
+    fontSize: 15,
+    fontWeight: '600',
     color: theme.colors.navy,
   },
   gpsStatus: {
