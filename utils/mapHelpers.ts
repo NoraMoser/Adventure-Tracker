@@ -602,7 +602,6 @@ export const generateRouteEditorHTML = ({
         <span id="instructionText">📍 Click on the map to add points to your route</span>
       </div>
       <div class="control-panel">
-        <span id="continueBtn" class="control-button" onclick="continueRoute()">Extend Route</span>
         <span id="redrawBtn" class="control-button danger-button" onclick="toggleRedraw()">Redraw All</span>
         <span id="undoBtn" class="control-button" onclick="undoLastPoint()">Undo</span>
         <span id="clearBtn" class="control-button" onclick="clearChanges()">Reset</span>
@@ -648,7 +647,7 @@ export const generateRouteEditorHTML = ({
         var extensionLine = null;
         var newRouteLine = null;
         var totalDistance = ${distance};
-        var isDrawing = false;
+        var isDrawing = true; // AUTO-START in extend mode
         var isRedrawing = false;
         var extensionMarkers = [];
         var newRouteMarkers = [];
@@ -690,50 +689,14 @@ export const generateRouteEditorHTML = ({
         }
         
         drawExistingRoute();
-
-        function continueRoute() {
-          if (isRedrawing) {
-            alert('Please finish or cancel the route redraw first');
-            return;
-          }
-          
-          var btn = document.getElementById('continueBtn');
-          var instructions = document.getElementById('instructions');
-          
-          if (isDrawing) {
-            isDrawing = false;
-            btn.innerText = 'Extend Route';
-            btn.classList.remove('drawing-mode');
-            instructions.classList.remove('active');
-            map.getContainer().style.cursor = '';
-            
-            if (extensionPoints.length > 0) {
-              existingRoute = existingRoute.concat(extensionPoints);
-              extensionPoints = [];
-              
-              extensionMarkers.forEach(function(marker) { map.removeLayer(marker); });
-              extensionMarkers = [];
-              
-              if (extensionLine) {
-                map.removeLayer(extensionLine);
-                extensionLine = null;
-              }
-              
-              drawExistingRoute();
-              updateRoute();
-            }
-          } else {
-            isDrawing = true;
-            btn.innerText = 'Done Extending';
-            btn.classList.add('drawing-mode');
-            instructions.classList.add('active');
-            document.getElementById('instructionText').innerText = '📍 Click to add points. Click "Done Extending" when finished.';
-            map.getContainer().style.cursor = 'crosshair';
-          }
-        }
         
+        // Show instructions immediately since we're in extend mode
+        document.getElementById('instructions').classList.add('active');
+        document.getElementById('instructionText').innerText = '📍 Click on the map to add points to your route';
+        map.getContainer().style.cursor = 'crosshair';
+
         function startRedraw() {
-          if (isDrawing) continueRoute();
+          // Switching from extend mode to redraw mode
           document.getElementById('confirmDialog').classList.add('active');
         }
         
@@ -747,7 +710,7 @@ export const generateRouteEditorHTML = ({
           clearExtensionPoints();
           
           isRedrawing = true;
-          isDrawing = false;
+          isDrawing = false; // Turn off extend mode
           newRoutePoints = [];
           
           var btn = document.getElementById('redrawBtn');
@@ -824,13 +787,15 @@ export const generateRouteEditorHTML = ({
           drawExistingRoute();
           
           isRedrawing = false;
+          isDrawing = true; // Return to extend mode
           btn.innerText = 'Redraw All';
           btn.classList.remove('drawing-mode');
           btn.disabled = false;
           
-          document.getElementById('instructions').classList.remove('active');
+          document.getElementById('instructions').classList.add('active');
+          document.getElementById('instructionText').innerText = '📍 Click on the map to add points to your route';
           document.getElementById('redrawNotice').classList.remove('active');
-          map.getContainer().style.cursor = '';
+          map.getContainer().style.cursor = 'crosshair';
           
           var successDiv = document.createElement('div');
           successDiv.style.cssText = 'position:absolute;top:100px;left:50%;transform:translateX(-50%);background:#28a745;color:white;padding:15px 25px;border-radius:8px;z-index:9999;font-weight:bold;text-align:center;box-shadow:0 4px 8px rgba(0,0,0,0.3);';
@@ -852,7 +817,8 @@ export const generateRouteEditorHTML = ({
               }
               updateRouteForRedraw();
             }
-          } else if (isDrawing) {
+          } else {
+            // In extend mode - undo extension points first, then existing route points
             if (extensionPoints.length > 0) {
               extensionPoints.pop();
               if (extensionMarkers.length > 0) {
@@ -864,13 +830,43 @@ export const generateRouteEditorHTML = ({
                 var lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
                 extensionLine = L.polyline(lineToDraw, { color: '#cc5500', weight: 4, opacity: 0.8, dashArray: '10, 5' }).addTo(map);
               }
-              updateRoute();
-            }
-          } else {
-            if (existingRoute.length > 1) {
+              
+              // Update distance display only - DON'T send message
+              var allPoints = existingRoute.concat(extensionPoints);
+              var newDistance = calculateDistance(allPoints);
+              var displayDistance = newDistance;
+              var unit = '${distanceUnit}';
+              if (unit === 'km') displayDistance = (newDistance / 1000).toFixed(2);
+              else displayDistance = (newDistance / 1609.34).toFixed(2);
+              document.getElementById('distance').innerText = displayDistance;
+            } else if (existingRoute.length > 1) {
               existingRoute.pop();
-              drawExistingRoute();
-              updateRoute();
+              
+              // Redraw WITHOUT zooming - just update the line
+              if (existingLine) map.removeLayer(existingLine);
+              existingLine = L.polyline(existingRoute, {
+                color: '#2d5a3d',
+                weight: 4,
+                opacity: 0.8
+              }).addTo(map);
+
+              // Update markers
+              if (endMarker) map.removeLayer(endMarker);
+              endMarker = L.marker(existingRoute[existingRoute.length - 1], {
+                icon: L.divIcon({
+                  html: '<div style="background: #cc5500; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                  iconSize: [24, 24],
+                  className: 'custom-div-icon'
+                })
+              }).addTo(map).bindPopup('End');
+              
+              // Update distance display only
+              var newDistance = calculateDistance(existingRoute);
+              var displayDistance = newDistance;
+              var unit = '${distanceUnit}';
+              if (unit === 'km') displayDistance = (newDistance / 1000).toFixed(2);
+              else displayDistance = (newDistance / 1609.34).toFixed(2);
+              document.getElementById('distance').innerText = displayDistance;
             }
           }
         }
@@ -885,33 +881,85 @@ export const generateRouteEditorHTML = ({
         function clearChanges() {
           if (isRedrawing) {
             isRedrawing = false;
+            isDrawing = true; // Return to extend mode
             var btn = document.getElementById('redrawBtn');
             btn.innerText = 'Redraw All';
             btn.classList.remove('drawing-mode');
-            document.getElementById('instructions').classList.remove('active');
+            document.getElementById('instructions').classList.add('active');
+            document.getElementById('instructionText').innerText = '📍 Click on the map to add points to your route';
             document.getElementById('redrawNotice').classList.remove('active');
-            map.getContainer().style.cursor = '';
+            map.getContainer().style.cursor = 'crosshair';
             newRoutePoints = [];
             newRouteMarkers.forEach(function(marker) { if (marker) map.removeLayer(marker); });
             newRouteMarkers = [];
             if (newRouteLine) { map.removeLayer(newRouteLine); newRouteLine = null; }
             existingRoute = JSON.parse(JSON.stringify(originalRoute));
-            drawExistingRoute();
-            updateRoute();
-          } else if (isDrawing) {
-            extensionPoints = [];
-            extensionMarkers.forEach(function(marker) { if (marker) map.removeLayer(marker); });
-            extensionMarkers = [];
-            if (extensionLine) { map.removeLayer(extensionLine); extensionLine = null; }
-            updateRoute();
+            
+            // Redraw WITHOUT zooming
+            if (existingLine) map.removeLayer(existingLine);
+            existingLine = L.polyline(existingRoute, {
+              color: '#2d5a3d',
+              weight: 4,
+              opacity: 0.8
+            }).addTo(map);
+
+            if (startMarker) map.removeLayer(startMarker);
+            startMarker = L.marker(existingRoute[0], {
+              icon: L.divIcon({
+                html: '<div style="background: #2d5a3d; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                className: 'custom-div-icon'
+              })
+            }).addTo(map).bindPopup('Start');
+
+            if (endMarker) map.removeLayer(endMarker);
+            endMarker = L.marker(existingRoute[existingRoute.length - 1], {
+              icon: L.divIcon({
+                html: '<div style="background: #cc5500; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                className: 'custom-div-icon'
+              })
+            }).addTo(map).bindPopup('End');
+            
+            // Update distance display only
+            var newDistance = calculateDistance(existingRoute);
+            var displayDistance = newDistance;
+            var unit = '${distanceUnit}';
+            if (unit === 'km') displayDistance = (newDistance / 1000).toFixed(2);
+            else displayDistance = (newDistance / 1609.34).toFixed(2);
+            document.getElementById('distance').innerText = displayDistance;
           } else {
-            existingRoute = JSON.parse(JSON.stringify(originalRoute));
+            // Just clear extension points, stay in extend mode
             extensionPoints = [];
             extensionMarkers.forEach(function(marker) { if (marker) map.removeLayer(marker); });
             extensionMarkers = [];
             if (extensionLine) { map.removeLayer(extensionLine); extensionLine = null; }
-            drawExistingRoute();
-            updateRoute();
+            existingRoute = JSON.parse(JSON.stringify(originalRoute));
+            
+            // Redraw WITHOUT zooming
+            if (existingLine) map.removeLayer(existingLine);
+            existingLine = L.polyline(existingRoute, {
+              color: '#2d5a3d',
+              weight: 4,
+              opacity: 0.8
+            }).addTo(map);
+
+            if (endMarker) map.removeLayer(endMarker);
+            endMarker = L.marker(existingRoute[existingRoute.length - 1], {
+              icon: L.divIcon({
+                html: '<div style="background: #cc5500; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                className: 'custom-div-icon'
+              })
+            }).addTo(map).bindPopup('End');
+            
+            // Update distance display only
+            var newDistance = calculateDistance(existingRoute);
+            var displayDistance = newDistance;
+            var unit = '${distanceUnit}';
+            if (unit === 'km') displayDistance = (newDistance / 1000).toFixed(2);
+            else displayDistance = (newDistance / 1609.34).toFixed(2);
+            document.getElementById('distance').innerText = displayDistance;
           }
         }
 
@@ -941,7 +989,15 @@ export const generateRouteEditorHTML = ({
               lineToDraw = [existingRoute[existingRoute.length - 1]].concat(extensionPoints);
             }
             extensionLine = L.polyline(lineToDraw, { color: '#cc5500', weight: 4, opacity: 0.8, dashArray: '10, 5' }).addTo(map);
-            updateRoute();
+            
+            // Update distance display only - DON'T send message to React Native
+            var allPoints = existingRoute.concat(extensionPoints);
+            var newDistance = calculateDistance(allPoints);
+            var displayDistance = newDistance;
+            var unit = '${distanceUnit}';
+            if (unit === 'km') displayDistance = (newDistance / 1000).toFixed(2);
+            else displayDistance = (newDistance / 1609.34).toFixed(2);
+            document.getElementById('distance').innerText = displayDistance;
           }
         });
 

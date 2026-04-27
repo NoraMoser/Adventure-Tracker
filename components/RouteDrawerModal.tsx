@@ -1,8 +1,8 @@
-import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Platform,
+  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +14,7 @@ import {
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { generateRouteDrawerHTML } from "../utils/mapHelpers";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 interface RouteDrawerModalProps {
   visible: boolean;
@@ -131,15 +131,13 @@ export function RouteDrawerModal({
       animationType="slide"
       presentationStyle="fullScreen"
     >
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onClose}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.navy} />
           </TouchableOpacity>
           <Text style={styles.title}>Draw Your Route</Text>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>Done</Text>
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
         </View>
 
         <View style={styles.searchContainer}>
@@ -194,6 +192,10 @@ export function RouteDrawerModal({
             <Text style={styles.loadingText}>Loading map...</Text>
           </View>
         )}
+
+        <TouchableOpacity style={styles.floatingDoneButton} onPress={onClose}>
+          <Text style={styles.floatingDoneButtonText}>Done</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     </Modal>
   );
@@ -217,22 +219,32 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  headerSpacer: {
+    width: 40,
+  },
   title: {
     fontSize: 18,
     fontWeight: "600",
     color: theme.colors.navy,
-    flex: 1,
-    textAlign: "center",
-    marginHorizontal: 10,
   },
-  closeButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+  floatingDoneButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    backgroundColor: theme.colors.forest,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  closeButtonText: {
-    color: theme.colors.forest,
-    fontSize: 16,
-    fontWeight: "600",
+  floatingDoneButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
   },
   searchContainer: {
     flexDirection: "row",

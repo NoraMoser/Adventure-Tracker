@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useRef, useState } from "react";
-import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Keyboard } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Modal, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Keyboard } from "react-native";
 import { WebView } from "react-native-webview";
 import { theme } from "../constants/theme";
 import { generateRouteEditorHTML } from "../utils/mapHelpers";
@@ -80,22 +79,51 @@ export function RouteEditorModal({
   };
 
   const handleDone = () => {
+    // First, merge any extension points into the existing route
     webViewRef.current?.injectJavaScript(`
       (function() {
-        if (window.routeWasRedrawn && window.savedRedrawRoute) {
+        // Merge extension points if any exist
+        if (window.extensionPoints && window.extensionPoints.length > 0) {
+          window.existingRoute = window.existingRoute.concat(window.extensionPoints);
+          window.extensionPoints = [];
+        }
+        
+        // If in redraw mode, finalize the new route
+        if (window.isRedrawing && window.newRoutePoints && window.newRoutePoints.length > 0) {
+          var pointsToSave = window.newRoutePoints.map(function(point) {
+            return { latitude: point[0], longitude: point[1], timestamp: Date.now() };
+          });
+          var newDistance = window.calculateDistance(window.newRoutePoints);
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'routeUpdated',
-            route: window.savedRedrawRoute.route,
-            distance: window.savedRedrawRoute.distance
+            route: pointsToSave,
+            distance: newDistance
           }));
           return true;
         }
+        
+        // Send current route state (including merged extensions)
+        if (window.existingRoute && window.existingRoute.length > 0) {
+          var pointsToSave = window.existingRoute.map(function(point) {
+            return { latitude: point[0], longitude: point[1], timestamp: Date.now() };
+          });
+          var newDistance = window.calculateDistance(window.existingRoute);
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'routeUpdated',
+            route: pointsToSave,
+            distance: newDistance
+          }));
+          return true;
+        }
+        
         return false;
       })();
     `);
+    
+    // Small delay to ensure message is sent before closing
     setTimeout(() => {
       onClose();
-    }, 100);
+    }, 150);
   };
 
   const injectedJavaScript = `
@@ -121,15 +149,13 @@ export function RouteEditorModal({
       transparent={false}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onClose}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.navy} />
           </TouchableOpacity>
           <Text style={styles.title}>Edit Route</Text>
-          <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
-            <Text style={styles.doneButtonText}>Done</Text>
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
         </View>
         
         <View style={styles.searchContainer}>
@@ -179,6 +205,10 @@ export function RouteEditorModal({
             console.error("WebView error:", syntheticEvent.nativeEvent);
           }}
         />
+
+        <TouchableOpacity style={styles.floatingDoneButton} onPress={handleDone}>
+          <Text style={styles.floatingDoneButtonText}>Done</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     </Modal>
   );
@@ -202,19 +232,32 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  headerSpacer: {
+    width: 40,
+  },
   title: {
     fontSize: 18,
     fontWeight: "600",
     color: theme.colors.navy,
   },
-  doneButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+  floatingDoneButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    backgroundColor: theme.colors.forest,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  doneButtonText: {
-    color: theme.colors.forest,
-    fontSize: 16,
-    fontWeight: "600",
+  floatingDoneButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
   },
   searchContainer: {
     flexDirection: "row",
