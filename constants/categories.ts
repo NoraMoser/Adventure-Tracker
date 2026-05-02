@@ -8,6 +8,9 @@ export type CategoryType =
   | 'climbing'
   | 'historic'
   | 'shopping'
+  | 'accommodation'
+  | 'transit'
+  | 'entertainment'
   | 'other';
 
 export interface Category {
@@ -81,6 +84,27 @@ export const categories: Record<CategoryType, Category> = {
     icon: 'cart' as any,
     color: '#db2777', // pink
     mapColor: '#ec4899',
+  },
+  accommodation: {
+    id: 'accommodation',
+    label: 'Accommodation',
+    icon: 'bed' as any,
+    color: '#d97706', // amber
+    mapColor: '#f59e0b',
+  },
+  transit: {
+    id: 'transit',
+    label: 'Transit',
+    icon: 'train' as any,
+    color: '#14b8a6', // teal
+    mapColor: '#2dd4bf',
+  },
+  entertainment: {
+    id: 'entertainment',
+    label: 'Entertainment',
+    icon: 'game-controller' as any,
+    color: '#3b82f6', // bright blue
+    mapColor: '#60a5fa',
   },
   other: {
     id: 'other',

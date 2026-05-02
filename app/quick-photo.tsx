@@ -21,6 +21,8 @@ import { theme } from "../constants/theme";
 import { useLocation as useLocationContext } from "../contexts/LocationContext";
 import { useAutoAddToTrip } from "../hooks/useAutoAddToTrip";
 import { LocationService, PlaceSuggestion } from "../services/locationService";
+import { Camera } from "expo-camera";
+
 
 export default function QuickPhotoScreen() {
   const router = useRouter();
@@ -42,6 +44,26 @@ export default function QuickPhotoScreen() {
     useState<PlaceSuggestion | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [refreshingLocation, setRefreshingLocation] = useState(false);
+
+  useEffect(() => {
+    const checkCameraPermission = async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Camera Permission Required",
+          "Please enable camera access in Settings to take photos.",
+          [
+            { text: "Cancel", onPress: () => router.back(), style: "cancel" },
+            { text: "OK", onPress: () => router.back() },
+          ],
+        );
+        setShowCamera(false);
+      }
+    };
+
+    checkCameraPermission();
+  }, []);
 
   useEffect(() => {
     const attemptLocation = async () => {
@@ -78,13 +100,13 @@ export default function QuickPhotoScreen() {
     try {
       const suggestions = await LocationService.getLocationSuggestions(
         location.latitude,
-        location.longitude
+        location.longitude,
       );
 
       setLocationSuggestions(suggestions);
 
       const businessSuggestion = suggestions.find(
-        (s) => s.type === "business" || s.type === "poi"
+        (s) => s.type === "business" || s.type === "poi",
       );
       const firstSuggestion = businessSuggestion || suggestions[0];
 
@@ -128,7 +150,7 @@ export default function QuickPhotoScreen() {
             caption,
             photos,
             selectedCategory,
-            new Date()
+            new Date(),
           );
           Alert.alert("Saved!", "Your moment has been logged.", [
             { text: "Done", onPress: () => router.back() },
@@ -142,7 +164,7 @@ export default function QuickPhotoScreen() {
         caption,
         photos,
         selectedCategory,
-        new Date()
+        new Date(),
       );
 
       if (savedSpot) {
@@ -155,7 +177,7 @@ export default function QuickPhotoScreen() {
               latitude: savedSpot.location.latitude,
               longitude: savedSpot.location.longitude,
             },
-            true
+            true,
           )) as { name?: string; id?: string } | null;
 
           if (trip?.name && trip?.id) {
@@ -181,7 +203,7 @@ export default function QuickPhotoScreen() {
                   text: "Done",
                   onPress: () => router.back(),
                 },
-              ]
+              ],
             );
             return;
           }
@@ -216,7 +238,7 @@ export default function QuickPhotoScreen() {
 
   const CategorySelector = () => {
     const categoryList = Object.entries(categories).filter(
-      ([key]) => key !== "all"
+      ([key]) => key !== "all",
     );
 
     return (
@@ -425,7 +447,7 @@ export default function QuickPhotoScreen() {
                           setTitle(suggestion.name);
                           if (suggestion.suggestedCategoryType) {
                             setSelectedCategory(
-                              suggestion.suggestedCategoryType
+                              suggestion.suggestedCategoryType,
                             );
                           }
                         }}

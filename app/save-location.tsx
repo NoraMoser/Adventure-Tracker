@@ -29,7 +29,15 @@ import {
   PinchGestureHandler,
   State,
 } from "react-native-gesture-handler";
-import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
+import Animated, {
+  useSharedValue,
+  runOnJS,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+  cancelAnimation,
+} from "react-native-reanimated";
 import { CameraCapture } from "../components/CameraCapture";
 
 export default function SaveLocationScreen() {
@@ -83,6 +91,15 @@ export default function SaveLocationScreen() {
   const scale = useSharedValue(1);
   const baseScale = useSharedValue(1);
   const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
+
+  const rotationValue = useSharedValue(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${rotationValue.value}deg` }],
+    };
+  });
 
   useEffect(() => {
     if (location) {
@@ -222,6 +239,15 @@ export default function SaveLocationScreen() {
   };
 
   const handleTakePhoto = async () => {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+
+    if (status !== "granted") {
+      Alert.alert(
+        "Camera Permission Required",
+        "Please enable camera access in Settings to take photos.",
+      );
+      return;
+    }
     setShowCamera(true);
   };
 
@@ -316,21 +342,40 @@ export default function SaveLocationScreen() {
               <TouchableOpacity
                 style={styles.refreshButton}
                 onPress={async () => {
-                  // If we have prefilled location, refetch suggestions for it
-                  if (localLocation) {
-                    fetchLocationSuggestions();
-                  } else {
-                    // Otherwise get fresh GPS location
-                    await getLocation();
-                    fetchLocationSuggestions();
+                  setRefreshing(true);
+                  // Start spinning animation
+                  rotationValue.value = withRepeat(
+                    withTiming(360, {
+                      duration: 1000,
+                      easing: Easing.linear,
+                    }),
+                    -1, // infinite
+                    false,
+                  );
+
+                  try {
+                    if (localLocation) {
+                      await fetchLocationSuggestions();
+                    } else {
+                      await getLocation();
+                      await fetchLocationSuggestions();
+                    }
+                  } finally {
+                    // Stop spinning
+                    cancelAnimation(rotationValue);
+                    rotationValue.value = 0;
+                    setRefreshing(false);
                   }
                 }}
+                disabled={refreshing}
               >
-                <Ionicons
-                  name="refresh"
-                  size={20}
-                  color={theme.colors.forest}
-                />
+                <Animated.View style={animatedStyle}>
+                  <Ionicons
+                    name="refresh"
+                    size={20}
+                    color={refreshing ? theme.colors.gray : theme.colors.forest}
+                  />
+                </Animated.View>
               </TouchableOpacity>
             </View>
           )}
