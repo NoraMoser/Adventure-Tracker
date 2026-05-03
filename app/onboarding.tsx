@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -47,6 +48,8 @@ export default function OnboardingScreen() {
   );
   const [locationPermissionGranted, setLocationPermissionGranted] =
     useState(false);
+  const [notificationPermissionGranted, setNotificationPermissionGranted] =
+    useState(false);
 
   useEffect(() => {
     // Animate in
@@ -88,6 +91,37 @@ export default function OnboardingScreen() {
       }
     } catch (error) {
       console.error("Error requesting location permission:", error);
+      return false;
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    try {
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowDisplayInCarPlay: false,
+          allowCriticalAlerts: false,
+          provideAppNotificationSettings: false,
+          allowProvisional: false,
+        },
+      });
+      
+      if (status === 'granted') {
+        setNotificationPermissionGranted(true);
+        return true;
+      } else {
+        Alert.alert(
+          "Notifications Optional",
+          "You can enable notifications later in Settings to stay updated on friend activity and trip updates.",
+          [{ text: "OK" }]
+        );
+        return false;
+      }
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
       return false;
     }
   };
@@ -425,6 +459,110 @@ export default function OnboardingScreen() {
       ),
     },
     {
+      id: "location",
+      title: "Enable Location Access",
+      subtitle: "Track your activities and automatically save where you've been",
+      backgroundColor: theme.colors.forest,
+      textColor: theme.colors.white,
+      action: requestLocationPermission,
+      actionLabel: locationPermissionGranted 
+        ? "✓ Location Enabled" 
+        : "Enable Location",
+      customContent: (
+        <View style={styles.permissionInfo}>
+          <Ionicons 
+            name="location" 
+            size={80} 
+            color={theme.colors.white} 
+          />
+          <View style={{ marginTop: 30, width: '100%' }}>
+            <View style={styles.permissionItem}>
+              <Ionicons 
+                name="navigate" 
+                size={24} 
+                color={theme.colors.white} 
+              />
+              <Text style={styles.permissionText}>
+                Track routes and activities
+              </Text>
+            </View>
+            <View style={styles.permissionItem}>
+              <Ionicons 
+                name="location-sharp" 
+                size={24} 
+                color={theme.colors.white} 
+              />
+              <Text style={styles.permissionText}>
+                Auto-save favorite spots
+              </Text>
+            </View>
+            <View style={styles.permissionItem}>
+              <Ionicons 
+                name="map" 
+                size={24} 
+                color={theme.colors.white} 
+              />
+              <Text style={styles.permissionText}>
+                See your adventures on the map
+              </Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
+      id: "notifications",
+      title: "Stay Updated",
+      subtitle: "Get notified about friend activity, trip updates, and achievements",
+      backgroundColor: theme.colors.navy,
+      textColor: theme.colors.white,
+      action: requestNotificationPermission,
+      actionLabel: notificationPermissionGranted 
+        ? "✓ Notifications Enabled" 
+        : "Enable Notifications",
+      customContent: (
+        <View style={styles.permissionInfo}>
+          <Ionicons 
+            name="notifications" 
+            size={80} 
+            color={theme.colors.white} 
+          />
+          <View style={{ marginTop: 30, width: '100%' }}>
+            <View style={styles.permissionItem}>
+              <Ionicons 
+                name="people" 
+                size={24} 
+                color={theme.colors.white} 
+              />
+              <Text style={styles.permissionText}>
+                Friend activity & comments
+              </Text>
+            </View>
+            <View style={styles.permissionItem}>
+              <Ionicons 
+                name="airplane" 
+                size={24} 
+                color={theme.colors.white} 
+              />
+              <Text style={styles.permissionText}>
+                Trip invites & updates
+              </Text>
+            </View>
+            <View style={styles.permissionItem}>
+              <Ionicons 
+                name="trophy" 
+                size={24} 
+                color={theme.colors.white} 
+              />
+              <Text style={styles.permissionText}>
+                Achievements & milestones
+              </Text>
+            </View>
+          </View>
+        </View>
+      ),
+    },
+    {
       id: "ready",
       title: "You're All Set!",
       subtitle: `Welcome${
@@ -495,6 +633,27 @@ export default function OnboardingScreen() {
               <Text style={styles.summaryText}>
                 Location:{" "}
                 {locationPermissionGranted
+                  ? "Enabled"
+                  : "Not enabled (can enable later)"}
+              </Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Ionicons
+                name={
+                  notificationPermissionGranted
+                    ? "checkmark-circle"
+                    : "close-circle"
+                }
+                size={20}
+                color={
+                  notificationPermissionGranted
+                    ? theme.colors.forest
+                    : theme.colors.burntOrange
+                }
+              />
+              <Text style={styles.summaryText}>
+                Notifications:{" "}
+                {notificationPermissionGranted
                   ? "Enabled"
                   : "Not enabled (can enable later)"}
               </Text>
@@ -620,14 +779,21 @@ export default function OnboardingScreen() {
                   style={[
                     styles.actionButton,
                     {
-                      backgroundColor: locationPermissionGranted
+                      backgroundColor: (slide.id === 'location' && locationPermissionGranted) || 
+                                      (slide.id === 'notifications' && notificationPermissionGranted)
                         ? theme.colors.white + "40"
                         : theme.colors.white,
-                      opacity: locationPermissionGranted ? 0.8 : 1,
+                      opacity: (slide.id === 'location' && locationPermissionGranted) || 
+                              (slide.id === 'notifications' && notificationPermissionGranted)
+                        ? 0.8 
+                        : 1,
                     },
                   ]}
                   onPress={slide.action}
-                  disabled={locationPermissionGranted}
+                  disabled={
+                    (slide.id === 'location' && locationPermissionGranted) ||
+                    (slide.id === 'notifications' && notificationPermissionGranted)
+                  }
                 >
                   <Text
                     style={[
@@ -1082,6 +1248,7 @@ const styles = StyleSheet.create({
   },
   permissionInfo: {
     marginBottom: 20,
+    alignItems: "center",
   },
   permissionItem: {
     flexDirection: "row",
@@ -1186,33 +1353,33 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   wishlistPreview: {
-  alignItems: "center",
-  marginBottom: 20,
-},
-wishlistExplainer: {
-  alignItems: "center",
-  marginBottom: 25,
-  backgroundColor: "rgba(255, 255, 255, 0.15)",
-  padding: 20,
-  borderRadius: 12,
-  width: "100%",
-},
-wishlistExplainerText: {
-  color: theme.colors.white,
-  fontSize: 15,
-  marginTop: 12,
-  textAlign: "center",
-  lineHeight: 22,
-},
-priorityItem: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginVertical: 10,
-},
-priorityText: {
-  color: theme.colors.white,
-  marginLeft: 15,
-  fontSize: 18,
-  fontWeight: "500",
-},
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  wishlistExplainer: {
+    alignItems: "center",
+    marginBottom: 25,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    padding: 20,
+    borderRadius: 12,
+    width: "100%",
+  },
+  wishlistExplainerText: {
+    color: theme.colors.white,
+    fontSize: 15,
+    marginTop: 12,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  priorityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 10,
+  },
+  priorityText: {
+    color: theme.colors.white,
+    marginLeft: 15,
+    fontSize: 18,
+    fontWeight: "500",
+  },
 });
